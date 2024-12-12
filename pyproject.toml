@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biomdp"
+version = "0.4.8"
+authors = [
+  { name="Jose L. L. Elvira", email="jose.lopeze@umh.es" },
+]
+description = "Usefull functions to analize biomechanicanical data"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: Creative Commons :: Reconocimiento 4.0 Internacional.",
+    "Operating System :: OS Independent",
+]
+keywords = ["biomechanics", "biomecánica", "data processing", "xarray"]
+
+[project.urls]
+Homepage = "https://github.com/joselvira/BiomecanicaPython"
+Issues = "https://github.com/joselvira/BiomecanicaPython/issues"

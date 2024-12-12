@@ -1,0 +1,17 @@
+Metadata-Version: 2.1
+Name: biomdp
+Version: 0.4.8
+Summary: Usefull functions to analize biomechanicanical data
+Author-email: "Jose L. L. Elvira" <jose.lopeze@umh.es>
+Project-URL: Homepage, https://github.com/joselvira/BiomecanicaPython
+Project-URL: Issues, https://github.com/joselvira/BiomecanicaPython/issues
+Keywords: biomechanics,biomecánica,data processing,xarray
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: Creative Commons :: Reconocimiento 4.0 Internacional.
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+This package uses usefull functions to analize biomechanics data.
+It is mainly based on xarray data structures.
