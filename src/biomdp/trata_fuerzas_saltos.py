@@ -743,7 +743,7 @@ def load_merge_vicon_csv(
     asigna_subcat=True,
     show=False,
 ) -> xr.DataArray:
-    from readViconCsv import read_vicon_csv_pl_xr
+    from biomdp.read_vicon_csv import read_vicon_csv_pl_xr
 
     lista_archivos = sorted(
         list(ruta.glob("**/*.csv"))
@@ -812,7 +812,7 @@ def load_merge_vicon_csv_selectivo(
 ) -> xr.DataArray:
     # Carga listado de archivos basado en hoja de registro
 
-    from readViconCsv import read_vicon_csv_pl_xr
+    from biomdp.read_vicon_csv import read_vicon_csv_pl_xr
 
     if hoja_registro is None:
         print("Debes especificar la hoja de registro")

@@ -120,8 +120,9 @@ import sys
 
 # Importa mis funciones necesarias
 import biomdp.biomec_xarray_accessor  # accessor biomxr
-import biomdp.Nexus_FuncionesApoyo as nfa  # funciones de apoyo con datos del Nexus
+import biomdp.nexus_funciones_apoyo as nfa  # funciones de apoyo con datos del Nexus
 import biomdp.slice_time_series_phases as stsp
+
 # from biomec_processing.slice_time_series_phases import SliceTimeSeriesPhases as stsp  # tratamientos para bike fitting Nexus
 
 r"""
@@ -383,13 +384,10 @@ def calcula_angulos_desde_trajec(
     elif "Meta5" in daData.n_var:
         n_ant, n_post = "Toe", "TalonSup"
     dsAngPedal = np.arctan2(
-        daData.sel(n_var=n_ant, axis="z")
-        - daData.sel(n_var=n_post, axis="z"),
-        daData.sel(n_var=n_ant, axis="y")
-        - daData.sel(n_var=n_post, axis="y"),
+        daData.sel(n_var=n_ant, axis="z") - daData.sel(n_var=n_post, axis="z"),
+        daData.sel(n_var=n_ant, axis="y") - daData.sel(n_var=n_post, axis="y"),
     )  # .to_dataset(name="AngPedal")
 
-   
     L = dsAngPedal.sel(side="L").drop_vars("side")
     L.name = "AngPedal_L"
     R = dsAngPedal.sel(side="R").drop_vars("side")
@@ -400,16 +398,16 @@ def calcula_angulos_desde_trajec(
 
     # Calcula ángulo de biela. Primero ejes pedales modelo actual con Pedal_A y Pedal_P, el antiguo con Meta5
     if "Pedal_A" in daData.n_var:
-        n_pedal=["Pedal_A", "Pedal_P"] # con corchetes para que pueda hacer la media
-    elif 'Meta5' in daData.n_var:
-        n_pedal=['Meta5']    
+        n_pedal = ["Pedal_A", "Pedal_P"]  # con corchetes para que pueda hacer la media
+    elif "Meta5" in daData.n_var:
+        n_pedal = ["Meta5"]
     daEjePedal = (
         daData.sel(n_var=n_pedal)
         .mean(dim="n_var")
         .expand_dims({"n_var": ["PosPedal"]}, axis=0)  # Añade dimensión n_var
     )
     # daEjePedal.isel(ID=0, n_var=0).plot.line(x='time', col='axis')
-    
+
     # TODO: Si hace falta, por aquí seleccionar qué variables se usan para calcular angBiela (modelo_eje_biela='bilateral')
     dsAngBiela = calcula_ang_biela(
         daEje1=daEjePedal.sel(side="R"), daEje2=daEjePedal.sel(side="L")
@@ -422,7 +420,7 @@ def calcula_angulos_desde_trajec(
     # Calcula velocidad angular biela
     dsvAngBiela = calcula_vAng_biela(dsAngBiela, region_interest)
     # dsvAngBiela["vAngBiela_LR"].isel(ID=0).plot.line(x='time')
-    
+
     daAngles = (
         xr.merge([dsAngSegments, dsAngArtics, dsAngPedal, dsAngBiela, dsvAngBiela])
         .to_array()
@@ -433,14 +431,15 @@ def calcula_angulos_desde_trajec(
     if "side" in daData.coords:
         daAngles = nfa.separa_trayectorias_lados(daData=daAngles)
         # daAngles.isel(ID=0, axis=2).plot.line(x='time', row='n_var', sharey=False)
-        
+
         # Desfasa lado R 180º
-        daAngles = individualiza_ang_biela_sides(daData=daAngles, region_interest=region_interest)
-        
+        daAngles = individualiza_ang_biela_sides(
+            daData=daAngles, region_interest=region_interest
+        )
+
         # ang2= np.unwrap(ang-np.pi*2.0) % (np.pi*2.0)-np.pi
         # plt.plot(ang.T)
         # plt.plot(ang2.T)
-        
 
     daAngles.name = "Angles"
     daAngles.attrs["units"] = "deg"
@@ -531,37 +530,48 @@ def calcula_ang_biela(daEje1, daEje2) -> xr.DataArray:
 
     return daAngBiela
 
+
 def individualiza_ang_biela_sides(daData, region_interest=None) -> xr.DataArray:
     # TODO: COMPROBAR QUE FUNCIONA EN TODOS LOS CÁLCULOS --> FALLAN EVENTOS EN NEXUS
     # TODO: COMPROBAR QUE FUNCIONA CON MÚLTIPLES ID
 
     # Ajusta coord AngBiela en lado R, desfasa 180º
 
-    for id, daID in daData.groupby('ID'):
+    for id, daID in daData.groupby("ID"):
         print(id)
         if region_interest is None:
-            r_i = acota_region_of_interest(daData.sel(ID=[id], n_var="AngBiela", side="L"))
+            r_i = acota_region_of_interest(
+                daData.sel(ID=[id], n_var="AngBiela", side="L")
+            )
         else:
             r_i = region_interest
 
         # Eje X
-        ang = daData.sel(ID=id, n_var="AngBiela", side='R', axis='x').values[r_i[0]:r_i[1]]
+        ang = daData.sel(ID=id, n_var="AngBiela", side="R", axis="x").values[
+            r_i[0] : r_i[1]
+        ]
         # plt.plot(ang.T)
-        daData.loc[dict(ID=id, n_var="AngBiela", side="R", axis='x')][r_i[0]:r_i[1]] = np.unwrap(ang-np.pi) % (np.pi*2.0)
+        daData.loc[dict(ID=id, n_var="AngBiela", side="R", axis="x")][
+            r_i[0] : r_i[1]
+        ] = np.unwrap(ang - np.pi) % (np.pi * 2.0)
         # daData.sel(ID=id, n_var="AngBiela", axis='x').plot.line(x='time')
 
         # Eje Y
         # ang = daData.sel(n_var="AngBiela", side='R', axis='x').values - np.pi
         # daData.loc[dict(n_var="AngBiela", side="R", axis='y')] = ang
-        ang = daData.sel(ID=id, n_var="AngBiela", side='R', axis='x').values - np.pi
-        daData.loc[dict(ID=id, n_var="AngBiela", side="R", axis='y')] = ang
+        ang = daData.sel(ID=id, n_var="AngBiela", side="R", axis="x").values - np.pi
+        daData.loc[dict(ID=id, n_var="AngBiela", side="R", axis="y")] = ang
         # daData.sel(ID=id, n_var="AngBiela", axis='y').plot.line(x='time')
 
         # Eje Z
         # ang = daData.sel(n_var="AngBiela", side='R', axis='z').values
-        # daData.loc[dict(n_var="AngBiela", side="R", axis='z')] = np.unwrap(ang+np.pi*2.0) % (np.pi*2.0)-np.pi    
-        ang = daData.sel(ID=id, n_var="AngBiela", side='R', axis='z').values[r_i[0]:r_i[1]]
-        daData.loc[dict(ID=id, n_var="AngBiela", side="R", axis='z')][r_i[0]:r_i[1]] = np.unwrap(ang+np.pi*2.0) % (np.pi*2.0)-np.pi
+        # daData.loc[dict(n_var="AngBiela", side="R", axis='z')] = np.unwrap(ang+np.pi*2.0) % (np.pi*2.0)-np.pi
+        ang = daData.sel(ID=id, n_var="AngBiela", side="R", axis="z").values[
+            r_i[0] : r_i[1]
+        ]
+        daData.loc[dict(ID=id, n_var="AngBiela", side="R", axis="z")][
+            r_i[0] : r_i[1]
+        ] = (np.unwrap(ang + np.pi * 2.0) % (np.pi * 2.0) - np.pi)
         # ang = np.unwrap(ang+np.pi*2.0) % (np.pi*2.0)-np.pi
         # daData.sel(ID=id, n_var="AngBiela", axis='z').plot.line(x='time')
 
@@ -602,7 +612,9 @@ def calcula_vAng_biela(dsAngBiela, region_interest) -> xr.Dataset:
     # dsvAngBiela['vAngBiela_LR'].sel(axis='x').plot()
 
     # Ajuste para los primeros y últimos datos con extrapolación
-    if region_interest[1] - region_interest[0] > 200: # comprueba si hay suficiente nº de datos
+    if (
+        region_interest[1] - region_interest[0] > 200
+    ):  # comprueba si hay suficiente nº de datos
         dsvAngBiela["vAngBiela_LR"].loc[
             dict(
                 time=slice(
@@ -622,9 +634,9 @@ def calcula_vAng_biela(dsAngBiela, region_interest) -> xr.Dataset:
         )
         # RELLENA CON MISMO DATO dsvAngBiela["vAngBiela_LR"].isel(time=region_interest[0] + 6, axis=0)
 
-        #TODO: AJUSTAR MÁRGENES FOTOGRAMAS PARA QUE NO SE SALGA DE LO QUE HAYA
+        # TODO: AJUSTAR MÁRGENES FOTOGRAMAS PARA QUE NO SE SALGA DE LO QUE HAYA
         # try: # fallaría si hay num datos pequeño
-            
+
         dsvAngBiela["vAngBiela_LR"].loc[
             dict(
                 time=slice(
@@ -659,7 +671,7 @@ def calcula_vAng_biela(dsAngBiela, region_interest) -> xr.Dataset:
         .isel(time=slice(int(0.5 * dsAngBiela.freq), int(-0.5 * dsAngBiela.freq)))
         .std("time")
     )
-    dsvAngBiela = dsvAngBiela.where(~dsvAngBiela.sel(axis='x').isnull())
+    dsvAngBiela = dsvAngBiela.where(~dsvAngBiela.sel(axis="x").isnull())
     dsvAngBiela = np.rad2deg(dsvAngBiela)  # pasar a grados??
     # dsvAngBiela['vAngBiela_LR'].isel(ID=0).plot.line(x='time')
 
@@ -684,9 +696,9 @@ def calcula_variables_posicion(
 
     # ----Calcula eje pedales. Con modelo actual con Pedal_A y Pedal_P, el antiguo con Meta5
     if "Pedal_A" in daData.n_var:
-        n_pedal=["Pedal_A", "Pedal_P"] # con corchetes para que pueda hacer la media
-    elif 'Meta5' in daData.n_var:
-        n_pedal=['Meta5']    
+        n_pedal = ["Pedal_A", "Pedal_P"]  # con corchetes para que pueda hacer la media
+    elif "Meta5" in daData.n_var:
+        n_pedal = ["Meta5"]
     daEjePedal = (
         daData.sel(n_var=n_pedal)
         .mean(dim="n_var")
@@ -726,11 +738,12 @@ def calcula_variables_posicion(
         daEjeBiela.loc[dict(side=["L", "R"])] = daEjeBiela.loc[dict(side="LR")]
         # Se queda con lado L y R
         daEjeBiela = daEjeBiela.sel(n_var="EjeBiela", side=["L", "R"])
-        daEjeBiela = (daEjeBiela.where(~daEjePedal.isel(n_var=0).isnull())
-                        .expand_dims("n_var")
-                        .assign_coords(n_var=["EjeBiela"])
+        daEjeBiela = (
+            daEjeBiela.where(~daEjePedal.isel(n_var=0).isnull())
+            .expand_dims("n_var")
+            .assign_coords(n_var=["EjeBiela"])
         )
-    
+
         # daEjeBiela.plot.line(x='time', row='ID', col='axis')
 
     # TODO: #NO ADAPTADO A XARRAY
@@ -790,16 +803,16 @@ def calcula_variables_posicion(
     # Mete la coordenada importante (y) en eje x y los demás vacíos
     daLengthKops.loc[dict(axis="x")] = daLengthKops.sel(axis="y").values
     daLengthKops.loc[dict(axis=["y", "z"])] = 0.0
-    daLengthKops = daLengthKops.where(~daLengthKops.sel(axis='x').isnull())
+    daLengthKops = daLengthKops.where(~daLengthKops.sel(axis="x").isnull())
     # daLengthKops.isel(ID=0, n_var=0).plot.line(x='time', col='axis')
 
     # ---- Calcula distancia anteropost Meta-pedal. Rápido en eje y, pero debería ser paralelo a orientación pedal
     if "Pedal_A" in daData.n_var:
-        n_meta=['Meta'] # con corchetes para que pueda hacer la media
-    elif 'Meta5' in daData.n_var:
-        n_meta=['Meta5','Meta1'] #debe salir cero en todo
+        n_meta = ["Meta"]  # con corchetes para que pueda hacer la media
+    elif "Meta5" in daData.n_var:
+        n_meta = ["Meta5", "Meta1"]  # debe salir cero en todo
     daLengthMetaPedal = (
-        (daData.sel(n_var=n_meta).mean('n_var') - daEjePedal)
+        (daData.sel(n_var=n_meta).mean("n_var") - daEjePedal)
         # .expand_dims("n_var")
         .assign_coords(n_var=["LengthMetaPedal"])
         .copy()
@@ -808,67 +821,91 @@ def calcula_variables_posicion(
     # Mete la coordenada importante (y) en eje x y los demás vacíos
     daLengthMetaPedal.loc[dict(axis="x")] = daLengthMetaPedal.sel(axis="y").values
     daLengthMetaPedal.loc[dict(axis=["y", "z"])] = 0.0
-    daLengthMetaPedal = daLengthMetaPedal.where(~daLengthMetaPedal.sel(axis='x').isnull())
+    daLengthMetaPedal = daLengthMetaPedal.where(
+        ~daLengthMetaPedal.sel(axis="x").isnull()
+    )
     # daLengthMetaPedal.isel(ID=0, n_var=0).plot.line(x='time', col='axis')
-
 
     # ---- Calcula ancho cadera-pedales
     daLengthAnchoHipMeta = (
-        (daEjeArtic.sel(n_var=["HJC"]) - daData.sel(n_var=n_meta).mean('n_var'))
+        (daEjeArtic.sel(n_var=["HJC"]) - daData.sel(n_var=n_meta).mean("n_var"))
         # .expand_dims("n_var")
         .assign_coords(n_var=["LengthAnchoHipMeta"])
         .copy()
         .transpose(..., "axis", "time")  # ("n_var", "side", "ID", "time", "axis")
     )
     # Ajusta signo lado L
-    daLengthAnchoHipMeta.loc[dict(side='R')] *= -1.0
+    daLengthAnchoHipMeta.loc[dict(side="R")] *= -1.0
     daLengthAnchoHipMeta.loc[dict(axis=["y", "z"])] = 0.0
-    daLengthAnchoHipMeta = daLengthAnchoHipMeta.where(~daLengthAnchoHipMeta.sel(axis='x').isnull())
+    daLengthAnchoHipMeta = daLengthAnchoHipMeta.where(
+        ~daLengthAnchoHipMeta.sel(axis="x").isnull()
+    )
     # daLengthAnchoHipMeta.isel(ID=0, n_var=0).plot.line(x='time', col='axis')
 
-
     # ---- Calcula longitud muslos, piernas y pies
-    daDistSegMuslo = (np.sqrt(((daEjeArtic.sel(n_var="HJC") - daEjeArtic.sel(n_var="KJC"))**2).sum('axis'))
-                .expand_dims({"n_var":["LengthMuslo"], 'axis':['x', 'y', 'z']})                
-                .transpose(..., "axis", "time")
-                .copy()
-                 )
+    daDistSegMuslo = (
+        np.sqrt(
+            ((daEjeArtic.sel(n_var="HJC") - daEjeArtic.sel(n_var="KJC")) ** 2).sum(
+                "axis"
+            )
+        )
+        .expand_dims({"n_var": ["LengthMuslo"], "axis": ["x", "y", "z"]})
+        .transpose(..., "axis", "time")
+        .copy()
+    )
     # Sustituye ceros por nan para calcular media y std
     daDistSegMuslo = daDistSegMuslo.where(daDistSegMuslo != 0.0)
-    daDistSegMuslo.loc[dict(axis="y")] = daDistSegMuslo.sel(axis="x").mean('time')
-    daDistSegMuslo.loc[dict(axis="z")] = daDistSegMuslo.sel(axis="x").std('time')
-    daDistSegMuslo = daDistSegMuslo.where(~daDistSegMuslo.sel(axis='x').isnull())
-    
-    daDistSegPierna = (np.sqrt(((daEjeArtic.sel(n_var="KJC") - daEjeArtic.sel(n_var="AJC"))**2).sum('axis'))
-                .expand_dims({"n_var":["LengthPierna"], 'axis':['x', 'y', 'z']})                
-                .transpose(..., "axis", "time")
-                .copy()
-                 )
+    daDistSegMuslo.loc[dict(axis="y")] = daDistSegMuslo.sel(axis="x").mean("time")
+    daDistSegMuslo.loc[dict(axis="z")] = daDistSegMuslo.sel(axis="x").std("time")
+    daDistSegMuslo = daDistSegMuslo.where(~daDistSegMuslo.sel(axis="x").isnull())
+
+    daDistSegPierna = (
+        np.sqrt(
+            ((daEjeArtic.sel(n_var="KJC") - daEjeArtic.sel(n_var="AJC")) ** 2).sum(
+                "axis"
+            )
+        )
+        .expand_dims({"n_var": ["LengthPierna"], "axis": ["x", "y", "z"]})
+        .transpose(..., "axis", "time")
+        .copy()
+    )
     daDistSegPierna = daDistSegPierna.where(daDistSegPierna != 0.0)
-    daDistSegPierna.loc[dict(axis="y")] = daDistSegPierna.sel(axis="x").mean('time')
-    daDistSegPierna.loc[dict(axis="z")] = daDistSegPierna.sel(axis="x").std('time')
-    daDistSegPierna = daDistSegPierna.where(~daDistSegPierna.sel(axis='x').isnull())
-    
+    daDistSegPierna.loc[dict(axis="y")] = daDistSegPierna.sel(axis="x").mean("time")
+    daDistSegPierna.loc[dict(axis="z")] = daDistSegPierna.sel(axis="x").std("time")
+    daDistSegPierna = daDistSegPierna.where(~daDistSegPierna.sel(axis="x").isnull())
+
     # Elige el marcador extremo del pie según el modelo
-    if 'Meta' in daData.n_var.values:
+    if "Meta" in daData.n_var.values:
         punta_pie = daData.sel(n_var="Meta")
-    elif 'Meta5' in daData.n_var.values:
-        punta_pie = daData.sel(n_var=["Meta5", 'Meta1']).mean('n_var')
-        
-    daDistSegPie = (np.sqrt(((punta_pie - daData.sel(n_var="TalonSup"))**2).sum('axis'))
-                .expand_dims({"n_var":["LengthPie"], 'axis':['x', 'y', 'z']})                
-                .transpose(..., "axis", "time")
-                .copy()
-                 )
-    daDistSegPie = daDistSegPie.where(daDistSegPie != 0.0)    
-    daDistSegPie.loc[dict(axis="y")] = daDistSegPie.sel(axis="x").mean('time')
-    daDistSegPie.loc[dict(axis="z")] = daDistSegPie.sel(axis="x").std('time')
-    daDistSegPie = daDistSegPie.where(~daDistSegPie.sel(axis='x').isnull())
-    
+    elif "Meta5" in daData.n_var.values:
+        punta_pie = daData.sel(n_var=["Meta5", "Meta1"]).mean("n_var")
+
+    daDistSegPie = (
+        np.sqrt(((punta_pie - daData.sel(n_var="TalonSup")) ** 2).sum("axis"))
+        .expand_dims({"n_var": ["LengthPie"], "axis": ["x", "y", "z"]})
+        .transpose(..., "axis", "time")
+        .copy()
+    )
+    daDistSegPie = daDistSegPie.where(daDistSegPie != 0.0)
+    daDistSegPie.loc[dict(axis="y")] = daDistSegPie.sel(axis="x").mean("time")
+    daDistSegPie.loc[dict(axis="z")] = daDistSegPie.sel(axis="x").std("time")
+    daDistSegPie = daDistSegPie.where(~daDistSegPie.sel(axis="x").isnull())
 
     # ---- Concatena resultados
     daPos = xr.concat(
-        [daEjeArtic, daEjePedal, daEjeBiela, daLengthKops, daLengthMetaPedal, daLengthAnchoHipMeta, daDistSegMuslo, daDistSegPierna, daDistSegPie], dim="n_var", join="left"
+        [
+            daEjeArtic,
+            daEjePedal,
+            daEjeBiela,
+            daLengthKops,
+            daLengthMetaPedal,
+            daLengthAnchoHipMeta,
+            daDistSegMuslo,
+            daDistSegPierna,
+            daDistSegPie,
+        ],
+        dim="n_var",
+        join="left",
     )  # join left para que guarde el orden de coords lado
     # daPos.isel(ID=0, axis=0).sel(n_var='PosPedal').plot.line(x='time')
 
@@ -879,7 +916,9 @@ def calcula_variables_posicion(
     return daPos
 
 
-def busca_eventos_biela(daData: xr.DataArray, region_interest:list=None, show=False) -> xr.DataArray:
+def busca_eventos_biela(
+    daData: xr.DataArray, region_interest: list = None, show=False
+) -> xr.DataArray:
     """busca posiciones de biela"""
 
     if region_interest is None:
@@ -952,9 +991,10 @@ def busca_eventos_biela(daData: xr.DataArray, region_interest:list=None, show=Fa
         # .sel(n_var="AngArtKnee", axis="x")
     )
     """
-    daIndPedalSup = daProvis.sel(
-            n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x"
-        ) + region_interest[0]
+    daIndPedalSup = (
+        daProvis.sel(n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x")
+        + region_interest[0]
+    )
     # (
     #     xr.concat([daProvis_L, daProvis_R], dim="side").sel(
     #         n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x"
@@ -963,13 +1003,14 @@ def busca_eventos_biela(daData: xr.DataArray, region_interest:list=None, show=Fa
     # )
     daIndPedalSup.name = "sup"
     # daIndPedalSup.isel(ID=0).diff('n_event').plot.line(x="n_event", row="n_var", sharey=False, marker='o')
-    
+
     # El inferior es igual cambiado side
     daIndPedalInf = (
-        xr.concat([daIndPedalSup.sel(side='R'), daIndPedalSup.sel(side='L')], dim="side")
-        .assign_coords(side=["L", "R"])
+        xr.concat(
+            [daIndPedalSup.sel(side="R"), daIndPedalSup.sel(side="L")], dim="side"
+        ).assign_coords(side=["L", "R"])
     ).transpose(*daIndPedalSup.dims)
-    
+
     # daIndPedalInf.isel(ID=0, tipo=0).sel(n_var='AngArtKnee')
     # daIndPedalSup.isel(ID=0, tipo=0).sel(n_var='AngArtKnee')
     # (
@@ -979,7 +1020,6 @@ def busca_eventos_biela(daData: xr.DataArray, region_interest:list=None, show=Fa
     # ) + region_interest[0]
     daIndPedalInf.name = "inf"
     # daIndPedalInf.isel(ID=0).diff('n_event').plot.line(x="n_event", row="n_var", sharey=False, marker='o')
-    
 
     # Horizontal
     daProvis = (
@@ -1031,9 +1071,10 @@ def busca_eventos_biela(daData: xr.DataArray, region_interest:list=None, show=Fa
         # .isel(ID=0)
         # .sel(n_var="AngArtKnee", axis="x")
     )"""
-    daIndPedalAnt = daProvis.sel(
-            n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x"
-        ) + region_interest[0]
+    daIndPedalAnt = (
+        daProvis.sel(n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x")
+        + region_interest[0]
+    )
     # (
     #     xr.concat([daProvis_L, daProvis_R], dim="side").sel(
     #         n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x"
@@ -1044,12 +1085,13 @@ def busca_eventos_biela(daData: xr.DataArray, region_interest:list=None, show=Fa
 
     # El post es igual invirtiendo side
     daIndPedalPost = (
-        xr.concat([daIndPedalAnt.sel(side='R'), daIndPedalAnt.sel(side='L')], dim="side")
-        .assign_coords(side=["L", "R"])
+        xr.concat(
+            [daIndPedalAnt.sel(side="R"), daIndPedalAnt.sel(side="L")], dim="side"
+        ).assign_coords(side=["L", "R"])
     ).transpose(*daIndPedalAnt.dims)
     # daIndPedalAnt.isel(ID=0, tipo=0).sel(n_var='AngArtKnee')
     # daIndPedalPost.isel(ID=0, tipo=0).sel(n_var='AngArtKnee')
-    
+
     # (
     #     xr.concat([daProvis_R, daProvis_L], dim="side")
     #     .sel(n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x")
@@ -1086,31 +1128,46 @@ def busca_eventos_biela(daData: xr.DataArray, region_interest:list=None, show=Fa
     """
     return dsEvtPosPedal
 
-def busca_eventos_max_min(daData: xr.DataArray, evt_pedal: Optional[Union[int, xr.DataArray]]=None, mean_pedal_freq:int=None, region_interest:list=None, show=False) -> xr.DataArray:
+
+def busca_eventos_max_min(
+    daData: xr.DataArray,
+    evt_pedal: Optional[Union[int, xr.DataArray]] = None,
+    mean_pedal_freq: int = None,
+    region_interest: list = None,
+    show=False,
+) -> xr.DataArray:
     # Si no viene una frecuencia media, la calcula
     if mean_pedal_freq is None:
         if evt_pedal is None:
             mean_pedal_freq = 90
-        else:    
+        else:
             mean_pedal_freq = (
-            daData.freq
-            / (evt_pedal.dropna(dim="n_event").astype(int).sel(n_var="AngArtKnee", side="L").diff("n_event"))
-            * 60
-            ).mean().data
-        
+                (
+                    daData.freq
+                    / (
+                        evt_pedal.dropna(dim="n_event")
+                        .astype(int)
+                        .sel(n_var="AngArtKnee", side="L")
+                        .diff("n_event")
+                    )
+                    * 60
+                )
+                .mean()
+                .data
+            )
+
     if region_interest is None:
         # si no está definida la región, busca inicio y final de datos (no nans)
         region_interest = acota_region_of_interest(
             daData.sel(n_var="AngBiela", side="L")
         )
-        
-    
+
     var_ang = daData.sel(
         n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x"
     ).isel(time=slice(region_interest[0], region_interest[1]))
 
-    # ---- Busca picos máximos de extensión de cada articulación (invierte)    
-    daIndMaxExt = (        
+    # ---- Busca picos máximos de extensión de cada articulación (invierte)
+    daIndMaxExt = (
         (-var_ang).biomxr.detect_events(
             func_events=stsp.find_peaks_aux,  # bfa.stsp.detect_peaks,
             # reference_var=dict(n_var="AngBiela", axis="x"),
@@ -1118,14 +1175,14 @@ def busca_eventos_max_min(daData: xr.DataArray, evt_pedal: Optional[Union[int, x
             # discard_phases_end=0,
             **dict(
                 xSD=0.1,
-                distance = (1 / (mean_pedal_freq / 60) / 1.6) * daData.freq,
+                distance=(1 / (mean_pedal_freq / 60) / 1.6) * daData.freq,
                 show=show,
             ),
         )
         # .isel(ID=0)
         # .sel(n_var="AngArtKnee", axis="x")
     ) + region_interest[0]
-    daIndMaxExt.name = 'max_ext'
+    daIndMaxExt.name = "max_ext"
     """
     daIndMaxExt = (
         t=time.perf_counter()
@@ -1147,8 +1204,8 @@ def busca_eventos_max_min(daData: xr.DataArray, evt_pedal: Optional[Union[int, x
         # .sel(n_var="AngArtKnee", axis="x")
     ) + region_interest[0]
     """
-    
-    # ---- Busca picos máximos de flexión de cada articulación    
+
+    # ---- Busca picos máximos de flexión de cada articulación
     daIndMaxFlex = (
         var_ang.biomxr.detect_events(
             func_events=stsp.find_peaks_aux,  # bfa.stsp.detect_peaks,
@@ -1157,14 +1214,14 @@ def busca_eventos_max_min(daData: xr.DataArray, evt_pedal: Optional[Union[int, x
             # discard_phases_end=0,
             **dict(
                 xSD=0.1,
-                distance = (1 / (mean_pedal_freq / 60) / 1.6) * daData.freq,
+                distance=(1 / (mean_pedal_freq / 60) / 1.6) * daData.freq,
                 show=show,
             ),
         )
         # .isel(ID=0)
         # .sel(n_var="AngArtKnee", axis="x")
     ) + region_interest[0]
-    daIndMaxFlex.name = 'max_flex'
+    daIndMaxFlex.name = "max_flex"
     """
     daIndMaxFlex = (
         var_ang.biomxr.detect_events(
@@ -1182,7 +1239,7 @@ def busca_eventos_max_min(daData: xr.DataArray, evt_pedal: Optional[Union[int, x
         # .sel(n_var="AngArtKnee", axis="x")
     ) + region_interest[0]
     """
-    
+
     return xr.merge([daIndMaxExt, daIndMaxFlex])
 
 
@@ -1226,21 +1283,20 @@ def discretiza_ciclos(data, events, n_var, side, num_reps_excluir=1) -> xr.DataA
 
 
 def discretiza_ciclos_eventos(daData, daEvents) -> xr.DataArray:
-    """Devuelve los valores discretos en instantes de eventos especificados.    
-    """
+    """Devuelve los valores discretos en instantes de eventos especificados."""
+
     def _discretiza(data, events, n_var, side):
         discret = np.full(len(events), np.nan)
 
         try:
             events = events[~np.isnan(events)].astype(int)
-            discret[:len(events)] = data[events] #np.full(data.shape, np.nan)
+            discret[: len(events)] = data[events]  # np.full(data.shape, np.nan)
             # print(n_var, side, events.shape, data.shape)
-        
+
         except:
             print(f"No se ha podido obtener el valor de {n_var} lado {side}")
 
         return discret
-
 
     return xr.apply_ufunc(
         _discretiza,
@@ -1252,7 +1308,8 @@ def discretiza_ciclos_eventos(daData, daEvents) -> xr.DataArray:
         output_core_dims=[["n_event"]],
         dask="parallelized",
         vectorize=True,
-    )    
+    )
+
 
 # =============================================================================
 # %% Funciones complementarias SPM1D
@@ -1330,26 +1387,28 @@ def get_region_of_interest(spmi):
 
 
 def segmenta_ModeloBikefitting_xr_cinem(
-    daData:xr.DataArray,
-    num_cortes:int=None,
-    add_to_ini:int=None,
-    add_to_end:int=None,
-    verbose:bool=False,
-    show:bool=False
+    daData: xr.DataArray,
+    num_cortes: int = None,
+    add_to_ini: int = None,
+    add_to_end: int = None,
+    verbose: bool = False,
+    show: bool = False,
 ) -> xr.DataArray:
     # from detecta import detect_peaks
     # from cortar_repes_ciclicas import detect_onset_aux
 
     t_ini = time.perf_counter()
 
-    if verbose: print(f"\nSegmentando {len(daData.ID)} archivos...")
+    if verbose:
+        print(f"\nSegmentando {len(daData.ID)} archivos...")
 
     # Es necesario separar lado L y R porque usan criterios distintos de corte
     ###CORTES A PARTIR DE ANG BIELA
     # daData.isel(ID=0).sel(side="R", n_var='AngBiela').plot.line(x='time')
     # daData.isel(ID=0, tipo=0).sel(n_var='AngBiela', axis='y').plot.line(x='time')
 
-    daSegment = stsp.slice_time_series(data=daData,
+    daSegment = stsp.slice_time_series(
+        data=daData,
         func_events=stsp.detect_onset_detecta_aux,
         reference_var=dict(n_var="AngBiela", axis="y"),
         discard_phases_ini=0,
@@ -1360,7 +1419,6 @@ def segmenta_ModeloBikefitting_xr_cinem(
         **dict(threshold=0.0, n_above=2, event_ini=1, show=show),
     )
     # daSegment.sel(n_var='AngArtKnee', axis='x', tipo='2W').plot.line(x='time', row='ID', col='side')
-
 
     # if verbose: print("Cortando lado L...")
     # daL = stsp.slice_time_series(daData.sel(side="L"),
@@ -1393,7 +1451,7 @@ def segmenta_ModeloBikefitting_xr_cinem(
     #     include_first_next_last=True,
     #     **dict(threshold=0.0, n_above=2, event_ini=0, show=show),
     # )
-    
+
     """daData.sel(side="R").biomxr.slice_time_series(
         func_events=stsp.detect_onset_detecta_aux,
         reference_var=dict(n_var="AngBiela", axis="y"),
@@ -1457,7 +1515,8 @@ def segmenta_ModeloBikefitting_xr_cinem(
     #     # .isel(n_var=slice(0,-1))#quita la variable creada distancia pedales
     # )
 
-    if verbose: print(f'Terminado de segmentar en {time.perf_counter() - t_ini:.2f} s')
+    if verbose:
+        print(f"Terminado de segmentar en {time.perf_counter() - t_ini:.2f} s")
 
     return daSegment
 
@@ -1589,19 +1648,21 @@ def normaliza_t_aux(
     else:  # elimina los nan del final y se ajusta
         data = data[~np.isnan(data)]
         x = x[: len(data)]
-        
+
         if base_norm_horiz == "biela":
             x = np.unwrap(x)
             # x = x - x[0]
-            xi = np.linspace(np.pi, 2*np.pi+np.pi, 361) # cuando añade datos de la fase anterior al inicio
+            xi = np.linspace(
+                np.pi, 2 * np.pi + np.pi, 361
+            )  # cuando añade datos de la fase anterior al inicio
             # xi = np.linspace(-np.pi, np.pi, 361) # cuando NO añade datos de la fase anterior al inicio
-        elif base_norm_horiz=='time':
+        elif base_norm_horiz == "time":
             x = x - x[0]
             xi = np.linspace(0, x[-1], 361)
 
         data = np.interp(xi, x, data)
         # plt.plot(data[:])
-        
+
         """x = x[: len(data)]
         
         if base_norm_horiz == "biela":
@@ -1614,7 +1675,10 @@ def normaliza_t_aux(
 
 
 def normaliza_biela_360_xr(
-    daData:xr.DataArray, base_norm_horiz:str="time", verbose:bool=False, show:bool=False
+    daData: xr.DataArray,
+    base_norm_horiz: str = "time",
+    verbose: bool = False,
+    show: bool = False,
 ) -> xr.DataArray:  # recibe da de daTodos. Versión con numpy
     if base_norm_horiz == "time":
         eje_x = daData.time
@@ -1626,10 +1690,11 @@ def normaliza_biela_360_xr(
     else:
         print("Base de normalización no reconocida")
         return
-    
+
     t_ini = time.perf_counter()
 
-    if verbose: print(f"\nNormalizando {len(daData.ID)} archivos...")
+    if verbose:
+        print(f"\nNormalizando {len(daData.ID)} archivos...")
     """    
     data=daData[0,0,0,0,0,0].values
     x=eje_x[0,0,0,0].values
@@ -1659,7 +1724,8 @@ def normaliza_biela_360_xr(
     daNorm.name = daData.name
     daNorm.attrs["units"] = daData.attrs["units"]
 
-    if verbose: print(f'Terminado de normalizar en {time.perf_counter() - t_ini:.2f} s')
+    if verbose:
+        print(f"Terminado de normalizar en {time.perf_counter() - t_ini:.2f} s")
 
     return daNorm
 
@@ -1675,50 +1741,66 @@ def calcula_descrip_antropo_global(daData, daDataNorm):
         calcula_descrip_antropo(dagb=daData.sel(ID=n), daNorm=daDataNorm)
     """
 
-    print('ATENCIÓN! ESTA VERSIÓN ACTUALMENTE SE BASA EN LOS DATOS NORMALIZADOS')
+    print("ATENCIÓN! ESTA VERSIÓN ACTUALMENTE SE BASA EN LOS DATOS NORMALIZADOS")
 
-    if 'LengthMuslo' in daData.n_var:
-        muslo = (daDataNorm.sel(n_var="LengthMuslo", AngBielaInRepe=180, axis='x')
-                 .drop_vars('axis')
-                 .mean('phase')
+    if "LengthMuslo" in daData.n_var:
+        muslo = (
+            daDataNorm.sel(n_var="LengthMuslo", AngBielaInRepe=180, axis="x")
+            .drop_vars("axis")
+            .mean("phase")
         )
     else:
-        # Distancias anatómicas, se mide en posición 180º de biela    
+        # Distancias anatómicas, se mide en posición 180º de biela
         HJC = daDataNorm.sel(side=["L", "R"], n_var="HJC", AngBielaInRepe=180)
         KJC = daDataNorm.sel(side=["L", "R"], n_var="KJC", AngBielaInRepe=180)
         AJC = daDataNorm.sel(side=["L", "R"], n_var="AJC", AngBielaInRepe=180)
-        muslo = np.sqrt(
-            (HJC.sel(axis="x") - KJC.sel(axis="x")) ** 2
-            + (HJC.sel(axis="y") - KJC.sel(axis="y")) ** 2
-            + (HJC.sel(axis="z") - KJC.sel(axis="z")) ** 2
-        ).mean(dim="phase").drop_vars(["AngBielaInRepe", 'AngBielaInRepe_rad'])
-    muslo.name='muslo'
-    
-    if 'LengthPierna' in daData.n_var:
-        pierna = (daDataNorm.sel(n_var="LengthPierna", AngBielaInRepe=180, axis='x')
-                 .drop_vars('axis')
-                 .mean('phase')
+        muslo = (
+            np.sqrt(
+                (HJC.sel(axis="x") - KJC.sel(axis="x")) ** 2
+                + (HJC.sel(axis="y") - KJC.sel(axis="y")) ** 2
+                + (HJC.sel(axis="z") - KJC.sel(axis="z")) ** 2
+            )
+            .mean(dim="phase")
+            .drop_vars(["AngBielaInRepe", "AngBielaInRepe_rad"])
+        )
+    muslo.name = "muslo"
+
+    if "LengthPierna" in daData.n_var:
+        pierna = (
+            daDataNorm.sel(n_var="LengthPierna", AngBielaInRepe=180, axis="x")
+            .drop_vars("axis")
+            .mean("phase")
         )
     else:
-        pierna = np.sqrt(
-            (KJC.sel(axis="x") - AJC.sel(axis="x")) ** 2
-            + (KJC.sel(axis="y") - AJC.sel(axis="y")) ** 2
-            + (KJC.sel(axis="z") - AJC.sel(axis="z")) ** 2
-        ).mean(dim="phase").drop_vars(["AngBielaInRepe", 'AngBielaInRepe_rad'])
-    pierna.name='pierna'
-    
-    if 'LengthPie' in daData.n_var:
-        pie = (daDataNorm.sel(n_var="LengthPie", AngBielaInRepe=180, axis='x')
-                 .drop_vars('axis')
-                 .mean('phase')
+        pierna = (
+            np.sqrt(
+                (KJC.sel(axis="x") - AJC.sel(axis="x")) ** 2
+                + (KJC.sel(axis="y") - AJC.sel(axis="y")) ** 2
+                + (KJC.sel(axis="z") - AJC.sel(axis="z")) ** 2
+            )
+            .mean(dim="phase")
+            .drop_vars(["AngBielaInRepe", "AngBielaInRepe_rad"])
+        )
+    pierna.name = "pierna"
+
+    if "LengthPie" in daData.n_var:
+        pie = (
+            daDataNorm.sel(n_var="LengthPie", AngBielaInRepe=180, axis="x")
+            .drop_vars("axis")
+            .mean("phase")
         )
     else:
-        print('No se ha podido calcular la longitud del pie')
-        pie = xr.full_like((daDataNorm.isel(n_var=0).sel(AngBielaInRepe=180, axis='x')
-                 .drop_vars('axis')
-                 .mean('phase')
-        ), np.nan)
-    pie.name='pie'
+        print("No se ha podido calcular la longitud del pie")
+        pie = xr.full_like(
+            (
+                daDataNorm.isel(n_var=0)
+                .sel(AngBielaInRepe=180, axis="x")
+                .drop_vars("axis")
+                .mean("phase")
+            ),
+            np.nan,
+        )
+    pie.name = "pie"
     """
     muslo2=np.sqrt((
         (daDataNorm.sel(n_var=["KJC", "HJC"], AngBielaInRepe=180).mean(dim="phase")
@@ -1740,7 +1822,7 @@ def calcula_descrip_antropo_global(daData, daDataNorm):
     muslo = np.sqrt((HJC.sel(axis='x')-KJC.sel(axis='x'))**2 + (HJC.sel(axis='y')-KJC.sel(axis='y'))**2 + (HJC.sel(axis='z')-KJC.sel(axis='z'))**2).mean(dim='time')
     pierna = np.sqrt((KJC.sel(axis='x')-AJC.sel(axis='x'))**2 + (KJC.sel(axis='y')-AJC.sel(axis='y'))**2 + (KJC.sel(axis='z')-AJC.sel(axis='z'))**2).mean(dim='time')
     """
-       
+
     # dfAntropo = (
     #     xr.concat([muslo, pierna], pd.Index(["muslo", "pierna"], name="segmento"))
     #     # .transpose('ID', 'segmento', 'side')
@@ -1751,44 +1833,61 @@ def calcula_descrip_antropo_global(daData, daDataNorm):
     # )
 
     # Calcula ancho caderas y pedales y lo añade
-    ancho_caderas = daData.sel(n_var="HJC", axis="x").diff('side').mean('time').drop_vars(["n_var"])
-    ancho_caderas.name='ancho_caderas'
-    
+    ancho_caderas = (
+        daData.sel(n_var="HJC", axis="x").diff("side").mean("time").drop_vars(["n_var"])
+    )
+    ancho_caderas.name = "ancho_caderas"
+
     # (daData.sel(n_var='HJC', side='R', axis='x') - daData.sel(n_var='HJC', side='L', axis='x')).plot.line(x='time')
     # (daDataNorm.isel(ID=0).sel(n_var='HJC', side='R', axis='x') - daDataNorm.isel(ID=0).sel(n_var='HJC', side='L', axis='x')).plot.line(x='AngBielaInRepe', hue='repe')
 
     LONG_CLUSTER_PEDALES = 100  # TODO: ¿HACERLO CON MARCADOR METAS?
-    ancho_pedales = daData.sel(n_var="PosPedal", axis="x").diff('side').mean('time').drop_vars(["n_var"])-(LONG_CLUSTER_PEDALES * 2)
-    ancho_pedales.name='ancho_pedales'
-        
+    ancho_pedales = daData.sel(n_var="PosPedal", axis="x").diff("side").mean(
+        "time"
+    ).drop_vars(["n_var"]) - (LONG_CLUSTER_PEDALES * 2)
+    ancho_pedales.name = "ancho_pedales"
+
     # segments = xr.concat([muslo, pierna], pd.Index(["muslo", "pierna"], name="n_var"))
     # anchos =(xr.concat([ancho_caderas, ancho_pedales], pd.Index(["ancho_caderas", "ancho_pedales"], name="n_var"))
     # .assign_coords(side=['LR'])
     # )
-    
+
     dfAntropo1 = (
-        xr.concat([muslo, pierna, pie], pd.Index(["muslo", "pierna", 'pie'], name="n_var"))
+        xr.concat(
+            [muslo, pierna, pie], pd.Index(["muslo", "pierna", "pie"], name="n_var")
+        )
         # .transpose('ID', 'segmento', 'side')
-        .to_dataframe('value')
-        .reset_index()
+        .to_dataframe("value").reset_index()
         # .drop(columns=["axis"])
         # .reindex(columns=["ID", "particip", "n_var", "side", muslo.name])
         # .rename(columns={muslo.name:'value'})
-    )    
-    dfAntropo2 = (xr.concat([ancho_caderas, ancho_pedales], pd.Index(["ancho_caderas", "ancho_pedales"], name="n_var"))
-    .assign_coords(side=['LR'])
-    .to_dataframe('value').reset_index()
-    # .reindex(columns=["ID", "particip", "n_var", "side", ancho_caderas.name])
-    # .rename(columns={ancho_caderas.name:'value'})
     )
-    
-    dfAntropo = (pd.concat([dfAntropo1, dfAntropo2], axis=0).reset_index(drop=True)
-            # .reindex(columns=['n_var', 'ID', "particip", 'side', 'value'])
+    dfAntropo2 = (
+        xr.concat(
+            [ancho_caderas, ancho_pedales],
+            pd.Index(["ancho_caderas", "ancho_pedales"], name="n_var"),
+        )
+        .assign_coords(side=["LR"])
+        .to_dataframe("value")
+        .reset_index()
+        # .reindex(columns=["ID", "particip", "n_var", "side", ancho_caderas.name])
+        # .rename(columns={ancho_caderas.name:'value'})
     )
-        
+
+    dfAntropo = (
+        pd.concat([dfAntropo1, dfAntropo2], axis=0).reset_index(drop=True)
+        # .reindex(columns=['n_var', 'ID', "particip", 'side', 'value'])
+    )
+
     # OBTIENE DATOS DISCRETOS SEGÚN POSICIÓN BIELA DISCRETA
-    vars_group = [n for n in daDataNorm.dims if n not in ['phase']] #, 'AngBielaInRepe']]
-    dfResumen_discreto = (daDataNorm.sel(n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle", "AngSegPELVIS"], AngBielaInRepe=[0, 90, 180, 270])
+    vars_group = [
+        n for n in daDataNorm.dims if n not in ["phase"]
+    ]  # , 'AngBielaInRepe']]
+    dfResumen_discreto = (
+        daDataNorm.sel(
+            n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle", "AngSegPELVIS"],
+            AngBielaInRepe=[0, 90, 180, 270],
+        )
         .to_dataframe(name="value")
         .groupby(vars_group)["value"]
         .agg(["mean", "std"])
@@ -1796,8 +1895,14 @@ def calcula_descrip_antropo_global(daData, daDataNorm):
     )
     # dfResumen_discreto.query('ID=="S02" & n_var=="AngArtKnee" & axis=="x" & tipo=="optimo"').plot(y='mean')
     # DIFERENCIA ENTRE LADOS
-    rmse = ((daDataNorm.sel(n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x").mean(dim="phase")
-              .diff('side'))**2).isel(side=0).drop_vars('side').mean(dim="AngBielaInRepe") ** 0.5
+    rmse = (
+        (
+            daDataNorm.sel(n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle"], axis="x")
+            .mean(dim="phase")
+            .diff("side")
+        )
+        ** 2
+    ).isel(side=0).drop_vars("side").mean(dim="AngBielaInRepe") ** 0.5
     """
     L = daDataNorm.sel(
         side="L",
@@ -1827,12 +1932,9 @@ def calcula_descrip_antropo(dagb, daNorm):
     # TODO: calcular ángulo inclinación eje cadera-rodilla-tobillo frontal a 90º biela
     daNorm = daNorm.sel(ID=dagb.ID.data)
     # Distancias anatómicas, se mide en posición 180º de biela
-    HJC = daNorm.sel(side=["L", "R"], n_var="HJC", AngBielaInRepe=180
-    )
-    KJC = daNorm.sel(side=["L", "R"], n_var="KJC", AngBielaInRepe=180
-    )
-    AJC = daNorm.sel(side=["L", "R"], n_var="AJC", AngBielaInRepe=180
-    )
+    HJC = daNorm.sel(side=["L", "R"], n_var="HJC", AngBielaInRepe=180)
+    KJC = daNorm.sel(side=["L", "R"], n_var="KJC", AngBielaInRepe=180)
+    AJC = daNorm.sel(side=["L", "R"], n_var="AJC", AngBielaInRepe=180)
     muslo = np.sqrt(
         (HJC.sel(axis="x") - KJC.sel(axis="x")) ** 2
         + (HJC.sel(axis="y") - KJC.sel(axis="y")) ** 2
@@ -1857,7 +1959,9 @@ def calcula_descrip_antropo(dagb, daNorm):
     """
 
     # Calcula ancho caderas y pedales y lo añade
-    ancho_caderas = dagb.sel(n_var="HJC", axis="x").diff('side').mean('time').isel(side=0)
+    ancho_caderas = (
+        dagb.sel(n_var="HJC", axis="x").diff("side").mean("time").isel(side=0)
+    )
     """
     ancho_caderas = abs(
         dagb.sel(n_var="HJC", side="R", axis="x").data
@@ -1868,7 +1972,9 @@ def calcula_descrip_antropo(dagb, daNorm):
     # (daNorm.isel(ID=0).sel(n_var='HJC', side='R', axis='x') - daNorm.isel(ID=0).sel(n_var='HJC', side='L', axis='x')).plot.line(x='AngBielaInRepe', hue='repe')
 
     LONG_CLUSTER_PEDALES = 100  # TODO: ¿HACERLO CON MARCADOR METAS?
-    ancho_pedales = dagb.sel(n_var="PosPedal", axis="x").diff('side').mean('time').isel(side=0)-(LONG_CLUSTER_PEDALES * 2)
+    ancho_pedales = dagb.sel(n_var="PosPedal", axis="x").diff("side").mean("time").isel(
+        side=0
+    ) - (LONG_CLUSTER_PEDALES * 2)
     """
     ancho_pedales = (
         -LONG_CLUSTER_PEDALES * 2
@@ -1882,7 +1988,7 @@ def calcula_descrip_antropo(dagb, daNorm):
     )
     """
     # (dagb.sel(n_var='PosPedal', side='R', axis='x') - dagb.sel(n_var='PosPedal', side='L', axis='x')).plot.line(x='time')
-    
+
     dfAntropo = (
         xr.concat([muslo, pierna], pd.Index(["muslo", "pierna"], name="segmento"))
         # .transpose('ID', 'segmento', 'side')
@@ -1891,7 +1997,7 @@ def calcula_descrip_antropo(dagb, daNorm):
         .drop(columns=["axis"])
         .reindex(columns=["ID", "segmento", "side", dagb.name])
     )
-    
+
     dfAntropo.loc[dfAntropo.shape[0]] = [
         dfAntropo.iloc[0, 0],
         "ancho_caderas",
@@ -1904,18 +2010,22 @@ def calcula_descrip_antropo(dagb, daNorm):
         "LR",
         ancho_pedales.values,
     ]
-    
+
     # Presenta núm. repes de cada archivo
     # dfFactorTodosNorm.groupby('ID')['repe'].max()
 
     # OBTIENE DATOS DISCRETOS SEGÚN POSICIÓN BIELA DISCRETA
-    resumen_discreto = (daNorm.sel(n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle", "AngSegPELVIS"], AngBielaInRepe=[0, 90, 180])
-    .to_dataframe(name="value")
-    .groupby(["ID", "n_var", "AngBielaInRepe", "axis", "side"])["value"]
+    resumen_discreto = (
+        daNorm.sel(
+            n_var=["AngArtHip", "AngArtKnee", "AngArtAnkle", "AngSegPELVIS"],
+            AngBielaInRepe=[0, 90, 180],
+        )
+        .to_dataframe(name="value")
+        .groupby(["ID", "n_var", "AngBielaInRepe", "axis", "side"])["value"]
         .agg(["mean", "std"])
         .reset_index()
     )
-    
+
     # Ángulos en posiciones de biela
     """dfNorm = (
         daNorm.to_dataframe(name="value").dropna()['value'].reset_index()
@@ -2002,15 +2112,14 @@ def _guarda_grafica(nom="A", carpeta_guardar=None, fig=None):
 
     # print(carpeta_guardar)
     # print(formato_imagen)
-    ruta_fig = carpeta_guardar.joinpath(nom).with_suffix(
-        formato_imagen
-    )
+    ruta_fig = carpeta_guardar.joinpath(nom).with_suffix(formato_imagen)
     # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfa.traduce_variables(nomvar) + '_' + eje + formato_imagen
     if formato_imagen == ".pdf":
         with PdfPages(ruta_fig) as pdf_pages:
             pdf_pages.savefig(fig)
     else:
         fig.savefig(ruta_fig, dpi=300)
+
 
 def RealizaGraficas_cinem(
     daGraf,
@@ -2020,11 +2129,11 @@ def RealizaGraficas_cinem(
     tipo_graf=["lados_lin", "lados_circ", "coordinacion", "planoXY"],
     compara_lados_graf=False,
     ensemble_avg=True,
-    formato_imagen = ".pdf",
+    formato_imagen=".pdf",
     show_in_console=False,
     carpeta_guardar=False,
 ) -> None:  # por mejorar: que se puedan descartar repeticiones intermedias
-    
+
     import itertools
 
     """
@@ -2037,30 +2146,32 @@ def RealizaGraficas_cinem(
         '_IP_': Gráfica individual en coordenadas polares (no compara L y R)
         '_P_': Gráfica posición/posición (plano) eje articular
     """
-    
-    if tipo_graf is None:
-        raise ValueError("Debes indicar el tipo de gráfica (Ej: tipo_graf=['lados_lin'])")
 
-    
+    if tipo_graf is None:
+        raise ValueError(
+            "Debes indicar el tipo de gráfica (Ej: tipo_graf=['lados_lin'])"
+        )
+
     # dfLateral.loc[:, 'side'] = dfLateral.loc[:, 'side'].replace({'L':'I', 'R':'D'})
 
-    numreps = int(daGraf.phase.max()) # dfGraf["phase"].max()
+    numreps = int(daGraf.phase.max())  # dfGraf["phase"].max()
     if repes is not None:  # si no se indica nada, muestra todas las repeticiones
         if repes[-1] > numreps:
             raise ValueError("La repetición más alta no está incluida en los datos")
     else:
-        repes = range(numreps+1) # np.arange(repes[0], repes[1]).tolist() # [0, numreps]
-    
+        repes = range(
+            numreps + 1
+        )  # np.arange(repes[0], repes[1]).tolist() # [0, numreps]
+
     daGraf = daGraf.sel(phase=repes)
-        
-        
+
     # else:  # comprueba si tiene tantas repeticiones como se le pide
     #     if repes[1] > numreps:
     #         repes[1] = numreps
     # rango = np.arange(
     #     repes[0], repes[1]
     # ).tolist()  # rango de repeticiones para todas las gráficas
-    
+
     # dfGraf = dfGraf.query("phase==@rango")
 
     # Lo pasa a dataframe
@@ -2069,7 +2180,7 @@ def RealizaGraficas_cinem(
     # ---------------------------------------
     # Crea carpeta donde guardará las gráficas
     if carpeta_guardar:
-        carpeta_output = Path(carpeta_guardar) #/ "Figs"
+        carpeta_output = Path(carpeta_guardar)  # / "Figs"
         if not carpeta_output.exists():
             carpeta_output.mkdir()
 
@@ -2085,17 +2196,17 @@ def RealizaGraficas_cinem(
         unit = "phase"
         alpha = 0.5
 
-    
-    rc = {"axes.titlesize":"large",
-          "grid.linewidth": 0.5,
-          "grid.dashes": (5,5), # no funciona
-          # "grid.zorder": 1 # se controla con el zorder de cada axis set_zorder
-          } 
-    with sns.plotting_context(context="paper", rc=rc): #context="paper",
-        if "knee_limits_obj" in tipo_graf: # "lados_lin"
+    rc = {
+        "axes.titlesize": "large",
+        "grid.linewidth": 0.5,
+        "grid.dashes": (5, 5),  # no funciona
+        # "grid.zorder": 1 # se controla con el zorder de cada axis set_zorder
+    }
+    with sns.plotting_context(context="paper", rc=rc):  # context="paper",
+        if "knee_limits_obj" in tipo_graf:  # "lados_lin"
             """Pruebas con seaborn objects"""
             import seaborn.objects as so
-            
+
             for nomvar, eje in itertools.product(nomvars, ejes):
                 # print(nomvar,eje)
                 titulo = "{0:s} {1:s}".format(
@@ -2105,14 +2216,18 @@ def RealizaGraficas_cinem(
                 # fig, ax = plt.subplots(2,1, sharex=True, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(8,6))#para incluir gráfica spm{t}
                 fig, ax = plt.subplots(figsize=(4, 3), dpi=300)
 
-                g=(so.Plot(data=dfGraf.query("n_var==@nomvar & axis==@eje"),
-                    x="AngBielaInRepe",
-                    y="value", color="side")
-                    .add(so.Lines(linewidth=0.5, alpha=.3), group='phase', col=None)
+                g = (
+                    so.Plot(
+                        data=dfGraf.query("n_var==@nomvar & axis==@eje"),
+                        x="AngBielaInRepe",
+                        y="value",
+                        color="side",
+                    )
+                    .add(so.Lines(linewidth=0.5, alpha=0.3), group="phase", col=None)
                     .add(so.Lines(), so.Agg())
                     # .add(so.Band(), so.Est(), group='phase')
                     .on(ax)
-                    .plot()                    
+                    .plot()
                 )
         # Gráficas ÁNGULO / BIELA repetición a repetición con variables por separado
         if "lados_lin" in tipo_graf:
@@ -2187,15 +2302,24 @@ def RealizaGraficas_cinem(
                     )
 
                     # Subgráfica con zoom en punto muerto inferior
-                    #Ubica la gráfica ampliada dentro de la figura grande
-                    ax_zoom = ax.inset_axes([.35, .55, .15, .4], #se pasa por orden la posición x, y, ancho y alto
-                                            xlim=(170, 190), ylim=(22, 40),
-                                            # xticklabels=[], yticklabels=[]
-                                            ) 
+                    # Ubica la gráfica ampliada dentro de la figura grande
+                    ax_zoom = ax.inset_axes(
+                        [
+                            0.35,
+                            0.55,
+                            0.15,
+                            0.4,
+                        ],  # se pasa por orden la posición x, y, ancho y alto
+                        xlim=(170, 190),
+                        ylim=(22, 40),
+                        # xticklabels=[], yticklabels=[]
+                    )
 
-                    #crea la gráfica pequeña
-                    dfGraf_sub = dfGraf[(dfGraf.AngBielaInRepe>=170) & (dfGraf.AngBielaInRepe<=190)].query("n_var==@nomvar & axis==@eje")
-                    for est, uni in zip([None, "mean"], ['phase', None]): 
+                    # crea la gráfica pequeña
+                    dfGraf_sub = dfGraf[
+                        (dfGraf.AngBielaInRepe >= 170) & (dfGraf.AngBielaInRepe <= 190)
+                    ].query("n_var==@nomvar & axis==@eje")
+                    for est, uni in zip([None, "mean"], ["phase", None]):
                         sns.lineplot(
                             data=dfGraf_sub,
                             x="AngBielaInRepe",
@@ -2209,13 +2333,13 @@ def RealizaGraficas_cinem(
                             alpha=0.3,
                             zorder=2,
                             ax=ax_zoom,
-                            legend=None
+                            legend=None,
                         )
                     # for n, dfph in dfGraf_sub.groupby('phase'): # queda mejor pintando las líneas de una en una
                     #     dfph[dfph.side=='L'].plot(ax=ax_zoom, x='AngBielaInRepe', y='value', c='r', lw=0.5, alpha=0.6, legend=False, zorder=1)
                     #     dfph[dfph.side=='R'].plot(ax=ax_zoom, x='AngBielaInRepe', y='value', c='lime', lw=0.5, alpha=0.6, legend=False, zorder=1)
                     # dfph[dfph.side=='L'].mean().plot(ax=ax_zoom, x='AngBielaInRepe', y='value', c='r', lw=0.5, alpha=0.6, legend=False, zorder=1)
-                    
+
                     # ax_zoom.plot(dfGraf_sub[dfGraf_sub.side=='L']["AngBielaInRepe"],
                     #              dfGraf_sub[dfGraf_sub.side=='L']["value"], c='r', lw=0.5, alpha=0.6
                     # )
@@ -2223,21 +2347,49 @@ def RealizaGraficas_cinem(
                     #              dfGraf_sub[dfGraf_sub.side=='R']["value"], c='lime', lw=0.5, alpha=0.6
                     # )
                     # Añade puntos en biela 180º
-                    ax_zoom.scatter(dfGraf_sub[(dfGraf_sub.side=='L') & (dfGraf_sub.AngBielaInRepe==180)]["AngBielaInRepe"],
-                                    dfGraf_sub[(dfGraf_sub.side=='L') & (dfGraf_sub.AngBielaInRepe==180)]["value"], s=2, c='r', edgecolors='firebrick', alpha=0.95, zorder=3)
-                    ax_zoom.scatter(dfGraf_sub[(dfGraf_sub.side=='R') & (dfGraf_sub.AngBielaInRepe==180)]["AngBielaInRepe"],
-                                    dfGraf_sub[(dfGraf_sub.side=='R') & (dfGraf_sub.AngBielaInRepe==180)]["value"], s=2, c='lime', edgecolors='green', alpha=0.95, zorder=3)
-                    
+                    ax_zoom.scatter(
+                        dfGraf_sub[
+                            (dfGraf_sub.side == "L")
+                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        ]["AngBielaInRepe"],
+                        dfGraf_sub[
+                            (dfGraf_sub.side == "L")
+                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        ]["value"],
+                        s=2,
+                        c="r",
+                        edgecolors="firebrick",
+                        alpha=0.95,
+                        zorder=3,
+                    )
+                    ax_zoom.scatter(
+                        dfGraf_sub[
+                            (dfGraf_sub.side == "R")
+                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        ]["AngBielaInRepe"],
+                        dfGraf_sub[
+                            (dfGraf_sub.side == "R")
+                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        ]["value"],
+                        s=2,
+                        c="lime",
+                        edgecolors="green",
+                        alpha=0.95,
+                        zorder=3,
+                    )
+
                     # Añade franja 25-35º
                     ax_zoom.axhspan(
-                            25, 35, alpha=0.3, color="green"
-                        )  # crea un rectángulo horizontal delimitado a mano
-                    ax_zoom.tick_params(axis='both', which='major', width=0.5, labelsize='xx-small')
-                    ax_zoom.set_xlabel('')
-                    ax_zoom.set_ylabel('')
+                        25, 35, alpha=0.3, color="green"
+                    )  # crea un rectángulo horizontal delimitado a mano
+                    ax_zoom.tick_params(
+                        axis="both", which="major", width=0.5, labelsize="xx-small"
+                    )
+                    ax_zoom.set_xlabel("")
+                    ax_zoom.set_ylabel("")
                     [x.set_linewidth(0.5) for x in ax_zoom.spines.values()]
-                    
-                    #Indica automáticamente la región ampliada encuadrándola y haciendo el efecto de zoom
+
+                    # Indica automáticamente la región ampliada encuadrándola y haciendo el efecto de zoom
                     ax.indicate_inset_zoom(ax_zoom)
 
                 g.set_title(
@@ -2249,13 +2401,19 @@ def RealizaGraficas_cinem(
                 if "vAngBiela" in nomvar:
                     ylabel = "Velocidad angular (grados/s)"
                     # HACER MEDIA DE LOS DOS LADOS O SÓLO DE UNO?
-                    media_vAng = daGraf.isel(ID=0, AngBielaInRepe=slice(0, 180)).sel(n_var=nomvar, axis=eje).mean(['phase', 'AngBielaInRepe'])
+                    media_vAng = (
+                        daGraf.isel(ID=0, AngBielaInRepe=slice(0, 180))
+                        .sel(n_var=nomvar, axis=eje)
+                        .mean(["phase", "AngBielaInRepe"])
+                    )
                     # dfGraf.query("n_var==@nomvar & axis==@eje"  # & side=="R"').groupby('side')["value"].mean()
-                    for n, med in media_vAng.groupby('side', squeeze=False): #.coords['side'].values:
+                    for n, med in media_vAng.groupby(
+                        "side", squeeze=False
+                    ):  # .coords['side'].values:
                         med = med.isel(side=0).values
-                        col="green" if n == 'R' else 'firebrick'
+                        col = "green" if n == "R" else "firebrick"
                         ax.axhline(
-                            y=med, #media_vAng,
+                            y=med,  # media_vAng,
                             ls="-.",
                             lw=1,
                             dash_capstyle="round",
@@ -2265,7 +2423,7 @@ def RealizaGraficas_cinem(
                         ax.text(
                             5,
                             med,
-                            f"Frecuencia media: {med * 60 / 360:.1f} rpm", #.format(media_vAng * 60 / (360)),
+                            f"Frecuencia media: {med * 60 / 360:.1f} rpm",  # .format(media_vAng * 60 / (360)),
                             va="bottom",
                             c=col,
                             alpha=0.6,
@@ -2286,7 +2444,6 @@ def RealizaGraficas_cinem(
                 #     lw=0.5,
                 #     zorder=1,
                 # )
-                
 
                 # En la leyenda sustituye por en español
                 custom_lines = [
@@ -2311,15 +2468,15 @@ def RealizaGraficas_cinem(
                 if carpeta_guardar:
                     _guarda_grafica(
                         nom=f"{dfGraf["ID"].iloc[0]}_A_{nfa.traduce_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output, fig=fig
+                        carpeta_guardar=carpeta_output,
+                        fig=fig,
                     )
 
-                if not show_in_console: plt.close() #para que no muestre las gráficas en consola y vaya más rápido
-    
-        # ---------------------------------------
-            
+                if not show_in_console:
+                    plt.close()  # para que no muestre las gráficas en consola y vaya más rápido
 
-        
+        # ---------------------------------------
+
         # Gráfica ÁNGULO / BIELA Radial
         if "lados_circ" in tipo_graf:
             for nomvar, eje in itertools.product(nomvars, ejes):
@@ -2386,15 +2543,17 @@ def RealizaGraficas_cinem(
                 )  # , bbox_transform=ax_ang.transAxes)
 
                 plt.tight_layout()
-                
+
                 if carpeta_guardar:
                     _guarda_grafica(
                         nom=f"{dfGraf["ID"].iloc[0]}_AP_{nfa.traduce_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output, fig=fig
+                        carpeta_guardar=carpeta_output,
+                        fig=fig,
                     )
 
-                if not show_in_console: plt.close() #para que no muestre las gráficas en consola y vaya más rápido
-    
+                if not show_in_console:
+                    plt.close()  # para que no muestre las gráficas en consola y vaya más rápido
+
         # ---------------------------------------
 
         # Gráfica ÁNGULO/ÁNGULO
@@ -2530,7 +2689,9 @@ def RealizaGraficas_cinem(
                     if ensemble_avg:
                         # for nomvar, ax in g.axes_dict.items():
                         # print(nomvar)
-                        df.query('side=="L"').groupby("AngBielaInRepe")[parnomvar[1]].std()
+                        df.query('side=="L"').groupby("AngBielaInRepe")[
+                            parnomvar[1]
+                        ].std()
                         err = np.sqrt(
                             df.query('side=="L"')
                             .groupby("AngBielaInRepe")[parnomvar[0]]
@@ -2578,12 +2739,8 @@ def RealizaGraficas_cinem(
                             # print('dibuja repes sueltas en' + nomvar)
                             for rep in range(dfGraf.phase.max()):
                                 ax.plot(
-                                    df.query('side=="L"').loc[
-                                        :, parnomvar[1]
-                                    ],
-                                    df.query('side=="L"').loc[
-                                        :, parnomvar[0]
-                                    ],
+                                    df.query('side=="L"').loc[:, parnomvar[1]],
+                                    df.query('side=="L"').loc[:, parnomvar[0]],
                                     c="r",
                                     lw=0.25,
                                     alpha=0.3,
@@ -2645,11 +2802,13 @@ def RealizaGraficas_cinem(
                     if carpeta_guardar:
                         _guarda_grafica(
                             nom=f"{dfGraf["ID"].iloc[0]}_AA_{nfa.traduce_variables(parnomvar[0])}-{nfa.traduce_variables(parnomvar[1])}_{eje}",
-                            carpeta_guardar=carpeta_output, fig=fig
+                            carpeta_guardar=carpeta_output,
+                            fig=fig,
                         )
 
-                    if not show_in_console: plt.close() #para que no muestre las gráficas en consola y vaya más rápido
-    
+                    if not show_in_console:
+                        plt.close()  # para que no muestre las gráficas en consola y vaya más rápido
+
             # ---------------------------------------
 
         # Gráficas individuales de una en una
@@ -2740,10 +2899,10 @@ def RealizaGraficas_cinem(
                 )
 
                 # Dibuja banda rango normal
-                rango_max = 2.5 # el rango total es 2xrango_max
+                rango_max = 2.5  # el rango total es 2xrango_max
                 ax.axhspan(
-                        media - rango_max, media + rango_max, alpha=0.2, color="green"
-                    )  # crea un rectángulo horizontal delimitado a mano
+                    media - rango_max, media + rango_max, alpha=0.2, color="green"
+                )  # crea un rectángulo horizontal delimitado a mano
                 ax.text(
                     3,
                     media + rango_max,
@@ -2754,18 +2913,20 @@ def RealizaGraficas_cinem(
                     fontsize=6,
                     transform=ax.transData,
                 )
-                ax.set(ylim=(media-rango_max*1.5, media+rango_max*1.5))
+                ax.set(ylim=(media - rango_max * 1.5, media + rango_max * 1.5))
 
                 plt.tight_layout()
 
                 if carpeta_guardar:
                     _guarda_grafica(
                         nom=f"{dfGraf["ID"].iloc[0]}_I_{nfa.traduce_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output, fig=fig
+                        carpeta_guardar=carpeta_output,
+                        fig=fig,
                     )
 
-                if not show_in_console: plt.close() #para que no muestre las gráficas en consola y vaya más rápido
-    
+                if not show_in_console:
+                    plt.close()  # para que no muestre las gráficas en consola y vaya más rápido
+
         # ---------------------------------------
 
         # Gráficas individuales de una en una circular
@@ -2823,11 +2984,13 @@ def RealizaGraficas_cinem(
                 if carpeta_guardar:
                     _guarda_grafica(
                         nom=f"{dfGraf["ID"].iloc[0]}_IP_{nfa.traduce_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output, fig=fig
+                        carpeta_guardar=carpeta_output,
+                        fig=fig,
                     )
 
-                if not show_in_console: plt.close() #para que no muestre las gráficas en consola y vaya más rápido
-    
+                if not show_in_console:
+                    plt.close()  # para que no muestre las gráficas en consola y vaya más rápido
+
         # ---------------------------------------
 
         # Gráfica POSICIÓN / POSICIÓN ejes articulares
@@ -3012,7 +3175,7 @@ def RealizaGraficas_cinem(
                         err = np.sqrt(
                             df.query('side=="L"').groupby("AngBielaInRepe")[var1].std()
                             ** 2
-                            + df.query('side=="L"') # & phase==@rango')
+                            + df.query('side=="L"')  # & phase==@rango')
                             .groupby("AngBielaInRepe")[var2]
                             .std()
                             ** 2
@@ -3031,7 +3194,7 @@ def RealizaGraficas_cinem(
                         err = np.sqrt(
                             df.query('side=="R"').groupby("AngBielaInRepe")[var1].std()
                             ** 2
-                            + df.query('side=="R"') # & phase==@rango')
+                            + df.query('side=="R"')  # & phase==@rango')
                             .groupby("AngBielaInRepe")[var2]
                             .std()
                             ** 2
@@ -3188,11 +3351,13 @@ def RealizaGraficas_cinem(
                     if carpeta_guardar:
                         _guarda_grafica(
                             nom=f"{dfGraf["ID"].iloc[0]}_P_{nfa.traduce_variables(nomvar)}_frontal",
-                            carpeta_guardar=carpeta_output, fig=fig
+                            carpeta_guardar=carpeta_output,
+                            fig=fig,
                         )
 
-                    if not show_in_console: plt.close() #para que no muestre las gráficas en consola y vaya más rápido
-    
+                    if not show_in_console:
+                        plt.close()  # para que no muestre las gráficas en consola y vaya más rápido
+
             # ---------------------------------------
 
     # ---------------------------------------
@@ -3204,7 +3369,7 @@ def RealizaGraficas_triples_cinem(
     tipo_graf=None,
     compara_lados_graf=False,
     ensemble_avg=False,
-    formato_imagen = ".pdf",
+    formato_imagen=".pdf",
     show_in_console=True,
     carpeta_guardar=False,
 ) -> None:  # por mejorar: que se puedan descartar repeticiones intermedias
@@ -3224,22 +3389,25 @@ def RealizaGraficas_triples_cinem(
     """
     # TODO: FALTA QUE SELECCIONE REPES SUELTAS
 
-    numreps = int(daGraf.phase.max()) # dfGraf["phase"].max()
+    numreps = int(daGraf.phase.max())  # dfGraf["phase"].max()
     if repes is not None:  # si no se indica nada, muestra todas las repeticiones
         if repes[-1] > numreps:
             raise ValueError("La repetición más alta no está incluida en los datos")
     else:
-        repes = range(numreps+1) # np.arange(repes[0], repes[1]).tolist() # [0, numreps]
-    
+        repes = range(
+            numreps + 1
+        )  # np.arange(repes[0], repes[1]).tolist() # [0, numreps]
+
     daGraf = daGraf.sel(phase=repes)
 
     # Lo pasa a dataframe
     dfGraf = daGraf.to_dataframe(name="value").dropna().reset_index()
 
     if tipo_graf is None:
-        raise ValueError("Debes indicar el tipo de gráfica (Ej: tipo_graf=['lados_lin'])")
+        raise ValueError(
+            "Debes indicar el tipo de gráfica (Ej: tipo_graf=['lados_lin'])"
+        )
 
-    
     # Cambia los nombres de las variables
     dfGraf["n_var"] = dfGraf["n_var"].replace(
         {
@@ -3265,7 +3433,7 @@ def RealizaGraficas_triples_cinem(
     # ---------------------------------------
     # Crea carpeta donde guardará las gráficas
     if carpeta_guardar:
-        carpeta_output = Path(carpeta_guardar) #/ "Figs"
+        carpeta_output = Path(carpeta_guardar)  # / "Figs"
         if not carpeta_output.exists():
             carpeta_output.mkdir()
 
@@ -3376,15 +3544,18 @@ def RealizaGraficas_triples_cinem(
                     plot_clusters(ti, y=5, ax=ax, print_p=False)
 
             # plt.tight_layout()
-            
+
             if carpeta_guardar:
                 _guarda_grafica(
                     nom=f"{dfGraf["ID"].iloc[0]}_A_Triple_{dfGraf.axis.unique()[0]}",
-                    carpeta_guardar=carpeta_output, fig=g.figure
+                    carpeta_guardar=carpeta_output,
+                    fig=g.figure,
                 )
 
-            if not show_in_console: plt.close(g.figure) #para que no muestre las gráficas en consola y vaya más rápido
-    
+            if not show_in_console:
+                plt.close(
+                    g.figure
+                )  # para que no muestre las gráficas en consola y vaya más rápido
 
             # ---------------------------------------
 
@@ -3463,11 +3634,15 @@ def RealizaGraficas_triples_cinem(
             if carpeta_guardar:
                 _guarda_grafica(
                     nom=f"{dfGraf["ID"].iloc[0]}_AP_Triple_{dfGraf.axis.unique()[0]}",
-                    carpeta_guardar=carpeta_output, fig=g.figure
+                    carpeta_guardar=carpeta_output,
+                    fig=g.figure,
                 )
-                
-            if not show_in_console: plt.close(g.figure) #para que no muestre las gráficas en consola y vaya más rápido
-    
+
+            if not show_in_console:
+                plt.close(
+                    g.figure
+                )  # para que no muestre las gráficas en consola y vaya más rápido
+
         # ---------------------------------------
 
         # Gráficas coordinación Ángulo/Ángulo
@@ -3753,11 +3928,15 @@ def RealizaGraficas_triples_cinem(
             if carpeta_guardar:
                 _guarda_grafica(
                     nom=f"{dfGraf["ID"].iloc[0]}_AA_Triple_{dfGraf.axis.unique()[0]}",
-                    carpeta_guardar=carpeta_output, fig=g.figure
+                    carpeta_guardar=carpeta_output,
+                    fig=g.figure,
                 )
-                
-            if not show_in_console: plt.close(g.figure) #para que no muestre las gráficas en consola y vaya más rápido
-    
+
+            if not show_in_console:
+                plt.close(
+                    g.figure
+                )  # para que no muestre las gráficas en consola y vaya más rápido
+
         # ---------------------------------------
 
         # Gráfica POSICIÓN / POSICIÓN ejes articulares
@@ -4063,11 +4242,15 @@ def RealizaGraficas_triples_cinem(
             if carpeta_guardar:
                 _guarda_grafica(
                     nom=f"{dfGraf['ID'].iloc[0]}_PP_{dfGraf['n_var'][0]}_Triple",
-                    carpeta_guardar=carpeta_output, fig=g.figure
+                    carpeta_guardar=carpeta_output,
+                    fig=g.figure,
                 )
 
-            if not show_in_console: plt.close(g.figure) #para que no muestre las gráficas en consola y vaya más rápido
-    
+            if not show_in_console:
+                plt.close(
+                    g.figure
+                )  # para que no muestre las gráficas en consola y vaya más rápido
+
             # --------------------------------
 
         # Gráfica POSICIÓN / POSICIÓN con los tres ejes articulares simultáneamente
@@ -4208,11 +4391,15 @@ def RealizaGraficas_triples_cinem(
             if carpeta_guardar:
                 _guarda_grafica(
                     nom=f"{dfGraf['ID'].iloc[0]}_PPM_Multiple_Triple",
-                    carpeta_guardar=carpeta_output, fig=g.figure
+                    carpeta_guardar=carpeta_output,
+                    fig=g.figure,
                 )
-                
-            if not show_in_console: plt.close(g.figure) #para que no muestre las gráficas en consola y vaya más rápido
-    
+
+            if not show_in_console:
+                plt.close(
+                    g.figure
+                )  # para que no muestre las gráficas en consola y vaya más rápido
+
             # --------------------------------
 
         # Gráficas ÁNGULO SEGMENTOS / BIELA repetición a repetición con variables por separado
@@ -4262,17 +4449,17 @@ def RealizaGraficas_triples_cinem(
             # sns.move_legend(g, loc='upper right', bbox_to_anchor=(1.0, 1.01),  title='', frameon=True)
 
             # for nomvar, ax in g.axes_dict.items():
-                # ax.set_xticks(np.linspace(0, 360, 5))
-                # ax.set_xlim(0, 360)
-                # ax.xaxis.grid(
-                #     True,
-                #     linestyle="dashed",
-                #     dashes=(5, 5),
-                #     dash_capstyle="round",
-                #     alpha=0.8,
-                #     zorder=0,
-                # )
-                # ax.set_xlabel('Ángulo de biela (grados)')
+            # ax.set_xticks(np.linspace(0, 360, 5))
+            # ax.set_xlim(0, 360)
+            # ax.xaxis.grid(
+            #     True,
+            #     linestyle="dashed",
+            #     dashes=(5, 5),
+            #     dash_capstyle="round",
+            #     alpha=0.8,
+            #     zorder=0,
+            # )
+            # ax.set_xlabel('Ángulo de biela (grados)')
 
             if ensemble_avg == "completo":
                 # Dibuja todas las repeticiones porque con relplot no puede superponer
@@ -4292,11 +4479,15 @@ def RealizaGraficas_triples_cinem(
             if carpeta_guardar:
                 _guarda_grafica(
                     nom=f"{dfGraf['ID'].iloc[0]}_A3D_{dfGraf["n_var"][0]}_Triple",
-                    carpeta_guardar=carpeta_output, fig=g.figure
+                    carpeta_guardar=carpeta_output,
+                    fig=g.figure,
                 )
-                            
-            if not show_in_console: plt.close(g.figure) #para que no muestre las gráficas en consola y vaya más rápido
-    
+
+            if not show_in_console:
+                plt.close(
+                    g.figure
+                )  # para que no muestre las gráficas en consola y vaya más rápido
+
             # ---------------------------------------
 
         # ---------------------------------------
@@ -4311,7 +4502,7 @@ def RealizaGraficas_EMG(
     extra_nom_archivo="",
     compara_lados_graf=False,
     ensemble_avg=False,
-    formato_imagen = ".pdf",
+    formato_imagen=".pdf",
     carpeta_guardar=False,
 ) -> None:  # por mejorar: que se puedan descartar repeticiones intermedias
     # import itertools
@@ -4350,7 +4541,7 @@ def RealizaGraficas_EMG(
     # ---------------------------------------
     # Crea carpeta donde guardará las gráficas
     if carpeta_guardar:
-        carpeta_output = Path(carpeta_guardar) #/ "Figs"
+        carpeta_output = Path(carpeta_guardar)  # / "Figs"
         if not carpeta_output.exists():
             carpeta_output.mkdir()
 
@@ -4533,7 +4724,7 @@ def RealizaGraficas_EMG(
 
                 if carpeta_guardar:
                     guarda_grafica(nom=f"_EP_{nfa.traduce_variables(nomvar)}")
-                    
+
                 # ruta_fig = carpeta_output.joinpath(dfGraf['ID'].iloc[0] + '_AP_' + nfa.traduce_variables(nomvar) + '_' + eje).with_suffix(formato_imagen)
                 # #CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_AP_' + nfa.traduce_variables(nomvar) + '_' + eje + formato_imagen
                 # if formato_imagen=='.pdf':
@@ -4724,7 +4915,9 @@ def RealizaGraficas_EMG(
                 plt.tight_layout()
 
                 if carpeta_guardar:
-                    guarda_grafica(nom=f"_EE_{nfa.traduce_variables(parnomvar[0])}_{nfa.traduce_variables(parnomvar[1])}")
+                    guarda_grafica(
+                        nom=f"_EE_{nfa.traduce_variables(parnomvar[0])}_{nfa.traduce_variables(parnomvar[1])}"
+                    )
 
                 # plt.show()
 
@@ -4788,7 +4981,9 @@ def RealizaGraficas_EMG(
                 0
             ]  # .parent
             da_tkeoMVC = xr.load_dataarray(ruta)
-            da_tkeoMVC = nfa.procesaEMG(da_tkeoMVC, fc_band=[30, 300], fclow=10, btkeo=True)
+            da_tkeoMVC = nfa.procesaEMG(
+                da_tkeoMVC, fc_band=[30, 300], fclow=10, btkeo=True
+            )
             da_tkeoMVC = limpia_MVC(da_tkeoMVC)
             # Selecciona los archivos para la normalización
             if filtro_MVC.lower() == "todos":
@@ -5246,139 +5441,346 @@ def RealizaGraficas_cinem_completo(daGraf) -> None:
 def crea_df_comparacion_pares(dfGraf, nomvar, parejes):
     """De apoyo a función guardar_graficas_exploracion_globales_cinem"""
     import itertools
-    #nomvar='KJC'
-    #parejes=['x','z']
-        
-    #Adapta el dataframe para que tenga las dos variables en columnas
-    df = dfGraf.query('n_var==@nomvar & axis==@parejes[0]')[['ID', 'phase', 'side', 'axis', 'AngBielaInRepe']].reset_index(drop=True)
-    var1 = nfa.traduce_variables('Eje '+parejes[0])
-    var2 = nfa.traduce_variables('Eje '+parejes[1])
-    df[var1] = dfGraf.query('n_var==@nomvar & axis==@parejes[0]')['value'].reset_index(drop=True)
-    df[var2] = dfGraf.query('n_var==@nomvar & axis==@parejes[1]')['value'].reset_index(drop=True)
-    
-    
-    #En la visión frontal invierte el axis x para que se vea de frente
-    if 'x' in parejes:
-        df[var1]=-df[var1]    
-       
+
+    # nomvar='KJC'
+    # parejes=['x','z']
+
+    # Adapta el dataframe para que tenga las dos variables en columnas
+    df = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")[
+        ["ID", "phase", "side", "axis", "AngBielaInRepe"]
+    ].reset_index(drop=True)
+    var1 = nfa.traduce_variables("Eje " + parejes[0])
+    var2 = nfa.traduce_variables("Eje " + parejes[1])
+    df[var1] = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")["value"].reset_index(
+        drop=True
+    )
+    df[var2] = dfGraf.query("n_var==@nomvar & axis==@parejes[1]")["value"].reset_index(
+        drop=True
+    )
+
+    # En la visión frontal invierte el axis x para que se vea de frente
+    if "x" in parejes:
+        df[var1] = -df[var1]
+
     return df
 
-def guardar_graficas_exploracion_globales_cinem(daGraf,
-                                                tipo_graf=['lim_rodillas', 'eje_rodillas_frontal', 'ang_pelvis', 'vAngBiela', 'sagital_triple'],
-                                                n_generico_archivos='',
-                                                ruta=None, show_in_console=False)  -> None:
+
+def guardar_graficas_exploracion_globales_cinem(
+    daGraf,
+    tipo_graf=[
+        "lim_rodillas",
+        "eje_rodillas_frontal",
+        "ang_pelvis",
+        "vAngBiela",
+        "sagital_triple",
+    ],
+    n_generico_archivos="",
+    ruta=None,
+    show_in_console=False,
+) -> None:
     """Gráficas para informes en vistas masivas"""
-    if tipo_graf==None:
-        raise ValueError("Debes indicar el tipo de gráfica (Ej: tipo_graf=['lim_rodillas', 'eje_rodillas_frontal', 'ang_pelvis', 'vAngBiela', 'sagital_triple'])")
-    
-    prefijo_archivo = 'GrafsInformeGlobales'
+    if tipo_graf == None:
+        raise ValueError(
+            "Debes indicar el tipo de gráfica (Ej: tipo_graf=['lim_rodillas', 'eje_rodillas_frontal', 'ang_pelvis', 'vAngBiela', 'sagital_triple'])"
+        )
 
-    if n_generico_archivos!='':
-        n_generico_archivos = f'_{n_generico_archivos}'
-        
-    daGraf.name='value' # cambia el nombre para homogeneizar la columna de df
-    dfGraf = daGraf.to_dataframe().dropna().reset_index()    
-            
-    #Ángulo rodilla con límites
-    if 'lim_rodillas' in tipo_graf:
-        with PdfPages((ruta / (f'{prefijo_archivo}_AngRodillaLimMax{n_generico_archivos}')).with_suffix('.pdf')) as pdf_pages:
-            def _draw_banda_rodilla(x,y, **kwargs):
-                plt.axhspan(25, 35, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                
-            #g = sns.relplot(data=dfdaNormal01_cinem_norm.query('n_var=="AngArtKnee" & axis=="x"'), x='AngBielaInRepe', y='Cinem', col='side', row='ID', hue='phase', estimator=None, errorbar=None, units='phase', lw=0.25, kind='line')
-            g = sns.relplot(data=dfGraf.query('n_var=="AngArtKnee" & axis=="x"'), x='AngBielaInRepe', y='value',
-                            col='ID', col_wrap=4, hue='side', estimator=None, errorbar=None, units='phase',
-                            lw=0.25, kind='line', palette=['r', 'lime'], alpha=0.6)
-            
-            (g.map_dataframe(_draw_banda_rodilla, x='AngBielaInRepe', y='value', color='green')
-              .map(plt.grid, axis='x', color='grey', linestyle='dashed', dashes=(5, 5), dash_capstyle='round', alpha=0.8, zorder=1)
-              .set(xlim=(0,360), xticks=np.linspace(0, 360, 5))
-              .set_axis_labels("ang biela", "ang rodilla (deg)")
+    prefijo_archivo = "GrafsInformeGlobales"
+
+    if n_generico_archivos != "":
+        n_generico_archivos = f"_{n_generico_archivos}"
+
+    daGraf.name = "value"  # cambia el nombre para homogeneizar la columna de df
+    dfGraf = daGraf.to_dataframe().dropna().reset_index()
+
+    # Ángulo rodilla con límites
+    if "lim_rodillas" in tipo_graf:
+        with PdfPages(
+            (
+                ruta / (f"{prefijo_archivo}_AngRodillaLimMax{n_generico_archivos}")
+            ).with_suffix(".pdf")
+        ) as pdf_pages:
+
+            def _draw_banda_rodilla(x, y, **kwargs):
+                plt.axhspan(
+                    25, 35, alpha=0.3, color="green"
+                )  # crea un rectángulo horizontal delimitado a mano
+
+            # g = sns.relplot(data=dfdaNormal01_cinem_norm.query('n_var=="AngArtKnee" & axis=="x"'), x='AngBielaInRepe', y='Cinem', col='side', row='ID', hue='phase', estimator=None, errorbar=None, units='phase', lw=0.25, kind='line')
+            g = sns.relplot(
+                data=dfGraf.query('n_var=="AngArtKnee" & axis=="x"'),
+                x="AngBielaInRepe",
+                y="value",
+                col="ID",
+                col_wrap=4,
+                hue="side",
+                estimator=None,
+                errorbar=None,
+                units="phase",
+                lw=0.25,
+                kind="line",
+                palette=["r", "lime"],
+                alpha=0.6,
             )
-            plt.suptitle(f'Ángulo rodillas {n_generico_archivos}', y=1)
-            plt.tight_layout()#rect=[0,0,1,0.99])
-            #g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
-                        
-            if not show_in_console:plt.close()
-            
-            pdf_pages.savefig(g.fig)
-                
-        
-    
-    if 'eje_rodillas_frontal' in tipo_graf:
-        with PdfPages((ruta / (f'{prefijo_archivo}_EjeRodillaFrontal{n_generico_archivos}')).with_suffix('.pdf')) as pdf_pages:
-            #Plano frontal axis rodilla
-            def _draw_banda_cadTob(x,y, **kwargs):
-                #plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                df=kwargs['data']
-                arch = df.ID.unique()[0]
-                #xx=df.query('n_var==["HJC", "AJC"] & axis=="x"').mean()
-                #xx2=daGraf.sel(ID=arch, n_var=['HJC', 'AJC'], axis='x').mean(dim=['AngBielaInRepe', 'phase'])
-                #print(df)#xx,xx2)
-                
-                eje_medio = -daGraf.sel(ID=arch, n_var=['HJC', 'AJC'], axis='x').mean(dim=['AngBielaInRepe', 'phase'])
-                offsetX = kwargs['offs'].sel(ID=arch).mean(['side', 'phase', 'AngBielaInRepe']) #0#((daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='L') + daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='R')) / 2).mean(dim=['AngBielaInRepe', 'phase']).data / 10 #lo pasa a cm
-                            
-                #Lado L
-                plt.axvspan(eje_medio.sel(n_var='HJC', side='L')+offsetX, eje_medio.sel(n_var='AJC', side='L')+offsetX, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                plt.text(eje_medio.sel(n_var='AJC', side='L')+offsetX, plt.gca().get_ylim()[1], 'Eje tobillo', ha='left', va='top', c='green', alpha=0.6, fontsize=6, rotation='vertical', transform=plt.gca().transData, zorder=5)
-                plt.text(eje_medio.sel(n_var='HJC', side='L')+offsetX, plt.gca().get_ylim()[1], 'Eje cadera', ha='right', va='top', c='green', alpha=0.6, fontsize=6, rotation='vertical', transform=plt.gca().transData, zorder=5)
-                
-                #Lado R
-                plt.axvspan(eje_medio.sel(n_var='HJC', side='R')+offsetX, eje_medio.sel(n_var='AJC', side='R')+offsetX, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                plt.text(eje_medio.sel(n_var='AJC', side='R')+offsetX, plt.gca().get_ylim()[1], 'Eje tobillo', ha='right', va='top', c='green', alpha=0.6, fontsize=6, rotation='vertical', transform=plt.gca().transData, zorder=5)
-                plt.text(eje_medio.sel(n_var='HJC', side='R')+offsetX, plt.gca().get_ylim()[1], 'Eje cadera', ha='left', va='top', c='green', alpha=0.6, fontsize=6, rotation='vertical', transform=plt.gca().transData, zorder=5)
-                
-                #Dibuja la posición en puntos críticos de cada ciclo
-                for posbiela in [0,90,180, 270]:
-                    posx=df.query('side=="L" & AngBielaInRepe==@posbiela').loc[:,'mediolateral'].mean()
-                    posy=df.query('side=="L" & AngBielaInRepe==@posbiela').loc[:,'vertical'].mean()
-                    plt.plot(posx, posy, c='firebrick', mfc='r', marker='o', ms=13, alpha=0.7, zorder=2)
-                    plt.text(posx, posy, str(posbiela), c='firebrick', fontsize=10, fontweight='bold', transform=plt.gca().transData, horizontalalignment='center', verticalalignment='center', zorder=3)
-                    
-                    posx=df.query('side=="R" & AngBielaInRepe==@posbiela').loc[:,'mediolateral'].mean()
-                    posy=df.query('side=="R" & AngBielaInRepe==@posbiela').loc[:,'vertical'].mean()
-                    plt.plot(posx, posy, c='limegreen', mfc='lime', marker='o', ms=13, alpha=0.7, zorder=2)
-                    plt.text(posx, posy, str(posbiela), c='limegreen', fontsize=10, fontweight='bold', transform=plt.gca().transData, horizontalalignment='center', verticalalignment='center', zorder=3)
-                
-            dfPares = crea_df_comparacion_pares(dfGraf, nomvar='KJC', parejes=['x','z'])
-            # Ajusta eje mediolateral
-            ejeBiela = daGraf.sel(n_var='EjeBiela', axis='x')
-            dfPares['mediolateral'] += ejeBiela.to_dataframe().dropna().reset_index()['value'] # .mean(['side', 'phase', 'AngBielaInRepe'])
-            # ejeBiela.sel(ID='S02').mean(['side', 'phase', 'AngBielaInRepe'])
-            #dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
-            g = sns.relplot(data=dfPares, x='mediolateral', y='vertical', col='ID', col_wrap=4, hue='side', #estimator=estim, errorbar=ci, units=unit, 
-                            lw=1, palette=['r', 'lime'], alpha=0.6, facet_kws={'sharex': False, 'sharey': False, 'legend_out':False, 'despine':False}, sort=False, kind='line',
-                            legend=True, height=4, zorder=1)        
-            g.map_dataframe(_draw_banda_cadTob, x='mediolateral', y='vertical', color='green', offs=ejeBiela)
-            plt.suptitle(f'Plano frontal ejes rodillas {n_generico_archivos}', y=1)
-            plt.tight_layout(rect=[0,0,1,0.99])
-            #g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
-            
-            if not show_in_console:plt.close()
+
+            (
+                g.map_dataframe(
+                    _draw_banda_rodilla, x="AngBielaInRepe", y="value", color="green"
+                )
+                .map(
+                    plt.grid,
+                    axis="x",
+                    color="grey",
+                    linestyle="dashed",
+                    dashes=(5, 5),
+                    dash_capstyle="round",
+                    alpha=0.8,
+                    zorder=1,
+                )
+                .set(xlim=(0, 360), xticks=np.linspace(0, 360, 5))
+                .set_axis_labels("ang biela", "ang rodilla (deg)")
+            )
+            plt.suptitle(f"Ángulo rodillas {n_generico_archivos}", y=1)
+            plt.tight_layout()  # rect=[0,0,1,0.99])
+            # g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
+
+            if not show_in_console:
+                plt.close()
 
             pdf_pages.savefig(g.fig)
-            
-            
-            
-    #---- Ángulo báscula pelvis
-    if 'ang_pelvis' in tipo_graf:
-        # Inicia con lado R
-        with PdfPages((ruta / (f'{prefijo_archivo}_AngSegPelvis{n_generico_archivos}')).with_suffix('.pdf')) as pdf_pages:
-            def _draw_media_bascula(x,y, **kwargs):
-                #plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                df=kwargs['data']
+
+    if "eje_rodillas_frontal" in tipo_graf:
+        with PdfPages(
+            (
+                ruta / (f"{prefijo_archivo}_EjeRodillaFrontal{n_generico_archivos}")
+            ).with_suffix(".pdf")
+        ) as pdf_pages:
+            # Plano frontal axis rodilla
+            def _draw_banda_cadTob(x, y, **kwargs):
+                # plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
+                df = kwargs["data"]
                 arch = df.ID.unique()[0]
-                media = df['value'].mean()
-                plt.axhline(y=media, color=kwargs['color'], lw=2, ls='--', dash_capstyle='round')
-                #plt.axhspan(df['value'].mean(), df['value'].mean(), color=kwargs['color']) #crea un rectángulo horizontal delimitado a mano
-                
+                # xx=df.query('n_var==["HJC", "AJC"] & axis=="x"').mean()
+                # xx2=daGraf.sel(ID=arch, n_var=['HJC', 'AJC'], axis='x').mean(dim=['AngBielaInRepe', 'phase'])
+                # print(df)#xx,xx2)
+
+                eje_medio = -daGraf.sel(ID=arch, n_var=["HJC", "AJC"], axis="x").mean(
+                    dim=["AngBielaInRepe", "phase"]
+                )
+                offsetX = (
+                    kwargs["offs"]
+                    .sel(ID=arch)
+                    .mean(["side", "phase", "AngBielaInRepe"])
+                )  # 0#((daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='L') + daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='R')) / 2).mean(dim=['AngBielaInRepe', 'phase']).data / 10 #lo pasa a cm
+
+                # Lado L
+                plt.axvspan(
+                    eje_medio.sel(n_var="HJC", side="L") + offsetX,
+                    eje_medio.sel(n_var="AJC", side="L") + offsetX,
+                    alpha=0.3,
+                    color="green",
+                )  # crea un rectángulo horizontal delimitado a mano
+                plt.text(
+                    eje_medio.sel(n_var="AJC", side="L") + offsetX,
+                    plt.gca().get_ylim()[1],
+                    "Eje tobillo",
+                    ha="left",
+                    va="top",
+                    c="green",
+                    alpha=0.6,
+                    fontsize=6,
+                    rotation="vertical",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+                plt.text(
+                    eje_medio.sel(n_var="HJC", side="L") + offsetX,
+                    plt.gca().get_ylim()[1],
+                    "Eje cadera",
+                    ha="right",
+                    va="top",
+                    c="green",
+                    alpha=0.6,
+                    fontsize=6,
+                    rotation="vertical",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+
+                # Lado R
+                plt.axvspan(
+                    eje_medio.sel(n_var="HJC", side="R") + offsetX,
+                    eje_medio.sel(n_var="AJC", side="R") + offsetX,
+                    alpha=0.3,
+                    color="green",
+                )  # crea un rectángulo horizontal delimitado a mano
+                plt.text(
+                    eje_medio.sel(n_var="AJC", side="R") + offsetX,
+                    plt.gca().get_ylim()[1],
+                    "Eje tobillo",
+                    ha="right",
+                    va="top",
+                    c="green",
+                    alpha=0.6,
+                    fontsize=6,
+                    rotation="vertical",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+                plt.text(
+                    eje_medio.sel(n_var="HJC", side="R") + offsetX,
+                    plt.gca().get_ylim()[1],
+                    "Eje cadera",
+                    ha="left",
+                    va="top",
+                    c="green",
+                    alpha=0.6,
+                    fontsize=6,
+                    rotation="vertical",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+
+                # Dibuja la posición en puntos críticos de cada ciclo
+                for posbiela in [0, 90, 180, 270]:
+                    posx = (
+                        df.query('side=="L" & AngBielaInRepe==@posbiela')
+                        .loc[:, "mediolateral"]
+                        .mean()
+                    )
+                    posy = (
+                        df.query('side=="L" & AngBielaInRepe==@posbiela')
+                        .loc[:, "vertical"]
+                        .mean()
+                    )
+                    plt.plot(
+                        posx,
+                        posy,
+                        c="firebrick",
+                        mfc="r",
+                        marker="o",
+                        ms=13,
+                        alpha=0.7,
+                        zorder=2,
+                    )
+                    plt.text(
+                        posx,
+                        posy,
+                        str(posbiela),
+                        c="firebrick",
+                        fontsize=10,
+                        fontweight="bold",
+                        transform=plt.gca().transData,
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        zorder=3,
+                    )
+
+                    posx = (
+                        df.query('side=="R" & AngBielaInRepe==@posbiela')
+                        .loc[:, "mediolateral"]
+                        .mean()
+                    )
+                    posy = (
+                        df.query('side=="R" & AngBielaInRepe==@posbiela')
+                        .loc[:, "vertical"]
+                        .mean()
+                    )
+                    plt.plot(
+                        posx,
+                        posy,
+                        c="limegreen",
+                        mfc="lime",
+                        marker="o",
+                        ms=13,
+                        alpha=0.7,
+                        zorder=2,
+                    )
+                    plt.text(
+                        posx,
+                        posy,
+                        str(posbiela),
+                        c="limegreen",
+                        fontsize=10,
+                        fontweight="bold",
+                        transform=plt.gca().transData,
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        zorder=3,
+                    )
+
+            dfPares = crea_df_comparacion_pares(
+                dfGraf, nomvar="KJC", parejes=["x", "z"]
+            )
+            # Ajusta eje mediolateral
+            ejeBiela = daGraf.sel(n_var="EjeBiela", axis="x")
+            dfPares["mediolateral"] += (
+                ejeBiela.to_dataframe().dropna().reset_index()["value"]
+            )  # .mean(['side', 'phase', 'AngBielaInRepe'])
+            # ejeBiela.sel(ID='S02').mean(['side', 'phase', 'AngBielaInRepe'])
+            # dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
+            g = sns.relplot(
+                data=dfPares,
+                x="mediolateral",
+                y="vertical",
+                col="ID",
+                col_wrap=4,
+                hue="side",  # estimator=estim, errorbar=ci, units=unit,
+                lw=1,
+                palette=["r", "lime"],
+                alpha=0.6,
+                facet_kws={
+                    "sharex": False,
+                    "sharey": False,
+                    "legend_out": False,
+                    "despine": False,
+                },
+                sort=False,
+                kind="line",
+                legend=True,
+                height=4,
+                zorder=1,
+            )
+            g.map_dataframe(
+                _draw_banda_cadTob,
+                x="mediolateral",
+                y="vertical",
+                color="green",
+                offs=ejeBiela,
+            )
+            plt.suptitle(f"Plano frontal ejes rodillas {n_generico_archivos}", y=1)
+            plt.tight_layout(rect=[0, 0, 1, 0.99])
+            # g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
+
+            if not show_in_console:
+                plt.close()
+
+            pdf_pages.savefig(g.fig)
+
+    # ---- Ángulo báscula pelvis
+    if "ang_pelvis" in tipo_graf:
+        # Inicia con lado R
+        with PdfPages(
+            (
+                ruta / (f"{prefijo_archivo}_AngSegPelvis{n_generico_archivos}")
+            ).with_suffix(".pdf")
+        ) as pdf_pages:
+
+            def _draw_media_bascula(x, y, **kwargs):
+                # plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
+                df = kwargs["data"]
+                arch = df.ID.unique()[0]
+                media = df["value"].mean()
+                plt.axhline(
+                    y=media, color=kwargs["color"], lw=2, ls="--", dash_capstyle="round"
+                )
+                # plt.axhspan(df['value'].mean(), df['value'].mean(), color=kwargs['color']) #crea un rectángulo horizontal delimitado a mano
+
                 # Dibuja banda rango normal
-                rango_max = 2 # el rango total es 2xrango_max
+                rango_max = 2  # el rango total es 2xrango_max
                 ax = plt.gca()
                 ax.axhspan(
-                        media - rango_max, media + rango_max, alpha=0.2, color="green"
-                    )  # crea un rectángulo horizontal delimitado a mano
+                    media - rango_max, media + rango_max, alpha=0.2, color="green"
+                )  # crea un rectángulo horizontal delimitado a mano
                 ax.text(
                     3,
                     media + rango_max,
@@ -5389,174 +5791,446 @@ def guardar_graficas_exploracion_globales_cinem(daGraf,
                     fontsize=6,
                     transform=ax.transData,
                 )
-                mini = min(media-rango_max*1.5, df['value'].min())
-                maxi = max(media+rango_max*1.5, df['value'].max())
+                mini = min(media - rango_max * 1.5, df["value"].min())
+                maxi = max(media + rango_max * 1.5, df["value"].max())
                 ax.set(ylim=(mini, maxi))
 
-
-            #g=daNormal01_cinem_norm.isel(ID=slice(0,4)).sel(n_var='AngSegPELVIS', axis='y', side='LR').plot.line(x='AngBielaInRepe', col='ID', col_wrap=4)
-            g=sns.relplot(data=dfGraf.query('n_var=="AngSegPELVIS" & axis=="y"'),
-                          x='AngBielaInRepe', y='value', hue='side',
-                          col='ID', col_wrap=4, size='phase',
-                          estimator=None, errorbar=None, units='phase', lw=0.25, kind='line',
-                          palette=['orange'], alpha=0.6, facet_kws={'sharey': False}
-                          ) 
-            (g.map_dataframe(_draw_media_bascula, x='AngBielaInRepe', y='value', color='r')
-              .map(plt.grid, axis='x', color='grey', linestyle='dashed', dashes=(5, 5), dash_capstyle='round', alpha=0.8, zorder=1)
-              .set(xlim=(0,360), xticks=np.linspace(0, 360, 5))
-              .set_axis_labels("ang biela", "basculación lateral pelvis (deg)")
+            # g=daNormal01_cinem_norm.isel(ID=slice(0,4)).sel(n_var='AngSegPELVIS', axis='y', side='LR').plot.line(x='AngBielaInRepe', col='ID', col_wrap=4)
+            g = sns.relplot(
+                data=dfGraf.query('n_var=="AngSegPELVIS" & axis=="y"'),
+                x="AngBielaInRepe",
+                y="value",
+                hue="side",
+                col="ID",
+                col_wrap=4,
+                size="phase",
+                estimator=None,
+                errorbar=None,
+                units="phase",
+                lw=0.25,
+                kind="line",
+                palette=["orange"],
+                alpha=0.6,
+                facet_kws={"sharey": False},
             )
-            plt.suptitle(f'Áng Pelvis {n_generico_archivos}', y=1)
-            plt.tight_layout()#rect=[0,0,1,0.99])
-            
-            if not show_in_console:plt.close()
+            (
+                g.map_dataframe(
+                    _draw_media_bascula, x="AngBielaInRepe", y="value", color="r"
+                )
+                .map(
+                    plt.grid,
+                    axis="x",
+                    color="grey",
+                    linestyle="dashed",
+                    dashes=(5, 5),
+                    dash_capstyle="round",
+                    alpha=0.8,
+                    zorder=1,
+                )
+                .set(xlim=(0, 360), xticks=np.linspace(0, 360, 5))
+                .set_axis_labels("ang biela", "basculación lateral pelvis (deg)")
+            )
+            plt.suptitle(f"Áng Pelvis {n_generico_archivos}", y=1)
+            plt.tight_layout()  # rect=[0,0,1,0.99])
+
+            if not show_in_console:
+                plt.close()
 
             pdf_pages.savefig(g.fig)
-        
-    
-    #---- Vel angular Biela
-    if 'vAngBiela' in tipo_graf:
-        with PdfPages((ruta / (f'{prefijo_archivo}_vAngBiela{n_generico_archivos}')).with_suffix('.pdf')) as pdf_pages:
-            def _draw_media_vAng(x,y, **kwargs):
-                #plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                df=kwargs['data']
+
+    # ---- Vel angular Biela
+    if "vAngBiela" in tipo_graf:
+        with PdfPages(
+            (ruta / (f"{prefijo_archivo}_vAngBiela{n_generico_archivos}")).with_suffix(
+                ".pdf"
+            )
+        ) as pdf_pages:
+
+            def _draw_media_vAng(x, y, **kwargs):
+                # plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
+                df = kwargs["data"]
                 arch = df.ID.unique()[0]
-                vmedia_L = df.query('side=="L"')['value'].mean()
-                vmedia_R = df.query('side=="R"')['value'].mean()
-                plt.axhline(y=vmedia_L, color='r', lw=1.5, ls='--', alpha=0.6, dash_capstyle='round')
-                plt.axhline(y=vmedia_R, color='lime', lw=1.5, ls='--', alpha=0.6, dash_capstyle='round')
+                vmedia_L = df.query('side=="L"')["value"].mean()
+                vmedia_R = df.query('side=="R"')["value"].mean()
+                plt.axhline(
+                    y=vmedia_L,
+                    color="r",
+                    lw=1.5,
+                    ls="--",
+                    alpha=0.6,
+                    dash_capstyle="round",
+                )
+                plt.axhline(
+                    y=vmedia_R,
+                    color="lime",
+                    lw=1.5,
+                    ls="--",
+                    alpha=0.6,
+                    dash_capstyle="round",
+                )
+
             # Se queda con 0-180º, para hacer la media de cada lado
             dfGraf = dfGraf[(dfGraf.AngBielaInRepe < 181)]
-            g=sns.relplot(data=dfGraf.query('n_var=="vAngBiela" & axis=="x" & side==["L","R"]'), x='AngBielaInRepe', y='value', size='phase', col='ID', col_wrap=4, hue='side', estimator=None, errorbar=None, units='phase', lw=0.25, kind='line', palette=['r', 'lime'], alpha=0.6) 
-            (g.map_dataframe(_draw_media_vAng, x='vAngBiela', y='values', color='r')
-              .map(plt.grid, axis='x', color='grey', linestyle='dashed', dashes=(5, 5), dash_capstyle='round', alpha=0.8, zorder=1)
-              .set(xlim=(0,180), xticks=np.linspace(0, 180, 5))
-              .set_axis_labels("ang biela", "v ang biela (deg/s)")
+            g = sns.relplot(
+                data=dfGraf.query('n_var=="vAngBiela" & axis=="x" & side==["L","R"]'),
+                x="AngBielaInRepe",
+                y="value",
+                size="phase",
+                col="ID",
+                col_wrap=4,
+                hue="side",
+                estimator=None,
+                errorbar=None,
+                units="phase",
+                lw=0.25,
+                kind="line",
+                palette=["r", "lime"],
+                alpha=0.6,
             )
-            plt.suptitle(f'Velocidad angular biela {n_generico_archivos}', y=1)
-            plt.tight_layout()#rect=[0,0,1,0.99])
-            if not show_in_console:plt.close()
+            (
+                g.map_dataframe(_draw_media_vAng, x="vAngBiela", y="values", color="r")
+                .map(
+                    plt.grid,
+                    axis="x",
+                    color="grey",
+                    linestyle="dashed",
+                    dashes=(5, 5),
+                    dash_capstyle="round",
+                    alpha=0.8,
+                    zorder=1,
+                )
+                .set(xlim=(0, 180), xticks=np.linspace(0, 180, 5))
+                .set_axis_labels("ang biela", "v ang biela (deg/s)")
+            )
+            plt.suptitle(f"Velocidad angular biela {n_generico_archivos}", y=1)
+            plt.tight_layout()  # rect=[0,0,1,0.99])
+            if not show_in_console:
+                plt.close()
 
-            #g=daNormal01_cinem_norm.sel(n_var='vAngBiela', axis='x', side=['L','R']).plot.line(x='AngBielaInRepe', col='ID', hue='side', col_wrap=4)
+            # g=daNormal01_cinem_norm.sel(n_var='vAngBiela', axis='x', side=['L','R']).plot.line(x='AngBielaInRepe', col='ID', hue='side', col_wrap=4)
             pdf_pages.savefig(g.fig)
-            
-    #---- Sagital triples
-    if 'sagital_triple' in tipo_graf:        
-        with PdfPages((ruta / (f'{prefijo_archivo}_AngTripleX{n_generico_archivos}')).with_suffix('.pdf')) as pdf_pages:
-            for var in ['AngArtHip', 'AngArtKnee', 'AngArtAnkle']:
+
+    # ---- Sagital triples
+    if "sagital_triple" in tipo_graf:
+        with PdfPages(
+            (ruta / (f"{prefijo_archivo}_AngTripleX{n_generico_archivos}")).with_suffix(
+                ".pdf"
+            )
+        ) as pdf_pages:
+            for var in ["AngArtHip", "AngArtKnee", "AngArtAnkle"]:
                 print(var)
-                g=daGraf.sel(n_var=var, axis='x').plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
-                plt.suptitle(f'Ángulo {var}', y=1)
-                plt.tight_layout()#rect=[0,0,1,0.99])
-                if not show_in_console:plt.close()
+                g = daGraf.sel(n_var=var, axis="x").plot.line(
+                    x="AngBielaInRepe", row="ID", col="side", hue="phase"
+                )
+                plt.suptitle(f"Ángulo {var}", y=1)
+                plt.tight_layout()  # rect=[0,0,1,0.99])
+                if not show_in_console:
+                    plt.close()
 
                 pdf_pages.savefig(g.fig)
-    
-    
-    #para comprobar la alineación del sistema de referencias con la bici
-    if 'alin_pedales_sagital' in tipo_graf:
-        with PdfPages((ruta / (f'{prefijo_archivo}_AlinPedalesSAgital{n_generico_archivos}')).with_suffix('.pdf')) as pdf_pages:
-            #Plano sagital axis pedal
-            def _draw_pos_biela(x,y, **kwargs):
-                #plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                df=kwargs['data']
+
+    # para comprobar la alineación del sistema de referencias con la bici
+    if "alin_pedales_sagital" in tipo_graf:
+        with PdfPages(
+            (
+                ruta / (f"{prefijo_archivo}_AlinPedalesSAgital{n_generico_archivos}")
+            ).with_suffix(".pdf")
+        ) as pdf_pages:
+            # Plano sagital axis pedal
+            def _draw_pos_biela(x, y, **kwargs):
+                # plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
+                df = kwargs["data"]
                 arch = df.ID.unique()[0]
-                #df = dfPares.query('ID==@arch')
-                
-                offsetX = 0#((daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='L') + daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='R')) / 2).mean(dim=['AngBielaInRepe', 'phase']).data / 10 #lo pasa a cm
-                  
-                #arch=daGraf.isel(ID=0).ID
-                #print(df.query('axis=="y" & AngBielaInRepe==90').groupby('side').mean())
-                
-                PME = daGraf.sel(ID=arch, n_var=['PosPedal'], axis='y', AngBielaInRepe=90).mean(dim='phase')
-                PME2 = daGraf.sel(ID=arch, n_var=['PosPedal'], axis='y', AngBielaInRepe=270).mean(dim='phase')
-                PMS = daGraf.sel(ID=arch, n_var=['PosPedal'], axis='z', AngBielaInRepe=0).mean(dim='phase')
-                PMI = daGraf.sel(ID=arch, n_var=['PosPedal'], axis='z', AngBielaInRepe=180).mean(dim='phase')
-                
-                desalin_PME = PME.sel(side='L') - PME.sel(side='R')
-                desalin_PME2 = PME2.sel(side='L') - PME2.sel(side='R')
-                desalin_PMS = PMS.sel(side='L') - PMS.sel(side='R')
-                desalin_PMI = PMI.sel(side='L') - PMI.sel(side='R')
+                # df = dfPares.query('ID==@arch')
+
+                offsetX = 0  # ((daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='L') + daGraf.sel(ID=arch, n_var='PosPedal', axis='x', side='R')) / 2).mean(dim=['AngBielaInRepe', 'phase']).data / 10 #lo pasa a cm
+
+                # arch=daGraf.isel(ID=0).ID
+                # print(df.query('axis=="y" & AngBielaInRepe==90').groupby('side').mean())
+
+                PME = daGraf.sel(
+                    ID=arch, n_var=["PosPedal"], axis="y", AngBielaInRepe=90
+                ).mean(dim="phase")
+                PME2 = daGraf.sel(
+                    ID=arch, n_var=["PosPedal"], axis="y", AngBielaInRepe=270
+                ).mean(dim="phase")
+                PMS = daGraf.sel(
+                    ID=arch, n_var=["PosPedal"], axis="z", AngBielaInRepe=0
+                ).mean(dim="phase")
+                PMI = daGraf.sel(
+                    ID=arch, n_var=["PosPedal"], axis="z", AngBielaInRepe=180
+                ).mean(dim="phase")
+
+                desalin_PME = PME.sel(side="L") - PME.sel(side="R")
+                desalin_PME2 = PME2.sel(side="L") - PME2.sel(side="R")
+                desalin_PMS = PMS.sel(side="L") - PMS.sel(side="R")
+                desalin_PMI = PMI.sel(side="L") - PMI.sel(side="R")
 
                 diam_h = PME - PME2
                 diam_v = PMS - PMI
-                
-                #PME
-                plt.axvspan(PME.sel(side='R').data[0]+offsetX, PME.sel(side='L').data[0]+offsetX, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                plt.text(PME.sel(side='L')+offsetX, plt.gca().get_ylim()[1], f'desajuste ant {desalin_PME.data[0]:.2f} mm',
-                         ha='right', va='top', c='b', alpha=0.6, fontsize=10, rotation='vertical',
-                         transform=plt.gca().transData, zorder=5)
-                #PME2
-                plt.axvspan(PME2.sel(side='R').data[0]+offsetX, PME2.sel(side='L').data[0]+offsetX, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                plt.text(PME2.sel(side='L')+offsetX, plt.gca().get_ylim()[1], f'desajuste post {desalin_PME2.data[0]:.2f} mm',
-                         ha='right', va='top', c='b', alpha=0.6, fontsize=10, rotation='vertical',
-                         transform=plt.gca().transData, zorder=5)
-                #PMS
-                plt.axhspan(PMS.sel(side='R').data[0]+offsetX, PMS.sel(side='L').data[0]+offsetX, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                plt.text(0, plt.gca().get_ylim()[1], f'desajuste sup {desalin_PMS.data[0]:.2f} mm',
-                         ha='center', va='top', c='b', alpha=0.6, fontsize=10, rotation='horizontal',
-                         transform=plt.gca().transData, zorder=5)
-                #PMI
-                plt.axhspan(PMI.sel(side='R').data[0]+offsetX, PMI.sel(side='L').data[0]+offsetX, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                plt.text(0, plt.gca().get_ylim()[0], f'desajuste sup {desalin_PMI.data[0]:.2f} mm',
-                         ha='center', va='bottom', c='b', alpha=0.6, fontsize=10, rotation='horizontal',
-                         transform=plt.gca().transData, zorder=5)
-                
-                #Diámetros L
-                plt.text(0.5, 0.6, f'diam vert_L {diam_v.sel(side="L").data[0]:.2f} mm\n diam horiz_L {diam_h.sel(side="L").data[0]:.2f} mm\n{(diam_v.sel(side="L") / diam_h.sel(side="L")).data[0]*100:.2f}%',
-                         ha='center', va='bottom', c='b', alpha=0.6, fontsize=10, rotation='horizontal',
-                         transform=plt.gca().transAxes, zorder=5)
-                #Diámetros R
-                plt.text(0.5, 0.4, f'diam vert_R {diam_v.sel(side="R").data[0]:.2f} mm\n diam horiz_R {diam_h.sel(side="R").data[0]:.2f} mm\n{(diam_v.sel(side="R") / diam_h.sel(side="R")).data[0]*100:.2f}%',
-                         ha='center', va='bottom', c='b', alpha=0.6, fontsize=10, rotation='horizontal',
-                         transform=plt.gca().transAxes, zorder=5)
-                
-                #Dibuja la posición en puntos críticos de cada ciclo
-            def _draw_ptos_criticos(x,y, **kwargs):
-                #plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
-                df=kwargs['data']
+
+                # PME
+                plt.axvspan(
+                    PME.sel(side="R").data[0] + offsetX,
+                    PME.sel(side="L").data[0] + offsetX,
+                    alpha=0.3,
+                    color="green",
+                )  # crea un rectángulo horizontal delimitado a mano
+                plt.text(
+                    PME.sel(side="L") + offsetX,
+                    plt.gca().get_ylim()[1],
+                    f"desajuste ant {desalin_PME.data[0]:.2f} mm",
+                    ha="right",
+                    va="top",
+                    c="b",
+                    alpha=0.6,
+                    fontsize=10,
+                    rotation="vertical",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+                # PME2
+                plt.axvspan(
+                    PME2.sel(side="R").data[0] + offsetX,
+                    PME2.sel(side="L").data[0] + offsetX,
+                    alpha=0.3,
+                    color="green",
+                )  # crea un rectángulo horizontal delimitado a mano
+                plt.text(
+                    PME2.sel(side="L") + offsetX,
+                    plt.gca().get_ylim()[1],
+                    f"desajuste post {desalin_PME2.data[0]:.2f} mm",
+                    ha="right",
+                    va="top",
+                    c="b",
+                    alpha=0.6,
+                    fontsize=10,
+                    rotation="vertical",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+                # PMS
+                plt.axhspan(
+                    PMS.sel(side="R").data[0] + offsetX,
+                    PMS.sel(side="L").data[0] + offsetX,
+                    alpha=0.3,
+                    color="green",
+                )  # crea un rectángulo horizontal delimitado a mano
+                plt.text(
+                    0,
+                    plt.gca().get_ylim()[1],
+                    f"desajuste sup {desalin_PMS.data[0]:.2f} mm",
+                    ha="center",
+                    va="top",
+                    c="b",
+                    alpha=0.6,
+                    fontsize=10,
+                    rotation="horizontal",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+                # PMI
+                plt.axhspan(
+                    PMI.sel(side="R").data[0] + offsetX,
+                    PMI.sel(side="L").data[0] + offsetX,
+                    alpha=0.3,
+                    color="green",
+                )  # crea un rectángulo horizontal delimitado a mano
+                plt.text(
+                    0,
+                    plt.gca().get_ylim()[0],
+                    f"desajuste sup {desalin_PMI.data[0]:.2f} mm",
+                    ha="center",
+                    va="bottom",
+                    c="b",
+                    alpha=0.6,
+                    fontsize=10,
+                    rotation="horizontal",
+                    transform=plt.gca().transData,
+                    zorder=5,
+                )
+
+                # Diámetros L
+                plt.text(
+                    0.5,
+                    0.6,
+                    f'diam vert_L {diam_v.sel(side="L").data[0]:.2f} mm\n diam horiz_L {diam_h.sel(side="L").data[0]:.2f} mm\n{(diam_v.sel(side="L") / diam_h.sel(side="L")).data[0]*100:.2f}%',
+                    ha="center",
+                    va="bottom",
+                    c="b",
+                    alpha=0.6,
+                    fontsize=10,
+                    rotation="horizontal",
+                    transform=plt.gca().transAxes,
+                    zorder=5,
+                )
+                # Diámetros R
+                plt.text(
+                    0.5,
+                    0.4,
+                    f'diam vert_R {diam_v.sel(side="R").data[0]:.2f} mm\n diam horiz_R {diam_h.sel(side="R").data[0]:.2f} mm\n{(diam_v.sel(side="R") / diam_h.sel(side="R")).data[0]*100:.2f}%',
+                    ha="center",
+                    va="bottom",
+                    c="b",
+                    alpha=0.6,
+                    fontsize=10,
+                    rotation="horizontal",
+                    transform=plt.gca().transAxes,
+                    zorder=5,
+                )
+
+                # Dibuja la posición en puntos críticos de cada ciclo
+
+            def _draw_ptos_criticos(x, y, **kwargs):
+                # plt.axvspan(-12, -5, alpha=0.3, color='green') #crea un rectángulo horizontal delimitado a mano
+                df = kwargs["data"]
                 arch = df.ID.unique()[0]
-                for posbiela in [0,90,180,270]:
-                    posx=df.query('side=="L" & AngBielaInRepe==@posbiela').iloc[:,-2].mean()
-                    posy=df.query('side=="L" & AngBielaInRepe==@posbiela').iloc[:,-1].mean()
-                    plt.plot(posx, posy, c='firebrick', mfc='r', marker='o', ms=13, alpha=0.7, zorder=2)
-                    plt.text(posx, posy, str(posbiela), c='firebrick', fontsize=10, fontweight='bold', transform=plt.gca().transData, horizontalalignment='center', verticalalignment='center', zorder=3)
-                    
-                    posx=df.query('side=="R" & AngBielaInRepe==@posbiela').iloc[:,-2].mean()
-                    posy=df.query('side=="R" & AngBielaInRepe==@posbiela').iloc[:,-1].mean()
-                    plt.plot(posx, posy, c='limegreen', mfc='lime', marker='o', ms=13, alpha=0.7, zorder=2)
-                    plt.text(posx, posy, str(posbiela), c='limegreen', fontsize=10, fontweight='bold', transform=plt.gca().transData, horizontalalignment='center', verticalalignment='center', zorder=3)
-                
-            dfPares = crea_df_comparacion_pares(dfGraf, nomvar='PosPedal', parejes=['y','z'])
-            #dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
-            g = sns.relplot(data=dfPares, x='anteroposterior', y='vertical', col='ID', col_wrap=4, hue='side', #estimator=estim, errorbar=ci, units=unit, 
-                            lw=1, palette=['r', 'lime'], alpha=0.6, facet_kws={'sharex': False, 'sharey': False, 'legend_out':False, 'despine':False}, sort=False, kind='line',
-                            legend=True, height=4, zorder=1)        
-            g.map_dataframe(_draw_pos_biela, x='anteroposterior', y='vertical', color='green')
-            g.map_dataframe(_draw_ptos_criticos, x='anteroposterior', y='vertical', color='green')
-            plt.suptitle(f'Plano sagital alineación pedales {n_generico_archivos}', y=1)
-            #g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
-            
-            if not show_in_console:plt.close()
+                for posbiela in [0, 90, 180, 270]:
+                    posx = (
+                        df.query('side=="L" & AngBielaInRepe==@posbiela')
+                        .iloc[:, -2]
+                        .mean()
+                    )
+                    posy = (
+                        df.query('side=="L" & AngBielaInRepe==@posbiela')
+                        .iloc[:, -1]
+                        .mean()
+                    )
+                    plt.plot(
+                        posx,
+                        posy,
+                        c="firebrick",
+                        mfc="r",
+                        marker="o",
+                        ms=13,
+                        alpha=0.7,
+                        zorder=2,
+                    )
+                    plt.text(
+                        posx,
+                        posy,
+                        str(posbiela),
+                        c="firebrick",
+                        fontsize=10,
+                        fontweight="bold",
+                        transform=plt.gca().transData,
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        zorder=3,
+                    )
+
+                    posx = (
+                        df.query('side=="R" & AngBielaInRepe==@posbiela')
+                        .iloc[:, -2]
+                        .mean()
+                    )
+                    posy = (
+                        df.query('side=="R" & AngBielaInRepe==@posbiela')
+                        .iloc[:, -1]
+                        .mean()
+                    )
+                    plt.plot(
+                        posx,
+                        posy,
+                        c="limegreen",
+                        mfc="lime",
+                        marker="o",
+                        ms=13,
+                        alpha=0.7,
+                        zorder=2,
+                    )
+                    plt.text(
+                        posx,
+                        posy,
+                        str(posbiela),
+                        c="limegreen",
+                        fontsize=10,
+                        fontweight="bold",
+                        transform=plt.gca().transData,
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        zorder=3,
+                    )
+
+            dfPares = crea_df_comparacion_pares(
+                dfGraf, nomvar="PosPedal", parejes=["y", "z"]
+            )
+            # dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
+            g = sns.relplot(
+                data=dfPares,
+                x="anteroposterior",
+                y="vertical",
+                col="ID",
+                col_wrap=4,
+                hue="side",  # estimator=estim, errorbar=ci, units=unit,
+                lw=1,
+                palette=["r", "lime"],
+                alpha=0.6,
+                facet_kws={
+                    "sharex": False,
+                    "sharey": False,
+                    "legend_out": False,
+                    "despine": False,
+                },
+                sort=False,
+                kind="line",
+                legend=True,
+                height=4,
+                zorder=1,
+            )
+            g.map_dataframe(
+                _draw_pos_biela, x="anteroposterior", y="vertical", color="green"
+            )
+            g.map_dataframe(
+                _draw_ptos_criticos, x="anteroposterior", y="vertical", color="green"
+            )
+            plt.suptitle(f"Plano sagital alineación pedales {n_generico_archivos}", y=1)
+            # g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
+
+            if not show_in_console:
+                plt.close()
 
             pdf_pages.savefig(g.fig)
-            
-            #lo mismo en vista frontal
-            dfPares = crea_df_comparacion_pares(dfGraf, nomvar='PosPedal', parejes=['x','z'])
-            #dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
-            g = sns.relplot(data=dfPares, x='mediolateral', y='vertical', col='ID', col_wrap=4, hue='side', #estimator=estim, errorbar=ci, units=unit, 
-                            lw=1, palette=['r', 'lime'], alpha=0.6, facet_kws={'sharex': False, 'sharey': False, 'legend_out':False, 'despine':False}, sort=False, kind='line',
-                            legend=True, height=4, zorder=1)        
-            #g.map_dataframe(draw_pos_biela, x='mediolateral', y='vertical', color='green')
-            g.map_dataframe(_draw_ptos_criticos, x='mediolateral', y='vertical', color='green')
-            plt.suptitle(f'Plano sagital alineación pedales {n_generico_archivos}', y=1)
-            #g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
-            
-            if not show_in_console:plt.close()
+
+            # lo mismo en vista frontal
+            dfPares = crea_df_comparacion_pares(
+                dfGraf, nomvar="PosPedal", parejes=["x", "z"]
+            )
+            # dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
+            g = sns.relplot(
+                data=dfPares,
+                x="mediolateral",
+                y="vertical",
+                col="ID",
+                col_wrap=4,
+                hue="side",  # estimator=estim, errorbar=ci, units=unit,
+                lw=1,
+                palette=["r", "lime"],
+                alpha=0.6,
+                facet_kws={
+                    "sharex": False,
+                    "sharey": False,
+                    "legend_out": False,
+                    "despine": False,
+                },
+                sort=False,
+                kind="line",
+                legend=True,
+                height=4,
+                zorder=1,
+            )
+            # g.map_dataframe(draw_pos_biela, x='mediolateral', y='vertical', color='green')
+            g.map_dataframe(
+                _draw_ptos_criticos, x="mediolateral", y="vertical", color="green"
+            )
+            plt.suptitle(f"Plano sagital alineación pedales {n_generico_archivos}", y=1)
+            # g=daNormal01_cinem_norm.sel(n_var='AngArtKnee', axis='x', side=['L', 'R']).plot.line(x='AngBielaInRepe', row='ID', col='side', hue='phase')
+
+            if not show_in_console:
+                plt.close()
 
             pdf_pages.savefig(g.fig)
-            
-            
+
 
 # =============================================================================
 # %% Pulir archivos MVC-ISO
@@ -5718,37 +6392,40 @@ def limpia_MVC(daData) -> xr.DataArray:
 # =============================================================================
 if __name__ == "__main__":
     # if False:
-    
-    #---- Crea figuras para informes latex
-    # Guardar en F:\Investigacion\Proyectos\BikeFitting\PrestacionServicio\FigsInforme
-    
-    file = Path(r'F:\Investigacion\Proyectos\BikeFitting\Bikefitting\RatioMusloPierna\data-science-template-main-ratio-muslo-pierna\data\processed\2_Processed_BikeRatioMusloPna_Cinem_Cortado_Norm360.h5')
-    carpeta_guardar = Path(r'F:\Investigacion\Proyectos\BikeFitting\PrestacionServicio\FigsInforme')
-    
-    daCinem = (xr.load_dataarray(file))
 
-    daS = daCinem.sel(tipo='optimo', ID='S05')
-    RealizaGraficas_cinem(
-            daGraf=daS.sel(
-                n_var=["AngArtKnee", "AngArtAnkle"],
-                # side=["L", "R"],
-                axis="x",
-            ),
-            nomvars=["AngArtKnee", "AngArtAnkle"],
-            ejes=["x"],
-            repes=None,
-            tipo_graf=["coordinacion"],
-            ensemble_avg=bEnsembleAvg,
-            compara_lados_graf=False,
-            show_in_console=True,
-            # carpeta_guardar=carpeta_guardar,
+    # ---- Crea figuras para informes latex
+    # Guardar en F:\Investigacion\Proyectos\BikeFitting\PrestacionServicio\FigsInforme
+
+    file = Path(
+        r"F:\Investigacion\Proyectos\BikeFitting\Bikefitting\RatioMusloPierna\data-science-template-main-ratio-muslo-pierna\data\processed\2_Processed_BikeRatioMusloPna_Cinem_Cortado_Norm360.h5"
+    )
+    carpeta_guardar = Path(
+        r"F:\Investigacion\Proyectos\BikeFitting\PrestacionServicio\FigsInforme"
     )
 
-    daS = daCinem.sel(tipo='optimo', ID='S19')
+    daCinem = xr.load_dataarray(file)
+
+    daS = daCinem.sel(tipo="optimo", ID="S05")
+    RealizaGraficas_cinem(
+        daGraf=daS.sel(
+            n_var=["AngArtKnee", "AngArtAnkle"],
+            # side=["L", "R"],
+            axis="x",
+        ),
+        nomvars=["AngArtKnee", "AngArtAnkle"],
+        ejes=["x"],
+        repes=None,
+        tipo_graf=["coordinacion"],
+        ensemble_avg=bEnsembleAvg,
+        compara_lados_graf=False,
+        show_in_console=True,
+        # carpeta_guardar=carpeta_guardar,
+    )
+
+    daS = daCinem.sel(tipo="optimo", ID="S19")
     RealizaGraficas_cinem(
         daGraf=(
-            daS.sel(n_var=["HJC", "KJC", "AJC", "PosPedal"])
-            - daS.sel(n_var="EjeBiela")
+            daS.sel(n_var=["HJC", "KJC", "AJC", "PosPedal"]) - daS.sel(n_var="EjeBiela")
         )
         / 10,
         # daGraf=daS.sel(n_var=["HJC", "KJC", "AJC", "EjeBiela"])
@@ -5764,8 +6441,6 @@ if __name__ == "__main__":
         carpeta_guardar=carpeta_guardar,
     )
 
-
-    
     # PROBAR GRÁFICO KOPS, PLANO SAGITAL Y EN VERTICAL POSICIÓN PEDAL O META
     RealizaGraficas_cinem(
         daGraf=daCinem.isel(ID=0),
@@ -5778,10 +6453,6 @@ if __name__ == "__main__":
         # carpeta_guardar=ruta_trabajo / "FigurasGenericas",
     )
 
-
-
-
-    
     ############### PRUEBAS ANTIGUAS
     r"""
     sys.path.append(r'F:\Programacion\Python\Mios\Functions')

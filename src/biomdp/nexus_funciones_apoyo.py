@@ -96,7 +96,7 @@ import time  # para cuantificar tiempos de procesado
 import os
 import sys
 
-from biomdp.readViconCsv import read_vicon_csv, read_vicon_csv_pl_xr
+from biomdp.read_vicon_csv import read_vicon_csv, read_vicon_csv_pl_xr
 from biomdp.read_vicon_c3d import read_vicon_c3d_xr
 import biomdp.slice_time_series_phases as stsp
 
