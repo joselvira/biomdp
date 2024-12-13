@@ -23,14 +23,17 @@ import matplotlib.pyplot as plt
 
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.4.2.0"
-__date__ = "16/06/2024"
+__version__ = "v.4.2.1"
+__date__ = "13/12/2024"
 
 
 """
 TODO: que haga los cortes interpolando para que empiecen las fases justo en el criterio?
 
 Modificaciones:
+    13/12/2024, v4.2.0
+        - Ahora indica error en función cortes auxiliar.
+    
     16/06/2024, v4.2.0
         - Introducido argumento add_to_ini y add_to_end en función slice_time_series (de
           momento sólo funciona en versión numpy).
@@ -324,7 +327,7 @@ def detect_events(
                     )
                 ).data
 
-    def detect_aux_idx(
+    def _detect_aux_idx(
         dat,
         data_reference_var=None,
         func_events=None,
@@ -344,7 +347,8 @@ def detect_events(
 
         try:
             evts = func_events(data_reference_var, **kwargs_func_events)
-        except:
+        except Exception as exc:
+            print(exc)
             return events
 
         # If necessary, adjust initial an final events
@@ -361,11 +365,11 @@ def detect_events(
         return events
 
     """
-    dat = data[0,0,0].values
-    data_reference_var = data.sel(reference_var)[0].values
+    dat = data[0,0,0,0,0,0].values
+    data_reference_var = data.sel(reference_var)[0,0,0,0].values
     """
     da = xr.apply_ufunc(
-        detect_aux_idx,
+        _detect_aux_idx,
         data,
         data.sel(reference_var),
         func_events,
