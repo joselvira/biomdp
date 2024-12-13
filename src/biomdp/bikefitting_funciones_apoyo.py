@@ -1402,11 +1402,10 @@ def segmenta_ModeloBikefitting_xr_cinem(
     if verbose:
         print(f"\nSegmentando {len(daData.ID)} archivos...")
 
-    # Es necesario separar lado L y R porque usan criterios distintos de corte
+    # No es necesario separar lado L y R porque aunque usan criterios distintos de
+    # corte según AngBiela, AngBiela viene ya ajustado para cada lado
     ###CORTES A PARTIR DE ANG BIELA
-    # daData.isel(ID=0).sel(side="R", n_var='AngBiela').plot.line(x='time')
-    # daData.isel(ID=0, tipo=0).sel(n_var='AngBiela', axis='y').plot.line(x='time')
-
+    
     daSegment = stsp.slice_time_series(
         data=daData,
         func_events=stsp.detect_onset_detecta_aux,
