@@ -3,15 +3,19 @@
 # =============================================================================
 
 __filename__ = "general_processing_functions"
-__version__ = "0.3.0"
+__version__ = "0.3.2"
 __company__ = "CIDUMH"
-__date__ = "17/11/2024"
+__date__ = "13/12/2024"
 __author__ = "Jose L. L. Elvira"
 
 """
 Modificaciones:
+    13/12/2024, v0.3.2
+        - Corregido nanargmax_xr, no incluía bien la dimensión.
+        - Cambiado nombre _cross_correl_rapida_aux por _cross_correl_noisy_aux
+    
     17/11/2024, v0.3.1
-        - Corregido nanargmax_xr, no oncluía bien la dimensión
+        - Corregido nanargmax_xr, no incluía bien la dimensión
         - Incluido nanargmin_xr
 
     04/09/2024, v0.3.0
@@ -38,6 +42,77 @@ import xarray as xr
 import scipy.integrate as integrate
 
 import time
+
+
+def create_time_series_xr(
+    rnd_seed=None,
+    num_subj=10,
+    Fs=100.0,
+    IDini=0,
+    rango_offset=[-2.0, -0.5],
+    rango_amp=[1.0, 2.2],
+    rango_frec=[1.8, 2.4],
+    rango_af=[0.0, 1.0],
+    rango_duracion=[5.0, 5.1],
+    amplific_ruido=[0.4, 0.7],
+    fc_ruido=[7.0, 12.0],
+) -> xr.DataArray:
+    """
+    Create a dummy data sample based on sine waves with noise
+    """
+
+    if rnd_seed is not None:
+        np.random.seed(
+            rnd_seed
+        )  # para mantener la consistencia al crear los datos aleatorios
+    subjects = []
+    for subj in range(num_subj):
+        # print(subj)
+        a = np.random.uniform(rango_amp[0], rango_amp[1])
+        of = np.random.uniform(rango_offset[0], rango_offset[1])
+        f = np.random.uniform(rango_frec[0], rango_frec[1])
+        af = np.deg2rad(
+            np.random.uniform(rango_af[0], rango_af[1])
+        )  # lo pasa a radianes
+        err = a * np.random.uniform(amplific_ruido[0], amplific_ruido[1])
+        fc_err = np.random.uniform(fc_ruido[0], fc_ruido[1])
+        duracion = np.random.uniform(rango_duracion[0], rango_duracion[1])
+
+        Ts = 1.0 / Fs  # intervalo de tiempo entre datos en segundos
+        t = np.arange(0, duracion, Ts)
+
+        senal = np.array(of + a * np.sin(2 * np.pi * f * t + af))
+
+        # Crea un ruido aleatorio controlado
+        pasadas = 2.0  # nº de pasadas del filtro adelante y atrás
+        orden = 2
+        Cf = (2 ** (1 / pasadas) - 1) ** (
+            1 / (2 * orden)
+        )  # correction factor. Para 2nd order = 0.802
+        Wn = 2 * fc_err / Fs / Cf
+        b1, a1 = butter(orden, Wn, btype="low")
+        ruido = filtfilt(b1, a1, np.random.uniform(a - err, a + err, len(t)))
+
+        #################################
+        subjects.append(senal + ruido)
+        # subjects.append(np.expand_dims(senal + ruido, axis=0))
+        # sujeto.append(pd.DataFrame(senal + ruido, columns=['value']).assign(**{'ID':'{0:02d}'.format(subj+IDini), 'time':np.arange(0, len(senal)/Fs, 1/Fs)}))
+
+    # Pad data to last the same
+    import itertools
+
+    data = np.array(list(itertools.zip_longest(*subjects, fillvalue=np.nan)))
+
+    data = xr.DataArray(
+        data=data,
+        coords={
+            "time": np.arange(data.shape[0]) / Fs,
+            "ID": [
+                f"{i:0>2}" for i in range(num_subj)
+            ],  # rellena ceros a la izq. f'{i:0>2}' vale para int y str, f'{i:02}' vale solo para int
+        },
+    )
+    return data
 
 
 def integrate_window(daData, daWindow=None, daOffset=None, result_return="continuous"):
@@ -308,8 +383,32 @@ import polars as pl
 
 # from scipy import stats
 def _cross_correl_simple_aux(datos1, datos2, ID=None):
-    """Función simple y lenta pero exacta para cross correl
-    De momento en datos1 tiene que ir el más largo.
+    """
+    Simple and slow but exact function for cross correlation.
+    So far, data1 has to be the longest one.
+    Uses polars, faster than numpy.
+
+    Example:
+    daCrosscorr = xr.apply_ufunc(
+        _cross_correl_simple_aux,
+        daInstrument1,
+        daInstrument2,,
+
+        input_core_dims=[
+            ["time"],
+            ["time"],
+        ],
+        output_core_dims=[["lag"]],
+        exclude_dims=set(
+            (
+                "lag",
+                "time",
+            )
+        ),
+        vectorize=True,
+        dask="parallelized",
+        keep_attrs=False,
+    ).dropna(dim="lag", how="all")
     """
     if ID is not None:
         print(ID)
@@ -345,47 +444,13 @@ def _cross_correl_simple_aux(datos1, datos2, ID=None):
     return corr  # si hay algún error, lo devuelve vacío
 
 
-def _cross_correl_simple_aux_pl(datos1, datos2, ID=None):
-    """Función simple y lenta pero exacta para cross correl
-    De momento en datos1 tiene que ir el más largo.
+def _cross_correl_noisy_aux(datos1, datos2, ID=None):
     """
-    if ID is not None:
-        print(ID)
+    Fast but sometimes less accurate function for cross correlation.
+    Good for noisy signals.
+    """
+    from scipy import signal
 
-    # pre-crea el array donde guardará las correlaciones de cada desfase
-    corr = np.full(max(len(datos1), len(datos2)), np.nan)
-
-    if np.isnan(datos1).all() or np.isnan(datos2).all():
-        print(f"{ID} vacío")
-        return corr
-
-    try:
-        # quita nans del final para función stats.pearson
-        dat1 = datos1[~np.isnan(datos1)]
-        dat2 = datos2[~np.isnan(datos2)]
-
-        for i in range(0, dat1.size - dat2.size):
-            # df = pl.from_numpy(np.asarray([dat1[i : i + dat2.size], dat2]), schema=["a", "b"], orient="col")
-            df = pl.from_numpy(
-                np.vstack([dat1[i : i + dat2.size], dat2]),
-                schema=["a", "b"],
-                orient="col",
-            )
-
-            corr[i] = df.select(pl.corr("a", "b")).item()
-        # plt.plot(corr)
-
-    except Exception as err:
-        print("Error de cálculo, posiblemente vacío", err)
-
-    return corr  # si hay algún error, lo devuelve vacío
-
-
-from scipy import signal
-
-
-def _cross_correl_rapida_aux(datos1, datos2, ID=None):
-    """Función rápida pero a veces menos exacta para cross correl"""
     if ID is not None:
         print(ID)
 
@@ -546,72 +611,6 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import seaborn as sns
 
-    def create_time_series_xr(
-        rnd_seed=None,
-        num_subj=10,
-        Fs=100.0,
-        IDini=0,
-        rango_offset=[-2.0, -0.5],
-        rango_amp=[1.0, 2.2],
-        rango_frec=[1.8, 2.4],
-        rango_af=[0.0, 1.0],
-        rango_duracion=[5.0, 5.1],
-        amplific_ruido=[0.4, 0.7],
-        fc_ruido=[7.0, 12.0],
-    ):
-        if rnd_seed is not None:
-            np.random.seed(
-                rnd_seed
-            )  # para mantener la consistencia al crear los datos aleatorios
-        subjects = []
-        for subj in range(num_subj):
-            # print(subj)
-            a = np.random.uniform(rango_amp[0], rango_amp[1])
-            of = np.random.uniform(rango_offset[0], rango_offset[1])
-            f = np.random.uniform(rango_frec[0], rango_frec[1])
-            af = np.deg2rad(
-                np.random.uniform(rango_af[0], rango_af[1])
-            )  # lo pasa a radianes
-            err = a * np.random.uniform(amplific_ruido[0], amplific_ruido[1])
-            fc_err = np.random.uniform(fc_ruido[0], fc_ruido[1])
-            duracion = np.random.uniform(rango_duracion[0], rango_duracion[1])
-
-            Ts = 1.0 / Fs  # intervalo de tiempo entre datos en segundos
-            t = np.arange(0, duracion, Ts)
-
-            senal = np.array(of + a * np.sin(2 * np.pi * f * t + af))
-
-            # Crea un ruido aleatorio controlado
-            pasadas = 2.0  # nº de pasadas del filtro adelante y atrás
-            orden = 2
-            Cf = (2 ** (1 / pasadas) - 1) ** (
-                1 / (2 * orden)
-            )  # correction factor. Para 2nd order = 0.802
-            Wn = 2 * fc_err / Fs / Cf
-            b1, a1 = butter(orden, Wn, btype="low")
-            ruido = filtfilt(b1, a1, np.random.uniform(a - err, a + err, len(t)))
-
-            #################################
-            subjects.append(senal + ruido)
-            # subjects.append(np.expand_dims(senal + ruido, axis=0))
-            # sujeto.append(pd.DataFrame(senal + ruido, columns=['value']).assign(**{'ID':'{0:02d}'.format(subj+IDini), 'time':np.arange(0, len(senal)/Fs, 1/Fs)}))
-
-        # Pad data to last the same
-        import itertools
-
-        data = np.array(list(itertools.zip_longest(*subjects, fillvalue=np.nan)))
-
-        data = xr.DataArray(
-            data=data,
-            coords={
-                "time": np.arange(data.shape[0]) / Fs,
-                "ID": [
-                    f"{i:0>2}" for i in range(num_subj)
-                ],  # rellena ceros a la izq. f'{i:0>2}' vale para int y str, f'{i:02}' vale solo para int
-            },
-        )
-        return data
-
     rnd_seed = np.random.seed(
         12340
     )  # fija la aleatoriedad para asegurarse la reproducibilidad
@@ -654,6 +653,7 @@ if __name__ == "__main__":
     )
     var_a = xr.concat([Pre_a, Post_a], dim="momento")
     var_a.sel(n_var="a").plot.line(x="time", col="ID", col_wrap=4)
+    var_a.attrs["freq"] = freq
 
     # =============================================================================
     # %% TEST INTEGRATE
@@ -698,8 +698,13 @@ if __name__ == "__main__":
     # =============================================================================
     # %% TEST CROSSCORREL
     # =============================================================================
+    daInstrumento1 = var_a.sel(n_var="a", momento="pre").drop_vars("momento")
+    daInstrumento2 = daInstrumento1.isel(
+        time=slice(int(4 * var_a.freq), int(8 * var_a.freq))
+    )
+
     daCrosscorr = xr.apply_ufunc(
-        _cross_correl_simple_aux,  # nombre de la función
+        _cross_correl_simple_aux,
         # daiSen.sel(articulacion='rodilla', lado='L', eje='x').dropna(dim='time'),
         daInstrumento1,
         daInstrumento2,  # .sel(partID=da1['partID'], tiempo='pre'),
@@ -709,17 +714,17 @@ if __name__ == "__main__":
         input_core_dims=[
             ["time"],
             ["time"],
-            [],
-            [],
-            [],
-        ],  # lista con una entrada por cada argumento
-        output_core_dims=[["lag"]],  # datos que devuelve
+            # [],
+            # [],
+            # [],
+        ],
+        output_core_dims=[["lag"]],
         exclude_dims=set(
             (
                 "lag",
                 "time",
             )
-        ),  # dimensiones que se permite que cambien (tiene que ser un set)
+        ),
         # dataset_fill_value=np.nan,
         vectorize=True,
         dask="parallelized",
@@ -727,33 +732,34 @@ if __name__ == "__main__":
         # kwargs=args_func_cortes,
     ).dropna(dim="lag", how="all")
     daCrosscorr = daCrosscorr.assign_coords(lag=range(len(daCrosscorr.lag)))
+    daCrosscorr.plot.line(x="lag")
+    nanargmax_xr(daCrosscorr, dim="lag")
 
-    daCrosscorr = xr.apply_ufunc(
-        _cross_correl_rapida_aux,  # nombre de la función
+    daCrosscorr_rap = xr.apply_ufunc(
+        _cross_correl_noisy_aux,
         # daiSen.sel(articulacion='rodilla', lado='L', eje='x').dropna(dim='time'),
         daInstrumento1,
         daInstrumento2,  # .sel(partID=da1['partID'], tiempo='pre'),
-        daInstrumento1.time.size - daInstrumento2.time.size,
-        daInstrumento1["partID"],
-        daInstrumento1["tiempo"],
+        # daInstrumento1.time.size - daInstrumento2.time.size,
+        # daInstrumento1["ID"],
         input_core_dims=[
             ["time"],
             ["time"],
-            [],
-            [],
-            [],
-        ],  # lista con una entrada por cada argumento
-        output_core_dims=[["lag"]],  # datos que devuelve
+            # [],
+        ],
+        output_core_dims=[["lag"]],
         exclude_dims=set(
             (
                 "lag",
                 "time",
             )
-        ),  # dimensiones que se permite que cambien (tiene que ser un set)
+        ),
         # dataset_fill_value=np.nan,
         vectorize=True,
         dask="parallelized",
         keep_attrs=False,
         # kwargs=args_func_cortes,
     ).dropna(dim="lag", how="all")
-    daCrosscorr = daCrosscorr.assign_coords(lag=range(len(daCrosscorr.lag)))
+    daCrosscorr_rap = daCrosscorr_rap.assign_coords(lag=range(len(daCrosscorr_rap.lag)))
+    daCrosscorr_rap.plot.line(x="lag")
+    nanargmax_xr(daCrosscorr_rap, dim="lag")
