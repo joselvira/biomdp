@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: biomdp
-Version: 0.4.9
+Version: 0.4.10
 Summary: Usefull functions to analize biomechanicanical data
 Author-email: "Jose L. L. Elvira" <jose.lopeze@umh.es>
 Project-URL: Homepage, https://github.com/joselvira/BiomecanicaPython
