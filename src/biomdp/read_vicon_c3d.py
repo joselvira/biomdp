@@ -501,8 +501,9 @@ def read_vicon_c3d_xr_global_ds(
     return daTodo  # daTrajec, daModels, daForce, daEMG
 
 
-
-def read_vicon_ezc3d_xr(file, section=None, n_vars_load=None, coincidence="similar")->xr.DataArray:
+def read_vicon_ezc3d_xr(
+    file, section=None, n_vars_load=None, coincidence="similar"
+) -> xr.DataArray:
     if section not in [
         "Trajectories",
         "Model Outputs",
@@ -524,29 +525,33 @@ def read_vicon_ezc3d_xr(file, section=None, n_vars_load=None, coincidence="simil
         # print(f'Loading section {section}, file: {file.name}')
 
         acq = ezc3d.c3d(file.as_posix())
-        
+
         # Trajectiories and Modeled outputs
         if section in ["Trajectories", "Model Outputs"]:
-            freq = acq['parameters']['POINT']['RATE']['value'][0]
-        
+            freq = acq["parameters"]["POINT"]["RATE"]["value"][0]
+
             labels = acq["parameters"]["POINT"]["LABELS"]["value"]
             data = acq["data"]["points"][:3, :, :]
 
             coords = {
                 "axis": ["x", "y", "z"],
                 "n_var": labels,
-                "time": np.arange(data.shape[-1]) / freq
+                "time": np.arange(data.shape[-1]) / freq,
             }
-            da = xr.DataArray(
-                data,  # =np.expand_dims(data, axis=0),
-                dims=coords.keys(),
-                coords=coords,
-                name="Trajectories",
-                attrs={
-                    "freq": freq,
-                    "units": "mm",
-                },
-            ).transpose("n_var", "axis", "time")
+            da = (
+                xr.DataArray(
+                    data,  # =np.expand_dims(data, axis=0),
+                    dims=coords.keys(),
+                    coords=coords,
+                    name="Trajectories",
+                    attrs={
+                        "freq": freq,
+                        "units": "mm",
+                    },
+                )
+                .transpose("n_var", "axis", "time")
+                .dropna("time", how="all")  # para quitar los ceros cuano no hay dato
+            )
 
             if "Trajectories" in section:
                 # Delete unnamed trajectories and modeled outputs
@@ -560,11 +565,11 @@ def read_vicon_ezc3d_xr(file, section=None, n_vars_load=None, coincidence="simil
 
         # Analogs
         elif section in ["Forces", "EMG"]:  # ('Forces' in section or 'EMG' in section):
-            freq = acq['parameters']['ANALOG']['RATE']['value'][0]
-        
+            freq = acq["parameters"]["ANALOG"]["RATE"]["value"][0]
+
             labels = acq["parameters"]["ANALOG"]["LABELS"]["value"]
-            
-            data = acq["data"]['analogs'][0]
+
+            data = acq["data"]["analogs"][0]
 
             # data_analog.shape
             coords = {
@@ -617,11 +622,11 @@ def read_vicon_ezc3d_xr(file, section=None, n_vars_load=None, coincidence="simil
                             # .assign_coords(n_var=['plat1', 'plat2'])
                             .assign_coords(axis=["x", "y", "z"])
                         )
-                    elif len(da.n_var) == 8: # Bioware 1 plat
-                        da.attrs['description'] = 'Data from Bioware 1 plat'
+                    elif len(da.n_var) == 8:  # Bioware 1 plat
+                        da.attrs["description"] = "Data from Bioware 1 plat"
                     else:
                         raise Exception("The number of Force variables is not 3 or 6")
-                    
+
                     da.attrs["units"] = "N"
                     # da.time.attrs['units']='s'
                     # da.plot.line(x='time', col='axis', hue='n_var')
@@ -653,7 +658,6 @@ def read_vicon_ezc3d_xr(file, section=None, n_vars_load=None, coincidence="simil
         da = da.sel(n_var=n_vars_load)
 
     return da  # daTrajec, daModels, daForce, daEMG
-
 
 
 # =============================================================================
@@ -769,7 +773,6 @@ if __name__ == "__main__":
 
     daTrajec.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
 
-
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "SaltosS13_SJ_100S_03.c3d"
     read_vicon_ezc3d_xr(file, section="Trajectories")
@@ -788,23 +791,23 @@ if __name__ == "__main__":
     file = ruta_archivo / "Bioware-12CMJAB2.c3d"
     read_vicon_ezc3d_xr(file, section="Trajectories")
     read_vicon_ezc3d_xr(file, section="Model Outputs")
-    read_vicon_ezc3d_xr(file, section="Forces") #canales de fuerza en crudo
+    read_vicon_ezc3d_xr(file, section="Forces")  # canales de fuerza en crudo
     read_vicon_ezc3d_xr(file, section="EMG")
 
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "ManuBen_INI.c3d"
     read_vicon_ezc3d_xr(file, section="Trajectories")
     read_vicon_ezc3d_xr(file, section="Model Outputs")
-    read_vicon_ezc3d_xr(file, section="Forces") #canales de fuerza en crudo
+    read_vicon_ezc3d_xr(file, section="Forces")  # canales de fuerza en crudo
     read_vicon_ezc3d_xr(file, section="EMG")
 
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "SillaRuedas-s1406.c3d"
     read_vicon_ezc3d_xr(file, section="Trajectories")
     read_vicon_ezc3d_xr(file, section="Model Outputs")
-    f=read_vicon_ezc3d_xr(file, section="Forces")
+    f = read_vicon_ezc3d_xr(file, section="Forces")
     read_vicon_ezc3d_xr(file, section="EMG")
-    f.plot.line(x='time', col='n_var', col_wrap=3)
+    f.plot.line(x="time", col="n_var", col_wrap=3)
 
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "PCFutbol-1poa.c3d"
@@ -812,4 +815,4 @@ if __name__ == "__main__":
     read_vicon_ezc3d_xr(file, section="Model Outputs")
     f = read_vicon_ezc3d_xr(file, section="Forces")
     read_vicon_ezc3d_xr(file, section="EMG")
-    f.plot.line(x='time', col='n_var', col_wrap=3)
+    f.plot.line(x="time", col="n_var", col_wrap=3)

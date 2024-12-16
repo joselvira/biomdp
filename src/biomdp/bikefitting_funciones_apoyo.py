@@ -919,7 +919,7 @@ def calcula_variables_posicion(
 def busca_eventos_biela(
     daData: xr.DataArray, region_interest: list = None, show=False
 ) -> xr.DataArray:
-    """busca posiciones de biela"""
+    """Busca posiciones de biela"""
 
     if region_interest is None:
         # si no está definida la región, busca inicio y final de datos (no nans)
@@ -1405,7 +1405,7 @@ def segmenta_ModeloBikefitting_xr_cinem(
     # No es necesario separar lado L y R porque aunque usan criterios distintos de
     # corte según AngBiela, AngBiela viene ya ajustado para cada lado
     ###CORTES A PARTIR DE ANG BIELA
-    
+
     daSegment = stsp.slice_time_series(
         data=daData,
         func_events=stsp.detect_onset_detecta_aux,

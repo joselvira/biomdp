@@ -33,13 +33,20 @@ from detecta import detect_onset
 # from scipy.signal import find_peaks #sustituir por detecta?????
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.4.0"
-__date__ = "07/12/2024"
+__version__ = "v.1.5.1"
+__date__ = "16/12/2024"
 
 
 # TODO: probar detectar umbrales con scipy.stats.threshold
 """
 Modificaciones:
+    16/12/2024, v.1.5.1
+            - Corregido que en ajusta_offsetFz no mantenía los atributos.
+    
+    15/12/2024, v.1.5.0
+            - En función load_merge_vicon_c3d_selectivo incluido parámetro read_c3d_function
+              para elegir la función de lectura (read_vicon_c3d_xr o read_vicon_ezc3d_xr)
+
     07/12/2024, v.1.4.0
             - Calcula más variables relacionadas con la caída (FZMaxCaida, PMinCaida, etc.).
             
@@ -888,9 +895,16 @@ def load_merge_vicon_c3d_selectivo(
     n_vars_load=None,
     tipo_datos=None,
     n_estudio=None,
+    read_c3d_function=None,
     show=False,
 ) -> xr.DataArray:
-    from biomdp.read_vicon_c3d import read_vicon_c3d_xr  # , read_vicon_c3d_xr_global
+    from biomdp.read_vicon_c3d import (
+        read_vicon_c3d_xr,
+        read_vicon_ezc3d_xr,
+    )  # , read_vicon_c3d_xr_global
+
+    if read_c3d_function is None:
+        read_c3d_function = read_vicon_c3d_xr
 
     if hoja_registro is None:
         print("Debes especificar la hoja de registro")
@@ -919,7 +933,7 @@ def load_merge_vicon_c3d_selectivo(
                     print(f"Cargando sección {section}, archivo: {file.name}")
                     # print(f'{S}_{t}_{r}', f'{S}_{t}_{r}' in [x.stem for x in lista_archivos])
                     try:
-                        daProvis = read_vicon_c3d_xr(
+                        daProvis = read_c3d_function(
                             file, section=section, n_vars_load=n_vars_load
                         ).expand_dims(
                             {"ID": ["_".join(file.stem.split("_"))]}, axis=0
@@ -4797,7 +4811,7 @@ def ajusta_offsetFz(
             # offset_vuelo.sel(axis='z').plot.line(col='ID', col_wrap=4, hue='repe')
             # daDatos -= offset_vuelo
         daReturn = daReturn - offset_vuelo
-        # daDatos = daDatos - offset_vuelo
+        daReturn.attrs = daDatos.attrs
 
         if show:
             if "plat" in daDatos.dims:
@@ -5895,7 +5909,7 @@ if __name__ == "__main__":
         daDJ_norm = daDJ / daPeso
         daDJ_norm.sel(axis="z").plot.line(x="time", col="ID", col_wrap=4)
 
-    """
+    r"""
     # =============================================================================
     # PRUEBAS COMO CLASE
     # =============================================================================

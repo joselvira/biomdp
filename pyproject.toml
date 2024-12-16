@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "biomdp"
-version = "0.4.10"
+version = "0.5.1"
 authors = [
   { name="Jose L. L. Elvira", email="jose.lopeze@umh.es" },
 ]

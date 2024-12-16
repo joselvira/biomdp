@@ -3,13 +3,16 @@
 # =============================================================================
 
 __filename__ = "general_processing_functions"
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 __company__ = "CIDUMH"
-__date__ = "13/12/2024"
+__date__ = "16/12/2024"
 __author__ = "Jose L. L. Elvira"
 
 """
 Modificaciones:
+    16/12/2024, v0.4.0
+        - Incluida función procesaEMG, que estaba en nexus_processing_functions.
+    
     13/12/2024, v0.3.2
         - Corregido nanargmax_xr, no incluía bien la dimensión.
         - Cambiado nombre _cross_correl_rapida_aux por _cross_correl_noisy_aux
@@ -281,13 +284,13 @@ def calculate_distance(point1, point2):
 Ref: Solnik, S., Rider, P., Steinweg, K., Devita, P., & Hortobágyi, T. (2010). Teager-Kaiser energy operator signal conditioning improves EMG onset detection. European Journal of Applied Physiology, 110(3), 489–498. https://doi.org/10.1007/s00421-010-1521-8
 
 Función sacada de Duarte (https://nbviewer.org/github/BMClab/BMC/blob/master/notebooks/Electromyography.ipynb)
-The Teager–Kaiser Energy operator to improve onset detection
-The Teager–Kaiser Energy (TKE) operator has been proposed to increase the accuracy of the onset detection by improving the SNR of the EMG signal (Li et al., 2007).
+The Teager-Kaiser Energy operator to improve onset detection
+The Teager-Kaiser Energy (TKE) operator has been proposed to increase the accuracy of the onset detection by improving the SNR of the EMG signal (Li et al., 2007).
 """
 
 
 def tkeo(x):
-    r"""Calculates the Teager–Kaiser Energy operator.
+    r"""Calculates the Teager-Kaiser Energy operator.
 
     Parameters
     ----------
@@ -297,7 +300,7 @@ def tkeo(x):
     Returns
     -------
     y : 1D array_like
-        signal processed by the Teager–Kaiser Energy operator
+        signal processed by the Teager-Kaiser Energy operator
 
     Notes
     -----
@@ -311,12 +314,48 @@ def tkeo(x):
     """
     x = np.asarray(x)
     y = np.copy(x)
-    # Teager–Kaiser Energy operator
+    # Teager-Kaiser Energy operator
     y[1:-1] = x[1:-1] * x[1:-1] - x[:-2] * x[2:]
     # correct the data in the extremities
     y[0], y[-1] = y[1], y[-2]
 
     return y
+
+
+def procesaEMG(
+    daEMG: xr.DataArray, fr=None, fc_band=[10, 400], fclow=8, btkeo=False
+) -> xr.DataArray:
+    from biomdp.filtrar_Butter import filtrar_Butter, filtrar_Butter_bandpass
+
+    if fr == None:
+        fr = daEMG.freq
+    # Filtro band-pass
+    daEMG_proces = filtrar_Butter_bandpass(
+        daEMG, fr=fr, fclow=fc_band[0], fchigh=fc_band[1]
+    )
+    # Centra, ¿es necesario?
+    daEMG_proces = daEMG_proces - daEMG_proces.mean(dim="time")
+
+    if btkeo:
+        daEMG_proces = xr.apply_ufunc(
+            tkeo,
+            daEMG_proces,
+            input_core_dims=[["time"]],
+            output_core_dims=[["time"]],
+            vectorize=True,
+        )
+    # Rectifica
+    daEMG_proces = abs(daEMG_proces)
+    # filtro low-pass
+    daEMG_proces = filtrar_Butter(daEMG_proces, fr=fr, fc=fclow, kind="low")
+
+    # daEMG_proces.attrs['freq'] = daEMG.attrs['freq']
+    # daEMG_proces.attrs['units'] = daEMG.attrs['units']
+    # daEMG_proces.time.attrs['units'] = daEMG.time.attrs['units']
+    daEMG_proces.attrs = daEMG.attrs
+    daEMG_proces.name = "EMG"
+
+    return daEMG_proces
 
 
 # TODO: GENERALIZAR LA FUNCIÓN DE NORMALIZAR

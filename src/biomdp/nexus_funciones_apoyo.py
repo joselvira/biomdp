@@ -2930,7 +2930,7 @@ def carga_preprocesa_c3d_EMG(
 # =============================================================================
 if __name__ == "__main__":
     if False:
-        """
+        r"""
         sys.path.append(r'F:\Programacion\Python\Mios\Functions')
         import Nexus_FuncionesApoyo as nfa
         """

@@ -236,7 +236,7 @@ def find_onset_aux(
     fp = find_peaks(integDetr, **dict(height=0))[0]
     do[:7, 1] - fp[:7]
 
-    from general_processing_functions import integrate_window, detrend_dim
+    from biomdp.general_processing_functions import integrate_window, detrend_dim
 
     # Integra la señal
     daInteg = integrate_window(daTodos - umbral, daOffset=0)  # daTodos.isel(time=0))
@@ -897,7 +897,7 @@ def slice_time_series_pl(
         # TODO: improve vectorizing
         if include_first_next_last:
             for sl in range(len(evts) - 2):
-                df4[sl, evts[sl + 1] - evts[sl]] = dat[evts[sl + 1]]
+                df4[sl, evts[sl + 1] - evts[sl]] = data[evts[sl + 1]]
                 # df4[0,-4:]
                 # df4[1,:4]
         return df4
@@ -1562,7 +1562,7 @@ if __name__ == "__main__":
     # %% Test the functions
     # =============================================================================
 
-    """
+    r"""
     #Example importing
     sys.path.insert(1, r'F:\Programacion\Python\Mios\Functions')  # add to pythonpath
     from slice_time_series_phases import SliceTimeSeriesPhases as stsp
@@ -1711,7 +1711,7 @@ if __name__ == "__main__":
         x="n_event", col="momento", hue="phase", row="ID", marker="o"
     )
 
-    from general_processing_functions import integrate_window
+    from biomdp.general_processing_functions import integrate_window
 
     daInteg = integrate_window(daTodos, daOffset=daTodos.isel(time=0))
     daInteg[2, 0].plot.line(x="time")
