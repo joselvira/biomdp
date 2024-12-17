@@ -919,7 +919,7 @@ def calcula_variables_posicion(
 def busca_eventos_biela(
     daData: xr.DataArray, region_interest: list = None, show=False
 ) -> xr.DataArray:
-    """Busca posiciones de biela"""
+    """Busca posiciones de biela discretas"""
 
     if region_interest is None:
         # si no está definida la región, busca inicio y final de datos (no nans)

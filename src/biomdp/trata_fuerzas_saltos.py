@@ -1886,7 +1886,8 @@ def estima_inifin_analisis(
                     show=show,
                 )[0, 0]
 
-            except:
+            except Exception as excp:
+                print(excp)
                 aterr = 0  # por si no encuentra el criterio
             return float(aterr)
 
