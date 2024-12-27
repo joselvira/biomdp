@@ -33,13 +33,16 @@ from detecta import detect_onset
 # from scipy.signal import find_peaks #sustituir por detecta?????
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.5.1"
-__date__ = "16/12/2024"
+__version__ = "v.1.5.2"
+__date__ = "27/12/2024"
 
 
 # TODO: probar detectar umbrales con scipy.stats.threshold
 """
 Modificaciones:
+    27/12/2024, v.1.5.2
+            - AñadidaS variableS RSI y landing_stiffness.
+    
     16/12/2024, v.1.5.1
             - Corregido que en ajusta_offsetFz no mantenía los atributos.
     
@@ -5276,6 +5279,8 @@ def calcula_results(
                         "ImpPositDescenso",
                         "ImpPositAscenso",
                         "ImpNegAscenso",
+                        "RSI",
+                        "landingStiffness",
                         "tIniMov",
                         "tDespegue",
                         "tAterrizaje",
@@ -5414,7 +5419,7 @@ def calcula_results(
         )
     ) / ((daEventos.sel(event="maxFlex") - daEventos.sel(event="minFz")) / dsCinem.freq)
 
-    # Impulsos. Como la fuerza viene en BW, el peso que resta es 1. Con fuerza en newtons restar daPeso.sel(stat='media').drop_vars('stat')
+    # ---- Impulsos. Como la fuerza viene en BW, el peso que resta es 1. Con fuerza en newtons restar daPeso.sel(stat='media').drop_vars('stat')
     from biomdp.general_processing_functions import integrate_window
 
     daResults.loc[dict(n_var="impNegDescenso")] = integra_completo(
@@ -5430,7 +5435,14 @@ def calcula_results(
         daCinet - 1, daEventos=daEventos.sel(event=["finImpPos", "despegue"])
     )
 
-    # Tiempos de eventos clave
+    # ---- Otras
+    # TODO: EN POSICIÓN MÁS BAJA CAÍDA, DIVIDIR Fz / DESPL DESDE CONTACTO A MIN S
+    daResults.loc[dict(n_var="landingStiffness")] = np.nan
+
+    # TODO: ALTURA ENTRE TIEMPO BATIDA. DIFERENTE EN CMJ Y DJ
+    daResults.loc[dict(n_var="RSI")] = np.nan
+
+    # ---- Tiempos de eventos clave
     daResults.loc[dict(n_var="tIniMov")] = (
         dsCinem["events"].sel(event="iniMov").data[0] / dsCinem.freq
     )
