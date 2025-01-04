@@ -3839,6 +3839,9 @@ def detecta_eventos_estandar(
     umbral=30.0,
     SDx=5,
 ) -> xr.DataArray:
+    """
+    tipo_calculo_fin_mov puede ser 'velocidad', 'fuerza' o 'ventana_plana'
+    """
     if daPeso is None:
         raise Exception("No has introducido los datos del peso")
 
@@ -4788,7 +4791,7 @@ def ajusta_offsetFz(
                 )
                 * pcto_ventana
                 / 100
-            ).astype("int32")
+            ).astype(np.int32)
             vuelo.loc[dict(event="despegue")] += recorte_ventana
             vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
             offset_vuelo = recorta_ventana_analisis(daReturn, vuelo).mean(dim="time")
@@ -4806,7 +4809,7 @@ def ajusta_offsetFz(
                 )
                 * pcto_ventana
                 / 100
-            ).astype("int32")
+            ).astype(np.int32)
             vuelo.loc[dict(event="despegue")] += recorte_ventana
             vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
 
@@ -5435,13 +5438,6 @@ def calcula_results(
         daCinet - 1, daEventos=daEventos.sel(event=["finImpPos", "despegue"])
     )
 
-    # ---- Otras
-    # TODO: EN POSICIÓN MÁS BAJA CAÍDA, DIVIDIR Fz / DESPL DESDE CONTACTO A MIN S
-    daResults.loc[dict(n_var="landingStiffness")] = np.nan
-
-    # TODO: ALTURA ENTRE TIEMPO BATIDA. DIFERENTE EN CMJ Y DJ
-    daResults.loc[dict(n_var="RSI")] = np.nan
-
     # ---- Tiempos de eventos clave
     daResults.loc[dict(n_var="tIniMov")] = (
         dsCinem["events"].sel(event="iniMov").data[0] / dsCinem.freq
@@ -5508,6 +5504,22 @@ def calcula_results(
 
     daResults.loc[dict(n_var="tRFDMax")] = (
         dsBatida["RFD"].biomxr.nanargmax_xr(dim="time") / dsCinem.freq
+    )
+
+    # ---- Otras
+    # TODO: EN POSICIÓN MÁS BAJA CAÍDA, DIVIDIR Fz / DESPL DESDE CONTACTO A MIN S
+    # TODO: AÑADIR ALTURA EN ATERRIZAJE AL SMINCAIDA
+    FzSMin = daResults.loc[dict(n_var="FzMin")]
+    tSMin = daResults.loc[dict(n_var="tSMinCaida")]
+    # TODO: COMPROBAR QUE COINCIDE EN EL TIEMPO FZMAX CON SMIN
+    daResults.loc[dict(n_var="landingStiffness")] = dsCaida["BW"].max(dim="time") / (
+        abs(daResults.loc[dict(n_var="sMinCaida")])
+        + daResults.loc[dict(n_var="sAterrizaje")]
+    )
+
+    # TODO: ALTURA DIVIDIDA ENTRE TIEMPO BATIDA. DIFERENTE EN CMJ Y DJ
+    daResults.loc[dict(n_var="RSI")] = daResults.loc[dict(n_var="hVDespegue")] / (
+        daEventos.sel(event=["iniMov", "despegue"]).diff(dim="time") / dsCinem.freq
     )
 
     return daResults
@@ -5754,7 +5766,7 @@ if __name__ == "__main__":
         import sys
 
         sys.path.append(r"F:\Programacion\Python\Mios\Functions")
-        from filtrar_Butter import filtrar_Butter
+        from biomdp.filtrar_Butter import filtrar_Butter
 
         # ----Pruebas carga archivos
         ruta = Path(
@@ -5767,7 +5779,7 @@ if __name__ == "__main__":
         import sys
 
         sys.path.append(r"F:\Programacion\Python\Mios\Functions")
-        import read_kistler_c3d as rkc3d
+        from biomdp import read_kistler_c3d as rkc3d
 
         da = rkc3d.read_kistler_c3d_xr(file)
         da = rkc3d.split_plataforms(da)
