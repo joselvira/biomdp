@@ -33,13 +33,18 @@ from detecta import detect_onset
 # from scipy.signal import find_peaks #sustituir por detecta?????
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.5.2"
-__date__ = "27/12/2024"
+__version__ = "v.1.5.3"
+__date__ = "05/01/2025"
 
 
 # TODO: probar detectar umbrales con scipy.stats.threshold
 """
 Modificaciones:
+    05/01/2025, v.1.5.3
+            - Corregido graficas_chequeo_peso, no funcinaba con dataarray con 'repe'.
+              COMPROBAR QUE FUNCIONA SIN 'repe'
+            - En detecta_ini_mov, avisa si algún evento es nan.
+    
     27/12/2024, v.1.5.2
             - AñadidaS variableS RSI y landing_stiffness.
     
@@ -1364,7 +1369,7 @@ def load_merge_bioware_pd(
         columns={"abs time (s)": "time"}
     )  # , 'Fx':'x', 'Fy':'y', 'Fz':'z'})
 
-    daTodos = pasa_dfpd_a_da(dfTodos, merge_2_plats=merge_2_plats, n_estudio=n_estudio)
+    daTodos = pasa_df_a_da(dfTodos, merge_2_plats=merge_2_plats, n_estudio=n_estudio)
 
     # TODO: SEGUIR HACIENDO QUE SI CARGA VARIABLES DISTINTAS DE LAS CONVENCIONALES LAS PASE A DAARRAY PERO SIN EJES
     # if  dfTodos.columns == ['abs time (s)', 'Fx', 'Fy', 'Fz'] or n_vars_load == ['abs time (s)', 'Fx', 'Fy', 'Fz', 'Fx_duplicated_0', 'Fy_duplicated_0', 'Fz_duplicated_0']:
@@ -2865,11 +2870,14 @@ def detecta_ini_mov(
             return np.nan
         # ini_abajo = 0
         # ini_arriba = 0
-        # try:
+        try:
+            # print(ID)
+            iinianalisis = int(iinianalisis)
+            idespegue = int(idespegue)
+        except:
+            print("No hay evento iniAnalisis o despegue")
+            return np.nan
 
-        # print(ID)
-        iinianalisis = int(iinianalisis)
-        idespegue = int(idespegue)
         dat = data[iinianalisis:idespegue]
         # plt.plot(data[iinianalisis:idespegue])
         # Pasada inicial para ver cuándo baja por debajo del umbral peso+XSD
@@ -4283,7 +4291,7 @@ def graficas_chequeo_peso(
     daPeso=None,
     umbral_dif_peso=20,
     daPeso_med=None,
-    margen_ventana=0.6,
+    margen_ventana=0.3,
     n_en_bloque=4,
     show_in_console=True,
     ruta_trabajo=None,
@@ -4292,7 +4300,7 @@ def graficas_chequeo_peso(
     """
     margen_ventana: tiempo en segundos por delante y por delante y detrás de iniPeso y finPeso
     """
-    timerGraf = time.time()  # inicia el contador de tiempo
+    timer_graf = time.time()  # inicia el contador de tiempo
     print("\nCreando gráficas...")
 
     # import seaborn as sns
@@ -4439,8 +4447,15 @@ def graficas_chequeo_peso(
     """
 
     def _completa_graf_xr(*args, color):
-        ID, time = args
-        data = g.data.loc[dict(ID=ID)]
+        if len(args) == 3:
+            ID, repe, time = args
+            coords_graph = dict(ID=ID, repe=repe)
+        else:
+            ID, time = args
+            coords_graph = dict(ID=ID)
+
+        data = g.data.loc[coords_graph]
+        # print(ID, repe, time)
         # peso_afinado = daPeso.sel(ID=ID).sel(stat='media').data
         # peso_media = daPeso_med.sel(ID=ID).sel(stat='media').data
 
@@ -4479,8 +4494,8 @@ def graficas_chequeo_peso(
         # Dibuja líneas distintos tipos de cálculo peso
         if isinstance(dsPesos, xr.Dataset):
             color = ["C0", "C1", "C2"]
-            for n, n_tipo_peso in enumerate(dsPesos.sel(ID=ID)):
-                peso = dsPesos[n_tipo_peso].sel(ID=ID).data
+            for n, n_tipo_peso in enumerate(dsPesos.sel(coords_graph)):
+                peso = dsPesos[n_tipo_peso].sel(coords_graph).data
                 plt.axhline(
                     peso,
                     color=color[n],
@@ -4488,18 +4503,6 @@ def graficas_chequeo_peso(
                     ls="--",
                     dash_capstyle="round",
                     alpha=0.7,
-                )
-                plt.text(
-                    0.3,
-                    peso,
-                    n_tipo_peso,
-                    ha="left",
-                    va="bottom",
-                    rotation="horizontal",
-                    c=color[n],
-                    alpha=0.8,
-                    fontsize="x-small",
-                    transform=plt.gca().transData,
                 )
                 plt.text(
                     0.0,
@@ -4516,11 +4519,11 @@ def graficas_chequeo_peso(
 
                 if n > 0:
                     # Si la diferencia es mayor que el umbral, avisa
-                    if abs(peso - dsPesos["media"].sel(ID=ID)) > umbral_dif_peso:
+                    if abs(peso - dsPesos["media"].sel(coords_graph)) > umbral_dif_peso:
                         plt.text(
                             0.5,
                             0.9,
-                            f'REVISAR (delta={peso-dsPesos["media"].sel(ID=ID):.1f} N)',
+                            f'REVISAR (delta={peso-dsPesos["media"].sel(coords_graph):.1f} N)',
                             ha="center",
                             va="center",
                             rotation="horizontal",
@@ -4537,10 +4540,14 @@ def graficas_chequeo_peso(
                         )
 
         if isinstance(daEventos, xr.DataArray):
-            for ev in daEventos.sel(ID=ID, event=["iniPeso", "finPeso"]):  # .event:
+            # coords_graph_eventos = coords_graph.copy()
+            # coords_graph_eventos["event"] = ["iniPeso", "finPeso"]
+
+            for ev in daEventos.sel(
+                dict(coords_graph, event=["iniPeso", "finPeso"])
+            ):  # .event:
                 if ev.isnull().all():  # np.isnan(ev): #si no existe el evento
                     continue
-
                 plt.axvline(
                     x=ev / g.data.freq,
                     c=colr[str(ev.event.data)],
@@ -4576,17 +4583,21 @@ def graficas_chequeo_peso(
 
     for n in range(0, len(daDatos.ID), distribuidor):
         dax = daDat.isel(ID=slice(n, n + distribuidor))
-
+        """
+        ID = dax.ID[0].data
+        repe = dax.repe[0].data
+        """
         g = dax.plot.line(
             x="time",
             alpha=0.8,
+            lw=1,
             aspect=1.5,
             color="lightgrey",
             sharey=False,
             **fils_cols,
         )  # , lw=1)
-        g.map(_completa_graf_xr, "ID", "time", color=0)
-        # completa_graf_xr(g, daEventos.sel(event=['iniPeso', 'finPeso']), daPeso, daPeso_med)
+        g.map(_completa_graf_xr, "ID", "repe", "time", color=0)
+        # _completa_graf_xr(g, daEventos.sel(event=['iniPeso', 'finPeso']), daPeso, daPeso_med)
 
         if nom_archivo_graf_global is not None:
             pdf_pages.savefig(g.fig)
@@ -4601,7 +4612,7 @@ def graficas_chequeo_peso(
         # pdf_pages.savefig(g.fig)
         pdf_pages.close()
         print(f"Guardada la gráfica {nompdf}")
-    print("Creadas las gráficas en {0:.3f} s \n".format(time.time() - timerGraf))
+    print("Creadas las gráficas en {0:.3f} s \n".format(time.time() - timer_graf))
 
 
 def recorta_ventana_analisis(daDatos, daEvents=None, ventana=None) -> xr.DataArray:
