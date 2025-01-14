@@ -3,13 +3,16 @@
 # =============================================================================
 
 __filename__ = "general_processing_functions"
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __company__ = "CIDUMH"
-__date__ = "16/12/2024"
+__date__ = "14/01/2025"
 __author__ = "Jose L. L. Elvira"
 
 """
 Modificaciones:
+    14/01/2025, v0.4.1
+        - Añadida función round_to_nearest_even_2_decimal
+
     16/12/2024, v0.4.0
         - Incluida función procesaEMG, que estaba en nexus_processing_functions.
     
@@ -629,6 +632,13 @@ def cross_correl_xr(
     ).dropna(dim="lag", how="all")
     daCrosscorr = daCrosscorr.assign_coords(lag=range(len(daCrosscorr.lag)))
     return daCrosscorr
+
+
+def round_to_nearest_even_2_decimal(number):
+    """Rounds a float to the nearest even number with 2 decimal places"""
+    rounded = np.round(number * 50) / 50  # Round to the nearest 0.02
+
+    return rounded
 
 
 # =============================================================================

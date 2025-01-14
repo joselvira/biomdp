@@ -33,17 +33,21 @@ from detecta import detect_onset
 # from scipy.signal import find_peaks #sustituir por detecta?????
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.5.3"
-__date__ = "05/01/2025"
+__version__ = "v.1.5.4"
+__date__ = "13/01/2025"
 
 
 # TODO: probar detectar umbrales con scipy.stats.threshold
 """
 Modificaciones:
+    13/01/2025, v.1.5.4
+            - Arreglado crea calcula_results y results_a_tabla.
+    
     05/01/2025, v.1.5.3
             - Corregido graficas_chequeo_peso, no funcinaba con dataarray con 'repe'.
               COMPROBAR QUE FUNCIONA SIN 'repe'
             - En detecta_ini_mov, avisa si algún evento es nan.
+            - Actualizada función polars melt a unpivot.
     
     27/12/2024, v.1.5.2
             - AñadidaS variableS RSI y landing_stiffness.
@@ -360,8 +364,8 @@ def pasa_df_a_da(dfTodos, merge_2_plats=1, n_estudio=None, show=False) -> xr.Dat
             ),
         ).columns
 
-        dfpd = dfTodos.melt(
-            id_vars=["ID", "time"], value_vars=vars_leidas, variable_name="n_var"
+        dfpd = dfTodos.unpivot(
+            index=["ID", "time"], on=vars_leidas, variable_name="n_var"
         ).to_pandas()
 
     else:  # viene con pandas
@@ -2855,6 +2859,16 @@ def detecta_ini_mov(
     umbral=10.0,
     show=False,
 ) -> xr.DataArray:
+    """
+    Include better methods from:
+        Movement Onset Detection Methods: A Comparison Using Force Plate Recordings
+        April 2023 Journal of Applied Biomechanics 39(5):1-6
+        DOI: 10.1123/jab.2022-0111
+        The aim of this study was to compare the 5xSD threshold method, three
+        variations of the reverse scanning method and five variations of the first
+        derivative method against manually selected onsets, in the counter-movement
+        jump (CMJ) and squat.
+    """
     # Aquí SDx es el % del peso
     if "axis" in daDatos.dims:
         daDatos = daDatos.sel(axis="z")
@@ -5530,8 +5544,8 @@ def calcula_results(
 
     # TODO: ALTURA DIVIDIDA ENTRE TIEMPO BATIDA. DIFERENTE EN CMJ Y DJ
     daResults.loc[dict(n_var="RSI")] = daResults.loc[dict(n_var="hVDespegue")] / (
-        daEventos.sel(event=["iniMov", "despegue"]).diff(dim="time") / dsCinem.freq
-    )
+        daEventos.sel(event=["iniMov", "despegue"]).diff(dim="event") / dsCinem.freq
+    ).squeeze("event")
 
     return daResults
 
@@ -5548,52 +5562,78 @@ def results_a_tabla(daResults: xr.DataArray, dsSalto: xr.Dataset) -> pd.DataFram
         columns=["Valor", "Instante (s)"],
         index=[
             "Inicio Salto",
-            "Máxima fuerza vertical (BW)",
-            "Máxima potencia (W/BW) en la batida",
+            "Despegue",
+            "Aterrizaje",
+            "Máxima fuerza vertical en la batida (BW)",
+            "Máxima potencia en la batida (W/BW)",
             "Tiempo de vuelo (s)",
             "Velocidad despegue (m/s)",
             "Desplazamiento CG despegue (m)",
             "Altura según desplazamiento CG (m)",
             "Altura según tiempo de vuelo (m)",
-            #'Máxima fuerza vertical (BW) en la caída',
+            "Máxima fuerza vertical en la caída (BW)",
         ],
     )
 
     tabla_results.loc["Inicio Salto", :] = [
         np.nan,  # "--",
-        (daResults.sel(n_var="tIniMov").data[0] / dsSalto.freq).round(2),
+        (daResults.sel(n_var="tIniMov").data[0]),  # .round(3),
     ]
-    tabla_results.loc["Máxima fuerza vertical (BW)", :] = daResults.sel(
+
+    tabla_results.loc["Despegue", :] = [
+        np.nan,  # "--",
+        daResults.sel(n_var=["tIniMov", "tDespegue"])
+        .diff("n_var")[0]
+        .data[0],  # .round(3),
+    ]
+
+    tabla_results.loc["Aterrizaje", :] = [
+        np.nan,  # "--",
+        daResults.sel(n_var=["tIniMov", "tAterrizaje"])
+        .diff("n_var")[0]
+        .data[0],  # .round(3),
+    ]
+
+    tabla_results.loc["Máxima fuerza vertical en la batida (BW)", :] = daResults.sel(
         n_var=["FzMax", "tFzMax"]
-    ).round(2)
-    tabla_results.loc["Máxima potencia (W/BW) en la batida", :] = daResults.sel(
+    )  # .round(3)
+
+    tabla_results.loc["Máxima potencia en la batida (W/BW)", :] = daResults.sel(
         n_var=["PMax", "tPMax"]
-    ).round(2)
+    )  # .round(3)
+
     tabla_results.loc["Velocidad despegue (m/s)", :] = [
-        daResults.sel(n_var="vDespegue").data[0].round(2),
-        (dsSalto["events"].sel(event="despegue").data[0] / dsSalto.freq).round(3),
-    ]  # .data
+        daResults.sel(n_var="vDespegue").data[0],  # .round(3),
+        daResults.sel(n_var=["tIniMov", "tDespegue"]).diff("n_var")[0].data[0],
+        # (dsSalto["events"].sel(event="despegue").data[0] / dsSalto.freq),  # .round(3),
+    ]
+
     tabla_results.loc["Desplazamiento CG despegue (m)", :] = [
-        daResults.sel(n_var="sDespegue").data[0].round(2),
-        (dsSalto["events"].sel(event="despegue").data[0] / dsSalto.freq).round(3),
-    ]  # .data
+        daResults.sel(n_var="sDespegue").data[0],  # .round(3),
+        daResults.sel(n_var=["tIniMov", "tDespegue"]).diff("n_var")[0].data[0],
+        # (dsSalto["events"].sel(event="despegue").data[0] / dsSalto.freq),  # .round(3),
+    ]
 
     tabla_results.loc["Altura según tiempo de vuelo (m)", :] = [
-        daResults.sel(n_var="hTVuelo").data[0].round(2),
-        np.nan,  # "--",
+        daResults.sel(n_var="hTVuelo").data[0],  # .round(3),
+        daResults.sel(n_var=["tIniMov", "tSMax"]).diff("n_var")[0].data[0],  # "--",
     ]
-    tabla_results.loc["Altura según desplazamiento CG (m)", :] = [
-        daResults.sel(n_var="hS").data[0].round(2),
-        np.nan,  # "--",
-    ]
+
+    tabla_results.loc["Altura según desplazamiento CG (m)", :] = daResults.sel(
+        n_var=["hS", "tSMax"]
+    )  # .round(3)  # "--",
 
     tabla_results.loc["Tiempo de vuelo (s)", :] = [
-        daResults.sel(n_var="tVuelo").data[0].round(2),
+        daResults.sel(n_var="tVuelo").data[0],  # .round(3),
         np.nan,  # "--",
     ]
 
-    # Redondea decimales, pero no funciona??
-    tabla_results = tabla_results.round({"Valor": 2, "Instante (s)": 3})
+    tabla_results.loc["Máxima fuerza vertical en la caída (BW)", :] = daResults.sel(
+        n_var=["FzMaxCaida", "tFzMaxCaida"]
+    )  # .round(3)
+
+    # Redondea decimales
+    tabla_results = tabla_results.astype(float).round({"Valor": 2, "Instante (s)": 3})
 
     return tabla_results
 
