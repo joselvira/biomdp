@@ -5569,6 +5569,7 @@ def results_a_tabla(daResults: xr.DataArray, dsSalto: xr.Dataset) -> pd.DataFram
             "Tiempo de vuelo (s)",
             "Velocidad despegue (m/s)",
             "Desplazamiento CG despegue (m)",
+            "Altura según v despegue (m)",
             "Altura según desplazamiento CG (m)",
             "Altura según tiempo de vuelo (m)",
             "Máxima fuerza vertical en la caída (BW)",
@@ -5602,6 +5603,11 @@ def results_a_tabla(daResults: xr.DataArray, dsSalto: xr.Dataset) -> pd.DataFram
         n_var=["PMax", "tPMax"]
     )  # .round(3)
 
+    tabla_results.loc["Tiempo de vuelo (s)", :] = [
+        daResults.sel(n_var="tVuelo").data[0],  # .round(3),
+        np.nan,  # "--",
+    ]
+
     tabla_results.loc["Velocidad despegue (m/s)", :] = [
         daResults.sel(n_var="vDespegue").data[0],  # .round(3),
         daResults.sel(n_var=["tIniMov", "tDespegue"]).diff("n_var")[0].data[0],
@@ -5614,18 +5620,19 @@ def results_a_tabla(daResults: xr.DataArray, dsSalto: xr.Dataset) -> pd.DataFram
         # (dsSalto["events"].sel(event="despegue").data[0] / dsSalto.freq),  # .round(3),
     ]
 
-    tabla_results.loc["Altura según tiempo de vuelo (m)", :] = [
-        daResults.sel(n_var="hTVuelo").data[0],  # .round(3),
-        daResults.sel(n_var=["tIniMov", "tSMax"]).diff("n_var")[0].data[0],  # "--",
+    tabla_results.loc["Altura según v despegue (m)", :] = [
+        daResults.sel(n_var="hVDespegue").data[0],  # , "tDespegue"]
+        np.nan,
     ]
 
-    tabla_results.loc["Altura según desplazamiento CG (m)", :] = daResults.sel(
-        n_var=["hS", "tSMax"]
-    )  # .round(3)  # "--",
+    tabla_results.loc["Altura según desplazamiento CG (m)", :] = [
+        daResults.sel(n_var="hS").data[0],
+        np.nan,
+    ]  # .round(3)  # "--",
 
-    tabla_results.loc["Tiempo de vuelo (s)", :] = [
-        daResults.sel(n_var="tVuelo").data[0],  # .round(3),
-        np.nan,  # "--",
+    tabla_results.loc["Altura según tiempo de vuelo (m)", :] = [
+        daResults.sel(n_var="hTVuelo").data[0],  # .round(3),
+        np.nan,  # daResults.sel(n_var=["tIniMov", "tSMax"]).diff("n_var")[0].data[0],  # "--",
     ]
 
     tabla_results.loc["Máxima fuerza vertical en la caída (BW)", :] = daResults.sel(
