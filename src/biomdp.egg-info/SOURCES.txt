@@ -8,6 +8,7 @@ src/biomdp/biomec_xarray_accessor.py
 src/biomdp/filtrar_Butter.py
 src/biomdp/general_processing_functions.py
 src/biomdp/nexus_funciones_apoyo.py
+src/biomdp/processing_mediapipe.py
 src/biomdp/read_isen_csv.py
 src/biomdp/read_kistler_c3d.py
 src/biomdp/read_noraxon_c3d.py
