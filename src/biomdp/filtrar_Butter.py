@@ -6,7 +6,13 @@ Aplica filtro paso Butterworth. Se puede pasar array 1D o en pandas DataFrame 2D
 Función de paso bajo o alto y función de bandpass.
 """
 
+
+# =============================================================================
+# %% INICIA
+# =============================================================================
+
 # from __future__ import division, print_function
+from typing import Optional, Union, Any
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -15,14 +21,15 @@ import scipy.signal
 
 __author__ = "Jose Luis Lopez Elvira"
 __version__ = "v.1.6.1"
-__date__ = "18/02/2025"
+__date__ = "17/02/2025"
 
 
 """
 Modificaciones:
-    18/02/2025, v1.6.1
+    17/02/2025, v1.6.1
         - Si se pasa un dataarray con atributo freq y sin parámetro fr,
           lo utiliza.
+        - Incluidos tipos en parámetros funciones
     
     23/02/2024, v1.6.0
         - Introducida función plot con xarray.
@@ -50,19 +57,16 @@ Modificaciones:
 # %% Función filtrar low o High pass
 # =============================================================================
 def filtrar_Butter(
-    dat_orig,
-    fr=None,
-    fc=None,
-    order=2.0,
-    kind="low",
-    returnRMS=False,
-    show=False,
-    ax=None,
-):
+    dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
+    fr: Optional[Union[float, int]]=None,
+    fc: Optional[Union[float, int]]=None,
+    order: Optional[Union[float, int]]=2.0,
+    kind: Optional[str]="low",
+    returnRMS: Optional[bool]=False,
+    show: Optional[bool]=False,
+    ax: Optional[Any]=None,
+) -> Union[np.ndarray, pd.DataFrame, xr.DataArray]:
     """
-    Filter the data using Butterworth filter.
-    When passing xr.DataAray, it assumes the time coordinate is "time".
-
     Parameters
     ----------
     dat_orig : array 1D o dataframe de pandas en 2D o xarray.
@@ -206,7 +210,9 @@ def filtrar_Butter(
 # =============================================================================
 # Presenta la gráfica
 # =============================================================================
-def _plot(dat_orig, dat_filt, RMS, fc, ax):
+def _plot(dat_orig:Union[np.ndarray, pd.DataFrame, xr.DataArray],
+          dat_filt:Union[np.ndarray, pd.DataFrame, xr.DataArray],
+          RMS, fc, ax):
     import matplotlib.pyplot as plt
 
     if isinstance(dat_orig, xr.DataArray):
@@ -217,7 +223,6 @@ def _plot(dat_orig, dat_filt, RMS, fc, ax):
             plt.legend()
             plt.show()
 
-        # TODO: print coords in each graph #[x for x in dat_orig.dims if 'time' not in x]
         _ = xr.apply_ufunc(
             _xr_plot,
             dat_orig,
@@ -265,8 +270,14 @@ def _plot(dat_orig, dat_filt, RMS, fc, ax):
 # %% Función filtrar band pass
 # =============================================================================
 def filtrar_Butter_bandpass(
-    dat_orig, fr, fclow, fchigh, order=2.0, show=False, ax=None
-):
+    dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
+    fr: Optional[Union[float, int]]=None,
+    fclow: Optional[Union[float, int]]=None,
+    fchigh: Optional[Union[float, int]]=None,
+    order: Optional[Union[float, int]]=2.0,
+    show: Optional[bool]=False,
+    ax: Optional[Any]=None,
+) -> Union[np.ndarray, pd.DataFrame, xr.DataArray]:
     """
     Parameters
     ----------
@@ -505,7 +516,7 @@ if __name__ == "__main__":
 
     # Carga un archivo con datos aleatorios
     ruta_trabajo = Path(
-        "F:\Programacion\Python\Mios\TratamientoDatos\BasesDatosCreadas\ArchivosPorFactoresCinematicaFake"
+        r"F:\Programacion\Python\Mios\TratamientoDatos\BasesDatosCreadas\ArchivosPorFactoresCinematicaFake"
     )
     da2 = xr.load_dataset(ruta_trabajo / "DataArrayPruebas.nc").to_array()
     del da2["variable"]  # la quita de coordenadas

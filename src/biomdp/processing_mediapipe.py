@@ -221,7 +221,7 @@ def calcula_angulo(puntos):
     return round(angle)
 
 
-def calcula_angulo_xr(markers):
+def calcula_angulo_xr(markers: xr.DataArray) -> np.ndarray:
     if len(markers) == 3:
         a = (
             markers.isel(marker=0).sel(axis=["x", "y"]).data
@@ -1087,4 +1087,10 @@ def procesa_video_mixto(file, fv=30, show=False):
     return da
 
 
-# %%
+
+# =============================================================================
+# %% PRUEBAS
+# =============================================================================
+if __name__ == "__main__":
+
+    

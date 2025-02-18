@@ -9,15 +9,12 @@ import xarray as xr
 
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.0.3.0"
-__date__ = "18/02/2025"
+__version__ = "v.0.2.0"
+__date__ = "07/12/2024"
 
 
 """
 Modificaciones:
-    18/02/2025, v.0.3.0
-        - Función filter_Butter pasa directo filtrar_Butter sin apply_ufunc.
-    
     31/10/2024, v.0.2.0
         - Incluidas funcionnes nanargmax_xr y nanargmin_xr.
     
