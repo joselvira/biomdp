@@ -9,12 +9,15 @@ import xarray as xr
 
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.0.2.0"
-__date__ = "07/12/2024"
+__version__ = "v.0.3.0"
+__date__ = "18/02/2025"
 
 
 """
 Modificaciones:
+    18/02/2025, v.0.3.0
+        - Función filter_Butter pasa directo filtrar_Butter sin apply_ufunc.
+    
     31/10/2024, v.0.2.0
         - Incluidas funcionnes nanargmax_xr y nanargmin_xr.
     
@@ -129,7 +132,7 @@ class DataArrayAccessor:
     def filter_butter(
         self,
         fr: Optional[float] = None,
-        fc: Optional[float] = 6.0,
+        fc: Optional[float] = None,
         order: Optional[float] = 2.0,
         kind: Optional[str] = "low",
         returnRMS: Optional[bool] = False,
@@ -151,27 +154,17 @@ class DataArrayAccessor:
                             1,
                         )
                     ).data
-        return xr.apply_ufunc(
-            filtrar_Butter,
-            self._obj,
-            fr,
-            fc,
-            order,
-            kind,
-            returnRMS,
-            show,
-            ax,
+
+        return filtrar_Butter(
+            dat_orig=self._obj,
+            fr=fr,
+            fc=fc,
+            order=order,
+            kind=kind,
+            returnRMS=returnRMS,
+            show=show,
+            ax=ax,
         )
-        # return filtrar_Butter(
-        #     dat_orig=self._obj,
-        #     fr=freq,
-        #     fc=fc,
-        #     order=order,
-        #     kind=kind,
-        #     returnRMS=returnRMS,
-        #     show=show,
-        #     ax=ax,
-        # )
 
     def integrate_window(
         self,

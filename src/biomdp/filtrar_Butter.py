@@ -14,12 +14,16 @@ import scipy.signal
 
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.6.0"
-__date__ = "23/02/2024"
+__version__ = "v.1.6.1"
+__date__ = "18/02/2025"
 
 
 """
 Modificaciones:
+    18/02/2025, v1.6.1
+        - Si se pasa un dataarray con atributo freq y sin parámetro fr,
+          lo utiliza.
+    
     23/02/2024, v1.6.0
         - Introducida función plot con xarray.
     
@@ -46,9 +50,19 @@ Modificaciones:
 # %% Función filtrar low o High pass
 # =============================================================================
 def filtrar_Butter(
-    dat_orig, fr, fc, order=2.0, kind="low", returnRMS=False, show=False, ax=None
+    dat_orig,
+    fr=None,
+    fc=None,
+    order=2.0,
+    kind="low",
+    returnRMS=False,
+    show=False,
+    ax=None,
 ):
     """
+    Filter the data using Butterworth filter.
+    When passing xr.DataAray, it assumes the time coordinate is "time".
+
     Parameters
     ----------
     dat_orig : array 1D o dataframe de pandas en 2D o xarray.
@@ -91,6 +105,20 @@ def filtrar_Butter(
 
     # orden = 2 #orden 2 para que al hacer el doble paso sea de 4th orden
     passes = 2.0  # nº de pasadas del filtro adelante y atrás
+
+    if fr is None:
+        if isinstance(dat_orig, xr.DataArray) and "freq" in dat_orig.attrs:
+            fr = dat_orig.freq
+        else:
+            if not dat_orig.isnull().all():
+                fr = (
+                    np.round(
+                        1 / (dat_orig["time"][1] - dat_orig["time"][0]),
+                        1,
+                    )
+                ).data
+            else:
+                raise RuntimeError("Debe especificarse la frequencia de registro (fr)")
 
     # fc = 15
     Cf = (2 ** (1 / passes) - 1) ** (
@@ -157,7 +185,7 @@ def filtrar_Butter(
             # Investigar para hacer el RMSE directamente sin necesitar la librería xskillscore
             # CON XARRAY NO FUNCIONAN LOS GRÁFICOS
 
-    else:  # si los datos no son pandas dataframe
+    else:  # si los datos no son alguno de los reconocidos
         dat_filt = scipy.signal.filtfilt(b, a, dat_orig)
 
         if returnRMS or show == True:
@@ -189,6 +217,7 @@ def _plot(dat_orig, dat_filt, RMS, fc, ax):
             plt.legend()
             plt.show()
 
+        # TODO: print coords in each graph #[x for x in dat_orig.dims if 'time' not in x]
         _ = xr.apply_ufunc(
             _xr_plot,
             dat_orig,
@@ -456,13 +485,20 @@ if __name__ == "__main__":
         len(da.isel(channel=0))
     )
 
-    o_filt, RMSEda = filtrar_Butter(da, 1000, 10, 2, returnRMS=True, show=False)
+    o_filt, RMSEda = filtrar_Butter(
+        da, fr=1000, fc=10, order=2, returnRMS=True, show=False
+    )
     da.plot.line(x="time")  # sin filtrar
     o_filt.plot.line(x="time")  # filtrado
     plt.show()
 
     # Al compararlo con el pandas sale igual
-    dfOndaFilt, RMSEdf = filtrar_Butter(Onda, 1000, 10, 2, returnRMS=True, show=True)
+    dfOndaFilt, RMSEdf = filtrar_Butter(
+        Onda, fr=1000, fc=10, order=2, returnRMS=True, show=True
+    )
+
+    da.attrs["freq"] = 1000
+    o_filt = filtrar_Butter(da, fc=10, order=2, returnRMS=False, show=True)
 
     # %% Con xarray con varias dimensiones
     from pathlib import Path  # para gestión de archivos y carpetas
