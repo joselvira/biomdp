@@ -33,14 +33,27 @@ from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+try:
+    from warnings import deprecated
+
+    # para usarlo, @deprecated("usa la nueva función xx")
+except:
+    print('No se ha podoco cargar la librería "warnings.deprecated".')
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.0.1"
-__date__ = "14/02/2025"
+__version__ = "v.1.1.0"
+__date__ = "28/02/2025"
 
 
 """
 Modificaciones:
+    28/02/2025, v1.1.0
+        - Incluida posibilidad de procesar un nº concreto de fotograma
+          del vídeo. Guarda la imagen del fotograma procesado.
+
+    26/02/2025, v1.0.2
+        - Añadida versión calculo ángulos para numpy.
+    
     14/02/2025, v1.0.1
         - Cambiados nombres funciones a procesa_imagen y procesa_video
           en lugar de procesa_imagen_moderno y procesa_video_moderno.
@@ -219,6 +232,27 @@ def calcula_angulo(puntos):
         angle = 360 - angle
 
     return round(angle)
+
+
+def calcula_angulo_np(puntos):
+    if len(puntos) == 3:
+        a = puntos[0]  # np.array([puntos[0].x, puntos[0].y])
+        b = puntos[1]  # np.array([puntos[1].x, puntos[1].y])
+        c = puntos[1]  # np.array([puntos[1].x, puntos[1].y])
+        d = puntos[2]  # np.array([puntos[2].x, puntos[2].y])
+    elif len(puntos) == 4:
+        a = puntos[0]  # np.array([puntos[0].x, puntos[0].y])
+        b = puntos[1]  # np.array([puntos[1].x, puntos[1].y])
+        c = puntos[2]  # np.array([puntos[2].x, puntos[2].y])
+        d = puntos[3]  # np.array([puntos[3].x, puntos[3].y])
+
+    radians = np.arctan2(np.linalg.norm(np.cross(a - b, d - c)), np.dot(a - b, d - c))
+    angle = np.abs(np.rad2deg(radians))
+
+    if angle > 180.0:
+        angle = 360 - angle
+
+    return angle
 
 
 def calcula_angulo_xr(markers: xr.DataArray) -> np.ndarray:
@@ -785,9 +819,12 @@ def procesa_video(
     mppc=0.5,
     mtc=0.5,
     model_path=None,
+    num_fot=None,
+    save_fot_file=True,
     show=False,
 ):
     """
+    num_fot: number of frame to process. If None, all frames are processed
     mpdc = min_pose_detection_confidence
     mppc = min_pose_presence_confidence
     mtc = min_tracking_confidence
@@ -819,6 +856,10 @@ def procesa_video(
         num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         vid_fps = cap.get(cv2.CAP_PROP_FPS)
         print(f"Video fps:{vid_fps}")
+        if num_fot is not None and (num_fot > num_frames or num_fot < 0):
+            raise ValueError(
+                f"num_fot {num_fot} is out of range of video frames (0-{num_frames})"
+            )
 
         pTime = 0
         frame = 0
@@ -841,6 +882,9 @@ def procesa_video(
 
         # Procesa fotograma a fotograma
         while frame < num_frames:  # cap.isOpened()
+            if num_fot is not None:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, num_fot)  # restar 1?????
+                # frame = num_fot
             success, img = cap.read()
             if not success:
                 break
@@ -899,7 +943,7 @@ def procesa_video(
             # Calcula fps
             cTime = time.time()
             fps = 1 / (cTime - pTime) if cTime != pTime else 0
-            # frame+=1
+
             ############################
 
             # Muestra imágenes
@@ -923,10 +967,18 @@ def procesa_video(
                     (255, 0, 0),
                     2,
                 )
+
                 cv2.imshow(
                     r"Marker detection",
                     cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
                 )
+
+                if num_fot is not None and save_fot_file:
+                    cv2.imwrite(
+                        (file.parent / f"{file.stem}_fot{num_fot}").with_suffix(".jpg"),
+                        cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+                    )
+                    print(f"Guardado fotograma {num_fot}")
 
             elif show == "mask":
                 # Ejemplo de máscara
@@ -938,6 +990,7 @@ def procesa_video(
                 )
 
                 cv2.imshow("window_name", visualized_mask)
+
                 cv2.waitKey(0)
                 cv2.destroyAllWindows()
 
@@ -945,13 +998,13 @@ def procesa_video(
                 if frame % 10 == 0:
                     print(f"Frame {frame}/{num_frames} fps: {fps:.2f}")
 
-            pTime = cTime
-            frame += 1
-
             # waits for user to press any key
-            if cv2.waitKey(1) == ord("q"):
+            if cv2.waitKey(1) == ord("q") or num_fot is not None:
                 break
             # cv2.waitKey(0)
+
+            pTime = cTime
+            frame += 1
 
     # closing all open windows
     cv2.destroyAllWindows()
@@ -959,7 +1012,13 @@ def procesa_video(
     print(f"Terminado el procesado en {time.perf_counter() - t_ini:.2f} s")
 
     # Corrige la coordenada time
-    daMarkers = daMarkers.assign_coords(time=np.arange(0, num_frames) / fv)
+    if num_fot is None:
+        daMarkers = daMarkers.assign_coords(time=np.arange(0, num_frames) / fv)
+    else:  # con un solo fotograma
+        # daMarkers = daMarkers.isel(time=slice(frame - 3, frame + 3)).assign_coords(
+        #     time=np.arange(frame - 3, frame + 3) / fv
+        # )
+        daMarkers = daMarkers.isel(time=frame).assign_coords(time=num_fot / fv)
 
     if n_vars_load is not None:
         daMarkers = daMarkers.sel(marker=n_vars_load)
@@ -1087,10 +1146,9 @@ def procesa_video_mixto(file, fv=30, show=False):
     return da
 
 
-
 # =============================================================================
 # %% PRUEBAS
 # =============================================================================
 if __name__ == "__main__":
 
-    
+    ...
