@@ -25,14 +25,24 @@ import seaborn as sns
 import time
 from pathlib import Path
 
-import cv2
-import mediapipe as mp
+try:
+    import cv2
+except:
+    raise ImportError(
+        'No se ha podido cargar la librería "opencv".\nInstalar con conda install conda-forge::opencv.'
+    )
 
-from mediapipe import solutions
-from mediapipe.framework.formats import landmark_pb2
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
+try:
+    import mediapipe as mp
 
+    from mediapipe import solutions
+    from mediapipe.framework.formats import landmark_pb2
+    from mediapipe.tasks import python
+    from mediapipe.tasks.python import vision
+except:
+    raise ImportError(
+        'No se ha podido cargar la librería "mediapipe".\nInstalar con pip install mediapipe.\nInstalar con pip install mediapipe'
+    )
 try:
     from warnings import deprecated
 
