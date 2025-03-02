@@ -38,15 +38,19 @@ try:
 
     # para usarlo, @deprecated("usa la nueva función xx")
 except:
-    print('No se ha podoco cargar la librería "warnings.deprecated".')
+    print('No se ha podido cargar la librería "warnings.deprecated".')
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.1.0"
+__version__ = "v.1.1.1"
 __date__ = "28/02/2025"
 
 
 """
 Modificaciones:
+    01/03/2025, v1.1.1
+        - Creada función para añadir marcadores centro_caderas y centro_hombros.
+        - En discreto, independiente show markers y save_fot_file.
+
     28/02/2025, v1.1.0
         - Incluida posibilidad de procesar un nº concreto de fotograma
           del vídeo. Guarda la imagen del fotograma procesado.
@@ -128,6 +132,7 @@ def draw_landmarks_on_image(rgb_image, detection_result):
                 for landmark in pose_landmarks
             ]
         )
+
         solutions.drawing_utils.draw_landmarks(
             annotated_image,
             pose_landmarks_proto,
@@ -137,7 +142,7 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     return annotated_image
 
 
-def extrae_marcadores(data_mark):
+def extrae_marcadores(data_mark, coords):
     return xr.DataArray(
         data=data_mark,
         dims=coords.keys(),
@@ -211,6 +216,19 @@ def separa_dim_lado(daDatos, n_bilat=None):
     # daDatos_side = daDatos_side.transpose('marker', 'ID', 'qual', 'test', 'lap', 'side', 'time') #reordena las dimensiones
 
     return daDatos_side
+
+
+def add_centro_hombros_caderas(daDatos):
+    if "cadera" not in daDatos.marker and "hombro" not in daDatos.marker:
+        raise ValueError("No hay marcadores caderas ni hombros")
+
+    c_cad = (
+        daDatos.sel(marker="cadera").mean("side").assign_coords(marker="centro_caderas")
+    )
+    c_hom = (
+        daDatos.sel(marker="hombro").mean("side").assign_coords(marker="centro_hombros")
+    )
+    return xr.concat([daDatos, c_cad, c_hom], dim="marker")
 
 
 def calcula_angulo(puntos):
@@ -855,7 +873,7 @@ def procesa_video(
         cap = cv2.VideoCapture(file.as_posix())
         num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         vid_fps = cap.get(cv2.CAP_PROP_FPS)
-        print(f"Video fps:{vid_fps}")
+        # print(f"Video fps:{vid_fps}")
         if num_fot is not None and (num_fot > num_frames or num_fot < 0):
             raise ValueError(
                 f"num_fot {num_fot} is out of range of video frames (0-{num_frames})"
@@ -946,39 +964,40 @@ def procesa_video(
 
             ############################
 
-            # Muestra imágenes
-            if show == "markers":
-                annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
-                cv2.putText(
-                    annotated_image,
-                    "q para salir",
-                    (30, 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 0, 0),
-                    2,
-                )
-                cv2.putText(
-                    annotated_image,
-                    f"Frame {frame}/{num_frames} fps: {fps:.2f}",
-                    (30, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (255, 0, 0),
-                    2,
-                )
+            # Anota en las imágenes
+            annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
+            cv2.putText(
+                annotated_image,
+                "q para salir",
+                (30, 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+            show_frame = frame if num_fot is None else frame + num_fot
+            cv2.putText(
+                annotated_image,
+                f"Frame {show_frame}/{num_frames} fps: {fps:.2f}",
+                (30, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
 
+            if num_fot is not None and save_fot_file:
+                cv2.imwrite(
+                    (file.parent / f"{file.stem}_fot{num_fot}").with_suffix(".jpg"),
+                    cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+                )
+                print(f"Guardado fotograma {num_fot}")
+
+            if show == "markers":
                 cv2.imshow(
                     r"Marker detection",
                     cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
                 )
-
-                if num_fot is not None and save_fot_file:
-                    cv2.imwrite(
-                        (file.parent / f"{file.stem}_fot{num_fot}").with_suffix(".jpg"),
-                        cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
-                    )
-                    print(f"Guardado fotograma {num_fot}")
 
             elif show == "mask":
                 # Ejemplo de máscara
