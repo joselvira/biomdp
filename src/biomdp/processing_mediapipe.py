@@ -998,7 +998,9 @@ def procesa_video(
 
             if num_fot is not None and save_fot_file:
                 cv2.imwrite(
-                    (file.parent / f"{file.stem}_fot{num_fot}").with_suffix(".jpg"),
+                    (file.parent / f"{file.stem}_fot{num_fot}")
+                    .with_suffix(".jpg")
+                    .as_posix(),
                     cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
                 )
                 print(f"Guardado fotograma {num_fot}")

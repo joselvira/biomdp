@@ -3,6 +3,7 @@ README.md
 pyproject.toml
 src/biomdp/Bland_AltmanPlot.py
 src/biomdp/__init__.py
+src/biomdp/_version.py
 src/biomdp/bikefitting_funciones_apoyo.py
 src/biomdp/biomec_xarray_accessor.py
 src/biomdp/filtrar_Butter.py
