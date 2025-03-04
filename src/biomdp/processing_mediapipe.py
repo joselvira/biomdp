@@ -51,12 +51,15 @@ except:
     print('No se ha podido cargar la librería "warnings.deprecated".')
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.1.1"
+__version__ = "v.1.1.2"
 __date__ = "28/02/2025"
 
 
 """
 Modificaciones:
+    04/03/2025, v1.1.2
+        - Incluida opción de escapar de los vídeos con tecla Esc.
+
     01/03/2025, v1.1.1
         - Creada función para añadir marcadores centro_caderas y centro_hombros.
         - En discreto, independiente show markers y save_fot_file.
@@ -536,7 +539,7 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
         cv2.imshow("Imagen", annotated_image)
         frame += 1
 
-        if cv2.waitKey(1) == ord("q"):
+        if cv2.waitKey(1) in [ord("q"), 27]:
             break
     cv2.destroyAllWindows()
 
@@ -1030,7 +1033,7 @@ def procesa_video(
                     print(f"Frame {frame}/{num_frames} fps: {fps:.2f}")
 
             # waits for user to press any key
-            if cv2.waitKey(1) == ord("q") or num_fot is not None:
+            if cv2.waitKey(1) in [ord("q"), 27] or num_fot is not None:
                 break
             # cv2.waitKey(0)
 
@@ -1154,7 +1157,7 @@ def procesa_video_mixto(file, fv=30, show=False):
         frame += 1
 
         # waits for user to press any key
-        if cv2.waitKey(1) == ord("q"):
+        if cv2.waitKey(1) in [ord("q"), 27]:
             break
         # cv2.waitKey(0)
 

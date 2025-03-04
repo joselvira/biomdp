@@ -19,5 +19,5 @@ classifiers = [
 keywords = ["biomechanics", "biomecánica", "data processing", "xarray"]
 
 [project.urls]
-Homepage = "https://github.com/joselvira/BiomecanicaPython"
-Issues = "https://github.com/joselvira/BiomecanicaPython/issues"
+Homepage = "https://github.com/joselvira/biomdp"
+Issues = "https://github.com/joselvira/biomdp/issues"
