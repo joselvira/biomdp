@@ -8,12 +8,12 @@ version = "0.6.7"
 authors = [
   { name="Jose L. L. Elvira", email="jose.lopeze@umh.es" },
 ]
-description = "Usefull functions to analize biomechanicanical data"
+description = "Usefull set of functions for analyzing time series records, particularly biomechanical data"
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: Creative Commons :: Reconocimiento 4.0 Internacional.",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 keywords = ["biomechanics", "biomecánica", "data processing", "xarray"]

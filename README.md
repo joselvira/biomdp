@@ -1,6 +1,6 @@
 # biomdp package
 
-This package contains a set of functions useful for analyzing time series records, particularly in the field of Biomechanics. 
+This package contains a set of functions useful for analyzing time series records, particularly biomechanical data. 
 
 The name is a compound of:
 
