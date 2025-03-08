@@ -4,29 +4,30 @@
 """
 Created on Tue Jun 07 13:44:46 2022
 
-Funciones comunes para tratar archivos del Nexus.
-Se pueden utilizar desde Nexus y desde fuera.
-Utiliza los csv exportados de las MVC. Calcula el máximo de cada canal de EMG
-en todos los archivos con 'MVC' en su nombre. Guarda los máximos en un archivo
-para no tener que volver a cargarlos.
-El máximo lo utiliza para normalizar los canales EMG del archivo actual.
-
-@author: Jose Luis López Elvira
+Common functions for handling Nexus files.
+They can be used from Nexus and from outside.
+Uses the csv exported from the MVCs. Calculates the maximum of each EMG channel in all files with 'MVC' in their name.
+in all files with 'MVC' in their name. Save the maxima in a file
+file so you don't have to reload them.
+The maximum is used to normalize the EMG channels in the current file.
 """
 
 # =============================================================================
-# %% INICIA
+# %% LOAD MODULES
 # =============================================================================
 
 
-__filename__ = "Nexus_FuncionesApoyo"
-__version__ = "0.4.0"
+__filename__ = "nexus_functions_utils"
+__version__ = "0.4.1"
 __company__ = "CIDUMH"
-__date__ = "26/07/2024"
+__date__ = "05/03/2025"
 __author__ = "Jose L. L. Elvira"
 
 """
 Modificaciones:
+    05/03/2025, v0.4.1
+        - Adapted to biomdp with translations.
+    
     26/07/2024, v0.3.0
         - Corrección importante en el cálculo de AngSegRETROPIE con modelo
           antiguo (a partir de metas).
@@ -57,41 +58,17 @@ Modificaciones:
                 - 
 """
 
-# =============================================================================
-# DEFINE OPCIONES DE PROCESADO
-# =============================================================================
-bCargarMVCsPreprocesados = True
-bCrearGraficas = False  # crea las gráficas de ángulos y posiciones
-formatoImagenes = ".pdf"  #'.svg' #'.png'
-bEnsembleAvg = (
-    True  # puede ser True, False o 'completo' (la media con cada repe de fondo)
-)
-bSesionNexus = False  # si está abierto el Nexus con registro cargado
-
-umbral_onset = 10.0  # Umbral para detectar el onset de músculo activo
-delay_EMG = int(-0.650 * 2000)  # Retraso en señal EMG, en fotogramas
-filtro_MVC = "todos"  # Para determinar qué grupo de archivos de MVC se usan para calcular los máximos en cada músculo
-# Las opciones son:
-#'todo' : coge todos los archivos con nombre MVC.
-#'auto' : coge el máximo del propio archivo dinámico activo.
-# Una cadena de texto común a un grupo de archivos (sprint, 200W, standar, etc.)
-bSoloMVC = False  # para que procese solo las MVCs
-bComparaLadosGraf = True  # para que compare lados con SPM1D
-# =============================================================================
-
 import pandas as pd
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages  # para guardar gráficas en pdf
+from matplotlib.backends.backend_pdf import PdfPages  # to save plots in pdf format
 from matplotlib.lines import (
     Line2D,
-)  # necesario para controlar el formato de las líneas de la leyenda
+)  # to control legend lines fotmat
 import seaborn as sns
 from pathlib import Path
-import time  # para cuantificar tiempos de procesado
-
-# import spm1d  # para comparar curvas
+import time
 
 import os
 import sys
@@ -100,43 +77,8 @@ from biomdp.read_vicon_csv import read_vicon_csv, read_vicon_csv_pl_xr
 from biomdp.read_vicon_c3d import read_vicon_c3d_xr
 import biomdp.slice_time_series_phases as stsp
 
-# from biomdp.slice_time_series_phases import SliceTimeSeriesPhases as stsp
-
-r"""
-# Para que intente cargar antes la versión de mi carpeta más actualizada
-carpeta_funciones = Path(r"F:\Programacion\Python\Mios\Functions")
-if carpeta_funciones.exists():
-    sys.path.append(carpeta_funciones.as_posix())
-    # print("Cargadas funciones nexus de apoyo de mi carpeta")
-else:
-    sys.path.append(
-        r"C:\Users\Public\Documents\Vicon\Nexus2.x\ModelTemplates\Functions"
-    )
-
-from readViconCsv import read_vicon_csv, read_vicon_csv_pl_xr
-from read_vicon_c3d import read_vicon_c3d_xr
-from slice_time_series_phases import SliceTimeSeriesPhases as stsp
-"""
-# from cortar_repes_ciclicas import CortaTimeSeries as cts
-# from cortar_repes_ciclicas import corta_repes, corta_repes_xr
-
-# from calculaEulerAngles import euler_angles_from_rot_xyz  # para calcular el ángulo entre 2 matrices de rotación
-
-# from cortar_repes_ciclicas import corta_repes as cts
-
-# from psd import psd #funcion para visualizar Power Spectral Density
-
-# from viconnexusapi import ViconNexus #, ViconUtils
-# vicon = ViconNexus.ViconNexus()
-
-# from detect_peaks import detect_peaks
-# from detect_onset import detect_onset
-
-# from detecta import detect_peaks
-# from detecta import detect_onset
-
 # =============================================================================
-# %% CONSTANTES
+# %% CONSTANTS
 # =============================================================================
 
 N_VARS_BILATERAL = [
@@ -240,18 +182,18 @@ renombrar_vars = {
 # =============================================================================
 # %% Funciones varias
 # =============================================================================
-def crea_marcador(
+def create_marker(
     vicon,
     num_fot: int,
-    n_marcador: str,
-    n_marcador2: str = None,
+    n_marker: str,
+    n_marker2: str = None,
     offset: list = None,
     fot_ref: int = None,
 ) -> None:
     """
-    Ejemplos de uso:
-    crea_marcador(vicon, num_fot=0, n_marcador='Right_MusloAS', offset=[914,29,755])
-    crea_marcador(vicon, num_fot=0, n_marcador='Right_MusloAS', n_marcador2='Right_MusloAI', offset=[0,0,80])
+    Examples:
+    create_marker(vicon, num_fot=0, n_marker='Right_MusloAS', offset=[914,29,755])
+    create_marker(vicon, num_fot=0, n_marker='Right_MusloAS', n_marker2='Right_MusloAI', offset=[0,0,80])
 
     """
     n_subject = vicon.GetSubjectNames()[0]
@@ -267,27 +209,25 @@ def crea_marcador(
     exists[region_of_interest[0] : region_of_interest[1] + 1] = False
 
     try:
-        marker = np.array([vicon.GetTrajectory(n_subject, n_marcador)][0][:3]).T
-        exists = np.array([vicon.GetTrajectory(n_subject, n_marcador)][0][3])
+        marker = np.array([vicon.GetTrajectory(n_subject, n_marker)][0][:3]).T
+        exists = np.array([vicon.GetTrajectory(n_subject, n_marker)][0][3])
     except:
         marker = np.zeros((num_frames, 3))
 
-    if n_marcador == n_marcador2:
-        marker = np.array([vicon.GetTrajectory(n_subject, n_marcador2)][0][:3]).T
-        exists = np.array([vicon.GetTrajectory(n_subject, n_marcador)][0][3])
+    if n_marker == n_marker2:
+        marker = np.array([vicon.GetTrajectory(n_subject, n_marker2)][0][:3]).T
+        exists = np.array([vicon.GetTrajectory(n_subject, n_marker)][0][3])
 
     if offset is not None:
-        if n_marcador2 is None:
+        if n_marker2 is None:
             marker[num_fot, :] = marker[num_fot, :] + np.array(offset)
         else:
             if fot_ref is None:  # carga todo el registro
-                marker2 = np.array(
-                    [vicon.GetTrajectory(n_subject, n_marcador2)][0][:3]
-                ).T
+                marker2 = np.array([vicon.GetTrajectory(n_subject, n_marker2)][0][:3]).T
                 marker[num_fot, :] = marker2[num_fot, :] + np.array(offset)
             else:  # carga sólo el fotograma especificado
                 marker2 = np.array(
-                    [vicon.GetTrajectory(n_subject, n_marcador2)][0][:3]
+                    [vicon.GetTrajectory(n_subject, n_marker2)][0][:3]
                 ).T[fot_ref]
                 marker[num_fot, :] = marker2 + np.array(offset)
 
@@ -296,7 +236,7 @@ def crea_marcador(
     # Escribe el marcador modificado
     vicon.SetTrajectory(
         n_subject,
-        n_marcador,
+        n_marker,
         marker[:, 0].tolist(),
         marker[:, 1].tolist(),
         marker[:, 2].tolist(),
@@ -304,9 +244,9 @@ def crea_marcador(
     )
 
 
-def presenta_base(vicon, origen, matrizRot, nombre, exists, escala) -> None:
+def show_base(vicon, origen, matrizRot, nombre, exists, escala) -> None:
     n_subject = vicon.GetSubjectNames()[0]
-    ##VISUALIZA LOS MARCADORES DEL BASE
+    # Show base markers
     modeledName = "BaseOrig" + nombre
     if modeledName not in vicon.GetModelOutputNames(n_subject):
         vicon.CreateModeledMarker(n_subject, modeledName)
@@ -334,7 +274,6 @@ def presenta_base(vicon, origen, matrizRot, nombre, exists, escala) -> None:
     )
 
 
-# Función para calcular el centro de 3 puntos
 def define_circle(p1, p2, p3):
     """
     Returns the center and radius of the circle passing the given 3 points.
@@ -356,17 +295,17 @@ def define_circle(p1, p2, p3):
     return (cx, cy)  # ((cx, cy), radius)
 
 
-# Función para normalizar los vectores unidad, para no depender de scikit
-def normaliza_vector(a, order=2, axis=-1):
+def normalize_vector(a, order=2, axis=-1):
+    """Function to normalize unit vectors"""
     l2 = np.atleast_1d(np.linalg.norm(a, order, axis))
     l2[l2 == 0] = 1
     return a / np.expand_dims(l2, axis)
 
 
-def normaliza_vectores(x, y, z):
+def normalize_vectors(x, y, z):
     def normaliza_vector_aux(a):
-        # Función intermedia para usar normaliza_vector con xarray con más dimensiones
-        return normaliza_vector(a.T)
+        """Intermediate function to use normalize_vector with xarray with more dimensions"""
+        return normalize_vector(a.T)
 
     x = xr.apply_ufunc(
         normaliza_vector_aux,
@@ -395,7 +334,7 @@ def normaliza_vectores(x, y, z):
     return x, y, z
 
 
-def calcula_euler_angles_aux(rot_matrix):
+def calculate_euler_angles_aux(rot_matrix):
     # TODO: PROBAR viconUtils.EulerFromMatrix()
 
     # rot_matrix = RlGPelvisxr
@@ -413,7 +352,7 @@ def calcula_euler_angles_aux(rot_matrix):
     return np.rad2deg(angles)
 
 
-def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
+def calculate_bases(daData, complete_model=False) -> xr.Dataset:
     """
     Calcula las matrices de rotación de cada segmento a partir de sus marcadores.
     Recibe trayectorias marcadores ya separadas en lados o sin separar.
@@ -422,9 +361,9 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
 
     timer_procesa = time.perf_counter()
 
-    dsRlG = xr.Dataset()  # guarda matrices de rotación de cada segmento
+    dsRlG = xr.Dataset()  # stores each segment's rotation matrix
 
-    # Versión separada por lados
+    # Separate sides version
     if "side" in daData.coords:
 
         # PELVIS
@@ -444,18 +383,18 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             z = xr.cross(x, vprovis, dim="axis")
             y = xr.cross(z, x, dim="axis")
 
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat(
                 [x, y, z], dim="axis_base"
             )  # .transpose('ID', 'axis_base', 'time', 'axis')
-            # RlG = xr.apply_ufunc(normaliza_vector, RlG)
-            # RlG = RlG.T.groupby('axis_base').map(normaliza_vector)
+            # RlG = xr.apply_ufunc(normalize_vector, RlG)
+            # RlG = RlG.T.groupby('axis_base').map(normalize_vector)
 
             dsRlG["Pelvis_LR"] = RlG
 
         except:
-            print("No se ha podido calcular el segmento PELVIS")
+            print("Unable to calculate segment PELVIS")
 
         # modelado['nombre'].append('AngSegPELVIS_LR')
         # modelado['datos'].append(datos_model)
@@ -471,14 +410,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             )
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Muslo_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento MUSLO_L")
+            print("Unable to calculate segment MUSLO_L")
 
         # ----MUSLO_R
         try:
@@ -489,14 +428,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             )
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Muslo_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento MUSLO_R")
+            print("Unable to calculate segment MUSLO_R")
 
         # ----PIERNA_L
         try:
@@ -507,7 +446,7 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             )
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Pierna_L"] = RlG
@@ -515,7 +454,7 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento PIERNA_L")
+            print("Unable to calculate segment PIERNA_L")
 
         # ----PIERNA_R
         try:
@@ -526,14 +465,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             )
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Pierna_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento PIERNA_R")
+            print("Unable to calculate segment PIERNA_R")
 
         # ----RETROPIE_L
         if "Meta" in daData.n_var:
@@ -553,14 +492,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             )
             x = xr.cross(y, vprovis, dim="axis")
             z = xr.cross(x, y, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Retropie_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento RETROPIE_L")
+            print("Unable to calculate segment RETROPIE_L")
 
         # ----RETROPIE_R
         try:
@@ -571,19 +510,19 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             )
             x = xr.cross(y, vprovis, dim="axis")
             z = xr.cross(x, y, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Retropie_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento RETROPIE_R")
+            print("Unable to calculate segment RETROPIE_R")
 
         # =============================================================================
         # Modelo parte superior
         # =============================================================================
-        if modelo_completo:
+        if complete_model:
             # ----LUMBAR_LR
             try:
                 origen = (
@@ -594,14 +533,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
                 vprovis = daData.sel(n_var="L1", side="R") - origen
                 y = xr.cross(vprovis, x, dim="axis")
                 z = xr.cross(x, y, dim="axis")
-                x, y, z = normaliza_vectores(x, y, z)
+                x, y, z = normalize_vectors(x, y, z)
 
                 RlG = xr.concat([x, y, z], dim="axis_base")
                 dsRlG["Lumbar_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
             except:
-                print("No se ha podido calcular el segmento LUMBAR")
+                print("Unable to calculate segment LUMBAR")
 
             # ----TORAX_LR
             try:
@@ -614,14 +553,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
                 )
                 y = xr.cross(z, vprovis, dim="axis").drop_vars("n_var")
                 x = xr.cross(y, z, dim="axis")
-                x, y, z = normaliza_vectores(x, y, z)
+                x, y, z = normalize_vectors(x, y, z)
 
                 RlG = xr.concat([x, y, z], dim="axis_base")
                 dsRlG["Torax_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
             except:
-                print("No se ha podido calcular el segmento TORAX")
+                print("Unable to calculate segment TORAX")
 
             # ----CABEZA_LR
             try:
@@ -633,18 +572,18 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
                 )
                 z = xr.cross(vprovis, y, dim="axis").drop_vars("n_var")
                 x = xr.cross(y, z, dim="axis")
-                x, y, z = normaliza_vectores(x, y, z)
+                x, y, z = normalize_vectors(x, y, z)
 
                 RlG = xr.concat([x, y, z], dim="axis_base")
                 dsRlG["Cabeza_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
             except:
-                print("No se ha podido calcular el segmento CABEZA")
+                print("Unable to calculate segment CABEZA")
 
         dsRlG = dsRlG.drop_vars(["n_var", "side"])
 
-    else:  # versión sin separar por side
+    else:  # unseparated sisdes version
         # PELVIS
         # datos_model=np.zeros((len(daDatos.time), 3))
         try:
@@ -656,18 +595,18 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             z = xr.cross(x, vprovis, dim="axis")
             y = xr.cross(z, x, dim="axis")
 
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat(
                 [x, y, z], dim="axis_base"
             )  # .transpose('ID', 'axis_base', 'time', 'axis')
-            # RlG = xr.apply_ufunc(normaliza_vector, RlG)
-            # RlG = RlG.T.groupby('axis_base').map(normaliza_vector)
+            # RlG = xr.apply_ufunc(normalize_vector, RlG)
+            # RlG = RlG.T.groupby('axis_base').map(normalize_vector)
 
             dsRlG["Pelvis_LR"] = RlG
 
         except:
-            print("No se ha podido calcular el segmento PELVIS")
+            print("Unable to calculate segment PELVIS")
 
         # modelado['nombre'].append('AngSegPELVIS_LR')
         # modelado['datos'].append(datos_model)
@@ -681,14 +620,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             vprovis = daData.sel(n_var="KneeInt_L") - daData.sel(n_var="KneeExt_L")
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Muslo_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento MUSLO_L")
+            print("Unable to calculate segment MUSLO_L")
 
         # ----MUSLO_R
         try:
@@ -697,14 +636,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             vprovis = daData.sel(n_var="KneeExt_R") - daData.sel(n_var="KneeInt_R")
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Muslo_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento MUSLO_R")
+            print("Unable to calculate segment MUSLO_R")
 
         # ----PIERNA_L
         try:
@@ -713,7 +652,7 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             vprovis = daData.sel(n_var="AnkleInt_L") - daData.sel(n_var="AnkleExt_L")
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Pierna_L"] = RlG
@@ -721,7 +660,7 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento PIERNA_L")
+            print("Unable to calculate segment PIERNA_L")
 
         # ----PIERNA_R
         try:
@@ -730,14 +669,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             vprovis = daData.sel(n_var="AnkleExt_R") - daData.sel(n_var="AnkleInt_R")
             y = xr.cross(z, vprovis, dim="axis")
             x = xr.cross(y, z, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Pierna_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento PIERNA_R")
+            print("Unable to calculate segment PIERNA_R")
 
         # ----RETROPIE_L
         try:
@@ -746,14 +685,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             vprovis = daData.sel(n_var="TalonSup_L") - daData.sel(n_var="TalonInf_L")
             x = xr.cross(y, vprovis, dim="axis")
             z = xr.cross(x, y, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Retropie_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento RETROPIE_L")
+            print("Unable to calculate segment RETROPIE_L")
 
         # ----RETROPIE_R
         try:
@@ -762,19 +701,19 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
             vprovis = daData.sel(n_var="TalonSup_R") - daData.sel(n_var="TalonInf_R")
             x = xr.cross(y, vprovis, dim="axis")
             z = xr.cross(x, y, dim="axis")
-            x, y, z = normaliza_vectores(x, y, z)
+            x, y, z = normalize_vectors(x, y, z)
 
             RlG = xr.concat([x, y, z], dim="axis_base")
             dsRlG["Retropie_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
         except:
-            print("No se ha podido calcular el segmento RETROPIE_R")
+            print("Unable to calculate segment RETROPIE_R")
 
         # =============================================================================
         # Modelo parte superior
         # =============================================================================
-        if modelo_completo:
+        if complete_model:
             # ----LUMBAR_LR
             try:
                 origen = (daData.sel(n_var="PSI_L") + daData.sel(n_var="PSI_R")) * 0.5
@@ -782,14 +721,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
                 vprovis = daData_completo.sel(n_var="L1") - origen
                 y = xr.cross(vprovis, x, dim="axis")
                 z = xr.cross(x, y, dim="axis")
-                x, y, z = normaliza_vectores(x, y, z)
+                x, y, z = normalize_vectors(x, y, z)
 
                 RlG = xr.concat([x, y, z], dim="axis_base")
                 dsRlG["Lumbar_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
             except:
-                print("No se ha podido calcular el segmento LUMBAR")
+                print("Unable to calculate segment LUMBAR")
 
             # ----TORAX_LR
             try:
@@ -800,14 +739,14 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
                 )
                 y = xr.cross(z, vprovis, dim="axis")
                 x = xr.cross(y, z, dim="axis")
-                x, y, z = normaliza_vectores(x, y, z)
+                x, y, z = normalize_vectors(x, y, z)
 
                 RlG = xr.concat([x, y, z], dim="axis_base")
                 dsRlG["Torax_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
             except:
-                print("No se ha podido calcular el segmento TORAX")
+                print("Unable to calculate segment TORAX")
 
             # ----CABEZA_LR
             try:
@@ -821,25 +760,25 @@ def calcula_bases(daData, modelo_completo=False) -> xr.Dataset:
                 ) - daData_completo.sel(n_var="Cabeza", side="L")
                 z = xr.cross(vprovis, y, dim="axis")
                 x = xr.cross(y, z, dim="axis")
-                x, y, z = normaliza_vectores(x, y, z)
+                x, y, z = normalize_vectors(x, y, z)
 
                 RlG = xr.concat([x, y, z], dim="axis_base")
                 dsRlG["Cabeza_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
             except:
-                print("No se ha podido calcular el segmento CABEZA")
+                print("Unable to calculate segment CABEZA")
 
         dsRlG = dsRlG.drop_vars(["n_var"])
 
     print(
-        f"Bases de {len(daData.ID)} registros calculados en {time.perf_counter() - timer_procesa:.3f} s."
+        f"Bases from {len(daData.ID)} files calculated in {time.perf_counter() - timer_procesa:.3f} s."
     )
 
     return dsRlG
 
 
-def calcula_angulos_segmentos(dsRlG, verbose=False) -> xr.Dataset:
+def calculate_angles_segments(dsRlG, verbose=False) -> xr.Dataset:
     timer_procesa = time.perf_counter()
 
     dsAngSeg = xr.Dataset()
@@ -854,26 +793,26 @@ def calcula_angulos_segmentos(dsRlG, verbose=False) -> xr.Dataset:
                 dsRlG[RlG].isel(axis_base=0), np.nan
             )
             continue
-        dsAngSeg[f"AngSeg{RlG.upper()}"] = calcula_angulo_xr(RlGChild=dsRlG[RlG])
+        dsAngSeg[f"AngSeg{RlG.upper()}"] = calculate_angle_xr(RlGChild=dsRlG[RlG])
         if verbose:
             print("calculado")
     # RlGChild=dsRlG[RlG]
 
     print(
-        f"Procesados {len(dsRlG.ID)} registros en {time.perf_counter() - timer_procesa:.3f} s."
+        f"Processed {len(dsRlG.ID)} files in {time.perf_counter() - timer_procesa:.3f} s."
     )
 
     return dsAngSeg
 
 
-def calcula_angulos_articulaciones(
-    dsRlG, daTrajec=None, modelo_completo=False, verbose=False
+def calculate_angles_joints(
+    dsRlG, daTrajec=None, complete_model=False, verbose=False
 ) -> xr.Dataset:
     """
     Calcula ángulos de articulaciones a partir de las matrices de rotación
     daTrajec necesario sólo para el modelo completo
     """
-    if modelo_completo and daTrajec is None:
+    if complete_model and daTrajec is None:
         raise ValueError("Datos de trayectoria necesarios para el modelo completo")
         return
 
@@ -902,7 +841,7 @@ def calcula_angulos_articulaciones(
         ["Retropie_R", "Pierna_R"],
     ]
 
-    if modelo_completo:
+    if complete_model:
         modeled_names += [
             "AngArtLumbar_LR",
             "AngArtToracoLumbar_LR",
@@ -931,7 +870,9 @@ def calcula_angulos_articulaciones(
                 dsAngles[modeled_name] = xr.full_like(child.isel(axis_base=0), np.nan)
                 continue
 
-            dsAngles[modeled_name] = calcula_angulo_xr(RlGChild=child, RlGParent=parent)
+            dsAngles[modeled_name] = calculate_angle_xr(
+                RlGChild=child, RlGParent=parent
+            )
             if verbose:
                 print("calculado")
             """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
@@ -973,7 +914,7 @@ def calcula_angulos_articulaciones(
         ]  # solo se invierte el signo de la rotación tobillo der
 
     # ----ÁNGULOS LINEALES
-    if modelo_completo:
+    if complete_model:
         # TODO: FALTA DIFERENCIAR SI VIENE CON SIDE O NO
         # ----L1
         modeled_name = "AngArtL1_LR"
@@ -1065,7 +1006,7 @@ def calcula_angulos_articulaciones(
         child = dsRlG['Muslo_L']
         parent = dsRlG['Pelvis_LR']
                 
-        dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+        dsAngles[modeled_name] = calculate_angle_xr(child, parent)
         """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                         input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                         output_core_dims=[['axis']],
@@ -1082,7 +1023,7 @@ def calcula_angulos_articulaciones(
     try:
         child = dsRlG['Muslo_R']
         parent = dsRlG['Pelvis_LR']
-        dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+        dsAngles[modeled_name] = calculate_angle_xr(child, parent)
         """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                         input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                         output_core_dims=[['axis']],
@@ -1101,7 +1042,7 @@ def calcula_angulos_articulaciones(
     try:
         child = dsRlG['Pierna_L']
         parent = dsRlG['Muslo_L']        
-        dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+        dsAngles[modeled_name] = calculate_angle_xr(child, parent)
         """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                         input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                         output_core_dims=[['axis']],
@@ -1119,7 +1060,7 @@ def calcula_angulos_articulaciones(
     try:
         child = dsRlG['Pierna_R']
         parent = dsRlG['Muslo_R']        
-        dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+        dsAngles[modeled_name] = calculate_angle_xr(child, parent)
         """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                         input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                         output_core_dims=[['axis']],
@@ -1137,7 +1078,7 @@ def calcula_angulos_articulaciones(
     try:
         child = dsRlG['Retropie_L']
         parent = dsRlG['Pierna_L']        
-        dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+        dsAngles[modeled_name] = calculate_angle_xr(child, parent)
         """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                         input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                         output_core_dims=[['axis']],
@@ -1155,7 +1096,7 @@ def calcula_angulos_articulaciones(
     try:
         child = dsRlG['Retropie_R']
         parent = dsRlG['Pierna_R']        
-        dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+        dsAngles[modeled_name] = calculate_angle_xr(child, parent)
         """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                         input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                         output_core_dims=[['axis']],
@@ -1168,13 +1109,13 @@ def calcula_angulos_articulaciones(
     except:
         print('No se ha podido calcular el ángulo', modeled_name)
     
-    if modelo_completo:
+    if complete_model:
         #----LUMBAR
         modeled_name = 'AngArtLumbar_LR'
         try:
             child = dsRlG['Pelvis_LR']
             parent = dsRlG['Lumbar_LR']        
-            dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+            dsAngles[modeled_name] = calculate_angle_xr(child, parent)
             """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                             input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                             output_core_dims=[['axis']],
@@ -1190,7 +1131,7 @@ def calcula_angulos_articulaciones(
         try:
             child = dsRlG['Lumbar_LR']
             parent = dsRlG['Torax_LR']        
-            dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+            dsAngles[modeled_name] = calculate_angle_xr(child, parent)
             """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                             input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                             output_core_dims=[['axis']],
@@ -1232,7 +1173,7 @@ def calcula_angulos_articulaciones(
         try:
             child = dsRlG['Torax_LR']
             parent = dsRlG['Cabeza_LR']        
-            dsAngles[modeled_name] = calcula_angulo_xr(child, parent)
+            dsAngles[modeled_name] = calculate_angle_xr(child, parent)
             """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                             input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                             output_core_dims=[['axis']],
@@ -1270,34 +1211,32 @@ def calcula_angulos_articulaciones(
             print('No se ha podido calcular el ángulo', modeled_name)
     '''
     print(
-        f"Calculados ángulos de {len(dsRlG.ID)} registros en {time.perf_counter() - timer_procesa:.3f} s."
+        f"Calculated angles from {len(dsRlG.ID)} files in {time.perf_counter() - timer_procesa:.3f} s."
     )
 
     return dsAngles
 
 
-def calcula_angulos_desde_trajec(
-    daData, modelo_completo=False, tipo="all", verbose=False
+def calculate_angles_from_trajec(
+    daData, complete_model=False, tipo="all", verbose=False
 ) -> xr.DataArray:
     """
     Calcula ángulos de articulaciones a partir de las trayectorias.
     Paso intermedio de calcular matrices de rotación
     tipo: 'artic', 'segment' o 'all'
     """
-    timer_procesa = time.perf_counter()  # inicia el contador de tiempo
+    timer_procesa = time.perf_counter()
 
     print("\nCalculando matrices de rotación...")
-    dsRlG = calcula_bases(daData, modelo_completo)  # daData=daDatos.isel(ID=0))
+    dsRlG = calculate_bases(daData, complete_model)  # daData=daDatos.isel(ID=0))
 
     if tipo in ["segment", "all"]:
         print("\nCalculando ángulos de segmentos...")
-        dsAngSegments = calcula_angulos_segmentos(dsRlG, verbose=verbose)
+        dsAngSegments = calculate_angles_segments(dsRlG, verbose=verbose)
 
     if tipo in ["artic", "all"]:
         print("\nCalculando ángulos articulares...")
-        dsAngArtics = calcula_angulos_articulaciones(
-            dsRlG, modelo_completo, verbose=verbose
-        )
+        dsAngArtics = calculate_angles_joints(dsRlG, complete_model, verbose=verbose)
     # dsAngArtics['AngArtHip_L'].plot.line(x='time', row='ID', hue='axis')
 
     if tipo == "all":
@@ -1310,7 +1249,7 @@ def calcula_angulos_desde_trajec(
     daAngles = daAngles.to_array().rename({"variable": "n_var"})  # .to_dataarray()
 
     if "side" in daData.coords:
-        daAngles = separa_trayectorias_lados(daAngles)
+        daAngles = split_trajectories_sides(daAngles)
 
     daAngles.name = "Angles"
     daAngles.attrs["units"] = "deg"
@@ -1319,36 +1258,32 @@ def calcula_angulos_desde_trajec(
     # daAngles.sel(n_var='AngArtHip').plot.line(x='time', row='ID', col='axis', hue='side')
 
     print(
-        f"Procesados {len(daAngles.ID)} registros en {time.perf_counter() - timer_procesa:.3f} s."
+        f"Processed {len(daAngles.ID)} files in {time.perf_counter() - timer_procesa:.3f} s."
     )
 
     return daAngles
 
 
-def ajusta_etiquetas_lado_final(daData) -> xr.DataArray:
+def adjust_labels_side_end(daData) -> xr.DataArray:
     labels = daData["n_var"].values
 
     # Busca variablel bilaterales
-    n_var_nuevo = [f"{i}_LR" if i in N_VARS_BILATERAL else i for i in labels]
+    n_var_new = [f"{i}_LR" if i in N_VARS_BILATERAL else i for i in labels]
 
     # Ajusta las etiquetas a formato lados L, R
-    n_var_nuevo = [
-        f'{i.split("Left_")[-1]}_L' if "Left" in i else i for i in n_var_nuevo
-    ]
-    n_var_nuevo = [
-        f'{i.split("Right_")[-1]}_R' if "Right" in i else i for i in n_var_nuevo
-    ]
-    n_var_nuevo = [
+    n_var_new = [f'{i.split("Left_")[-1]}_L' if "Left" in i else i for i in n_var_new]
+    n_var_new = [f'{i.split("Right_")[-1]}_R' if "Right" in i else i for i in n_var_new]
+    n_var_new = [
         i[1:] + "_L" if i[0] == "L" and i[0:6] != "Length" and i != "L1_LR" else i
-        for i in n_var_nuevo
+        for i in n_var_new
     ]
-    n_var_nuevo = [i[1:] + "_R" if i[0] == "R" else i for i in n_var_nuevo]
+    n_var_new = [i[1:] + "_R" if i[0] == "R" else i for i in n_var_new]
 
-    daData = daData.assign_coords(n_var=n_var_nuevo)
+    daData = daData.assign_coords(n_var=n_var_new)
     return daData
 
 
-def traduce_variables(nomvar) -> str:
+def rename_variables(nomvar) -> str:
     if nomvar == "GLU":
         nom = "Glúteo"
     elif nomvar == "BIC":
@@ -1399,7 +1334,7 @@ def traduce_variables(nomvar) -> str:
     return nom
 
 
-def calcula_angulo_xr(RlGChild, RlGParent=None) -> xr.DataArray:
+def calculate_angle_xr(RlGChild, RlGParent=None) -> xr.DataArray:
     """
     Recibe matrices de rotación. Si llega una sola calcula el ángulo del segmento,
     si llegan dos calcula el ángulo entre los dos segmentos (articulación).
@@ -1435,7 +1370,7 @@ def calcula_angulo_xr(RlGChild, RlGParent=None) -> xr.DataArray:
     """
 
     """
-    #PROBAR CON XR.DOT Y calcula_euler_angles_aux
+    #PROBAR CON XR.DOT Y calculate_euler_angles_aux
     xr.dot(RlGChild, RlGParent.T, dim=['axis_base', 'axis'])
     Rxr = xr.dot(RlGChild, RlGParent.T, dim='axis') #['axis_base', 'axis'])
     Rxr[0,0]
@@ -1453,7 +1388,7 @@ def calcula_angulo_xr(RlGChild, RlGParent=None) -> xr.DataArray:
     # angulo.sel(axis='z').plot.line(x='time')
 
     """
-    datos_model = xr.apply_ufunc(calcula_euler_angles_aux, RlG,
+    datos_model = xr.apply_ufunc(calculate_euler_angles_aux, RlG,
                                  input_core_dims=[['axis_base', 'axis']],
                                  output_core_dims=[['axis']],
                                  vectorize=True,
@@ -1468,9 +1403,9 @@ def calcula_angulo_xr(RlGChild, RlGParent=None) -> xr.DataArray:
 # =============================================================================
 # %% Extrae variables del Nexus directamente
 # =============================================================================
-def carga_variables_nexus_trajectories(vicon=None, n_vars=None) -> xr.DataArray:
-    print("Cargando datos Trayectorias...")
-    timer = time.time()  # inicia el contador de tiempo
+def load_variables_nexus_trajectories(vicon=None, n_vars=None) -> xr.DataArray:
+    print("Loading Trajectories...")
+    timer = time.time()
 
     if n_vars is None:
         n_vars = vicon.GetMarkerNames(vicon.GetSubjectNames()[0])
@@ -1498,7 +1433,7 @@ def carga_variables_nexus_trajectories(vicon=None, n_vars=None) -> xr.DataArray:
 
     markers = []
     for nom in n_vars:
-        # print(f'Intentando cargar la variable {nom}')
+        # print(f'Trying to load variable {nom}')
 
         dat = vicon.GetTrajectory(vicon.GetSubjectNames()[0], nom)
         dat = np.where(np.array(dat[3]), dat[:3], np.nan)
@@ -1514,10 +1449,10 @@ def carga_variables_nexus_trajectories(vicon=None, n_vars=None) -> xr.DataArray:
             # )[
             #     0
             # ]  # .reshape(3, vicon.GetTrialRange()[1]).T
-            print(f"{nom} cargada desde Modeled Markers")
+            print(f"{nom} loaded from Modeled Markers")
         if dat.size == 0:
             dat = np.full((3, vicon.GetTrialRange()[1]), np.nan, dtype=float)
-            print(f"No se ha podido cargar la variable {nom}")
+            print(f"Unable to load variable {nom}")
 
         markers.append(dat)
 
@@ -1542,31 +1477,31 @@ def carga_variables_nexus_trajectories(vicon=None, n_vars=None) -> xr.DataArray:
     da.attrs["units"] = "mm"
     da.time.attrs["units"] = "s"
 
-    print("Cargados los datos en {0:.3f} s \n".format(time.time() - timer))
+    print("Loaded in {0:.3f} s \n".format(time.time() - timer))
 
     return da
 
 
-def carga_variables_nexus_force(vicon=None, n_plate=None) -> xr.DataArray:
-    print("Cargando datos Fuerza...")
-    timer = time.time()  # inicia el contador de tiempo
+def load_variables_nexus_force(vicon=None, n_plate=None) -> xr.DataArray:
+    print("Loading Forces...")
+    timer = time.time()
 
     deviceForce = [x for x in vicon.GetDeviceNames() if n_plate in x][0]
     deviceID = vicon.GetDeviceIDFromName(deviceForce)
     _, _, freqForce, outputIDs, _, _ = vicon.GetDeviceDetails(deviceID)
 
-    # Coge los nombres de los canales
+    # Read channels names
     cols = [
         vicon.GetDeviceOutputDetails(deviceID, outputIDs[i])
         for i in range(len(outputIDs))
     ]
 
-    # Carga las fuerzas de la plataforma
+    # Load platform forces
     ejes = []
     for n, eje in enumerate(["x", "y", "z"], start=1):
         ejes.append(vicon.GetDeviceChannel(deviceID, outputIDs[0], n)[0])
 
-    data = np.expand_dims(np.array(ejes), axis=0)  # añade una dimensión para el ID
+    data = np.expand_dims(np.array(ejes), axis=0)  # add dimension for ID
     coords = {
         "ID": [vicon.GetSubjectNames()[0]],
         "axis": ["x", "y", "z"],
@@ -1586,13 +1521,13 @@ def carga_variables_nexus_force(vicon=None, n_plate=None) -> xr.DataArray:
     da.attrs["units"] = "N"
     da.time.attrs["units"] = "s"
 
-    print("Cargados los datos en {0:.3f} s \n".format(time.time() - timer))
+    print("Loaded in {0:.3f} s \n".format(time.time() - timer))
     return da
 
 
-def carga_variables_nexus_EMG(vicon=None, n_vars=None) -> xr.DataArray:
-    print("Cargando datos EMG...")
-    timer = time.time()  # inicia el contador de tiempo
+def load_variables_nexus_EMG(vicon=None, n_vars=None) -> xr.DataArray:
+    print("Loading EMG...")
+    timer = time.time()
 
     deviceEMG = [x for x in vicon.GetDeviceNames() if "EMG" in x][0]
     deviceID = vicon.GetDeviceIDFromName(deviceEMG)
@@ -1640,24 +1575,24 @@ def carga_variables_nexus_EMG(vicon=None, n_vars=None) -> xr.DataArray:
     #                 'EMG7':'GLU_L', 'EMG8':'BIC_L', 'EMG9':'REC_L', 'EMG10':'VME_L', 'EMG11':'GAS_L', 'EMG12':'TIB_L',
     #                 }
     """
-    # Se queda las variables seleccionadas
     if n_vars is not None:
         # daEMG = daEMG.sel(channel=daEMG.channel.str.contains('EMG'))
         da = da.sel(channel=n_vars)
 
-    da = da * 1000  # pasa a milivoltios
+    da = da * 1000  # convert to millivolts
     da.name = "EMG"
     da.attrs["freq"] = float(freqEMG)
     da.attrs["freq_ref"] = vicon.GetFrameRate()  # frequency of markers
     da.attrs["units"] = "mV"
     da.time.attrs["units"] = "s"
 
-    print("Cargados los datos en {0:.3f} s \n".format(time.time() - timer))
+    print("Loaded in {0:.3f} s \n".format(time.time() - timer))
     return da
 
 
-def escribe_variables_en_nexus_kinem(da, vicon) -> None:
-    import itertools
+def write_variables_in_nexus_kinem(da, vicon) -> None:
+    """Write processed Kinematics back to Nexus"""
+    from itertools import product
 
     n_subject = vicon.GetSubjectNames()[0]
     num_frames = vicon.GetTrialRange()[1]
@@ -1670,14 +1605,14 @@ def escribe_variables_en_nexus_kinem(da, vicon) -> None:
     # activa solo en la región de interés del trial
     exists[region_of_interest[0] : region_of_interest[1] + 1] = True
 
-    for var, lado in itertools.product(da.n_var.values, da.side.values):
+    for var, lado in product(da.n_var.values, da.side.values):
         if var in N_VARS_BILATERAL:
             lado = "LR"
         n_modeled = f"{var}_{lado}"
 
         # print(n_modeled)
 
-        if lado == "LR":  # si es bilateral lo vuelve a cambiar para poder seleccionar
+        if lado == "LR":  # if bilateral, change back to left to be able to select
             lado = "L"
 
         if "ID" in da.dims:
@@ -1685,11 +1620,9 @@ def escribe_variables_en_nexus_kinem(da, vicon) -> None:
         else:
             insert_values = da.sel(n_var=var, side=lado)
 
-        # Si no hay datos se sale
         if np.isnan(insert_values).all():
             continue
 
-        # Se asegura de que los ejes estén bien orientados
         insert_values = insert_values.transpose(..., "axis", "time")
 
         if n_modeled not in vicon.GetModelOutputNames(n_subject):
@@ -1703,8 +1636,8 @@ def escribe_variables_en_nexus_kinem(da, vicon) -> None:
         vicon.SetModelOutput(n_subject, n_modeled, insert_values.values, exists)
 
 
-def escribe_variables_en_nexus_forces(da=None, vicon=None) -> None:
-    # Escribe Fuerzas tratadas de vuelta al Nexus
+def write_variables_in_nexus_forces(da=None, vicon=None) -> None:
+    """Write processed Forces back to Nexus"""
     # Get ModelOutput List
     n_subject = vicon.GetSubjectNames()[0]
     num_frames = vicon.GetTrialRange()[1]
@@ -1740,19 +1673,17 @@ def escribe_variables_en_nexus_forces(da=None, vicon=None) -> None:
     vicon.SetModelOutput(n_subject, modeled_name, var_model, exists)
 
 
-def escribe_variables_en_nexus_emg(da=None, vicon=None) -> None:
-    # Escribe EMG tratada de vuelta al Nexus
+def write_variables_in_nexus_emg(da=None, vicon=None) -> None:
+    """Write processed EMG back to Nexus"""
     # Get ModelOutput List
 
     n_subject = vicon.GetSubjectNames()[0]
     num_frames = vicon.GetTrialRange()[1]
-    region_of_interest = (
-        np.array(vicon.GetTrialRegionOfInterest()) - 1
-    )  # corrección para que ajuste a la escala empezando en cero
-    exists = np.full(
-        (num_frames), False, dtype=bool
-    )  # pone a cero toda la variable de si existe
-    # activa solo en la región de interés del trial
+
+    # Correction to fit the scale starting from zero
+    region_of_interest = np.array(vicon.GetTrialRegionOfInterest()) - 1
+    exists = np.full((num_frames), False, dtype=bool)
+    # active only in the trial's region of interest
     exists[region_of_interest[0] : region_of_interest[1] + 1] = True
 
     full_model_output_list = vicon.GetModelOutputNames(n_subject)
@@ -1765,9 +1696,8 @@ def escribe_variables_en_nexus_emg(da=None, vicon=None) -> None:
     # musc=['GLU', 'BIC', 'VME', 'REC', 'TIB', 'GAS']
 
     for modeled_name in da.channel.data:
-        var_model = (
-            da_subsamp.isel(ID=0).sel(channel=modeled_name).data / 1000
-        )  # vuelve a pasarlo a voltios, que es la unidad del Nexus
+        # Converto to volts
+        var_model = da_subsamp.isel(ID=0).sel(channel=modeled_name).data / 1000
 
         if modeled_name not in vicon.GetModelOutputNames(n_subject):
             vicon.CreateModelOutput(
@@ -1781,10 +1711,9 @@ def escribe_variables_en_nexus_emg(da=None, vicon=None) -> None:
 
 
 # =============================================================================
-# %% Extrae variables del Nexus desde csv o c3d
+# %% Extract Nexus variables from csv or c3d
 # =============================================================================
-def pasa_df_a_da_EMG(data) -> xr.DataArray:
-    # Pasa de df a da
+def from_df_to_da_EMG(data) -> xr.DataArray:
     if isinstance(data, pd.DataFrame):
         da = (
             data.set_index(["ID", "time"])
@@ -1800,7 +1729,7 @@ def pasa_df_a_da_EMG(data) -> xr.DataArray:
     )  # [i for i in da.n_var.data if '_L' in i and '_LR' not in i])#nomVarsContinuas_L) #el L es distinto porque incluye _L y _LR
     R = da.sel(n_var=da["n_var"].str.endswith("_R"))
 
-    # Quita las terminaciones después de _
+    # Remove the endings after _
     L["n_var"] = ("n_var", L["n_var"].str.rstrip(to_strip="_L").data)
     R["n_var"] = ("n_var", R["n_var"].str.rstrip(to_strip="_R").data)
 
@@ -1814,33 +1743,32 @@ def pasa_df_a_da_EMG(data) -> xr.DataArray:
 
 
 # =============================================================================
-# %% Carga trayectorias desde c3d
+# %% Load trajectories from c3d
 # =============================================================================
-def carga_trayectorias_c3d(lista_archivos, nom_vars_cargar=None):
+def load_trayectorias_c3d(file_list, n_vars_load=None):
     raise Exception(
-        "Deprecation warning. Mejor utilizar carga_c3d_generico_xr(data, section='Trajectories')"
+        "Deprecation warning. Use load_c3d_generic_xr(data, section='Trajectories') instead"
     )
     # return
 
-    import c3d
+    try:
+        import c3d
+    except:
+        raise ImportError("c3d module not found. Install with: pip install c3d")
 
-    print("Cargando los archivos...")
-    timer = time.time()  # inicia el contador de tiempo
+    print("Loading files...")
+    timer = time.time()
 
-    daTodosArchivos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    numArchivosProcesados = 0
-    for file in lista_archivos:
+    daAllFiles = []
+    error_files = []
+    num_processed_files = 0
+    for file in file_list:
         # se asegura de que la extensión es c3d
         file = file.with_suffix(".c3d")
         print(file.name)
         try:
-            timerSub = time.time()  # inicia el contador de tiempo
-            print("Cargando archivo: {0:s}".format(file.name))
+            timerSub = time.time()
+            print("Loading file: {0:s}".format(file.name))
 
             with open(file, "rb") as handle:
                 reader = c3d.Reader(handle)
@@ -1858,14 +1786,14 @@ def carga_trayectorias_c3d(lista_archivos, nom_vars_cargar=None):
             data = np.asarray(points)[:, :, :3]
 
             # Ajusta las etiquetas a formato lados L, R
-            n_var_nuevo = [
+            n_var_new = [
                 i.split("Left_")[-1] + "_L" if "Left" in i else i for i in labels
             ]
-            n_var_nuevo = [
-                i.split("Right_")[-1] + "_R" if "Right" in i else i for i in n_var_nuevo
+            n_var_new = [
+                i.split("Right_")[-1] + "_R" if "Right" in i else i for i in n_var_new
             ]
-            n_var_nuevo = [i[1:] + "_L" if i[0] == "L" else i for i in n_var_nuevo]
-            n_var_nuevo = [i[1:] + "_R" if i[0] == "R" else i for i in n_var_nuevo]
+            n_var_new = [i[1:] + "_L" if i[0] == "L" else i for i in n_var_new]
+            n_var_new = [i[1:] + "_R" if i[0] == "R" else i for i in n_var_new]
 
             da = xr.DataArray(
                 data=np.expand_dims(data, axis=0) / 10,  # pasado a centímetros
@@ -1873,7 +1801,7 @@ def carga_trayectorias_c3d(lista_archivos, nom_vars_cargar=None):
                 coords={
                     "ID": [file.parent.parts[-2] + "_" + file.stem],
                     "time": (np.arange(0, data.shape[0]) / freq),
-                    "n_var": (n_var_nuevo),
+                    "n_var": (n_var_new),
                     "axis": (["x", "y", "z"]),
                 },
                 name="Trayectorias",
@@ -1887,54 +1815,54 @@ def carga_trayectorias_c3d(lista_archivos, nom_vars_cargar=None):
             da = da.sel(n_var=~da.n_var.str.contains("USERMO"))
             # da.isel(ID=0, axis=0).plot.line(x='time', hue='n_var')
 
-            daTodosArchivos.append(da)
+            daAllFiles.append(da)
             print("Tiempo {0:.3f} s \n".format(time.time() - timerSub))
-            numArchivosProcesados += 1
+            num_processed_files += 1
 
-        except Exception as err:  # Si falla anota un error y continua
-            print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
-            ErroresArchivos.append(os.path.basename(file.name) + " " + str(err))
+        except Exception as err:
+            print("\nATTENTION. Unable to process " + file.name, err, "\n")
+            error_files.append(os.path.basename(file.name) + " " + str(err))
             continue
 
-    daTodosArchivos = xr.concat(
-        daTodosArchivos, dim="ID"
+    daAllFiles = xr.concat(
+        daAllFiles, dim="ID"
     )  # .transpose('ID', 'n_var', 'side', 'axis', 'time')
 
     print(
         "Cargados {0:d} archivos en {1:.3f} s \n".format(
-            numArchivosProcesados, time.time() - timer
+            num_processed_files, time.time() - timer
         )
     )
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido procesar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to process:")
+        for x in range(len(error_files)):
+            print(error_files[x])
     # *******************************************************
 
-    if nom_vars_cargar:
-        daTodosArchivos = daTodosArchivos.sel(n_var=nom_vars_cargar)
+    if n_vars_load:
+        daAllFiles = daAllFiles.sel(n_var=n_vars_load)
 
-    # daTodosArchivos.isel(ID=0).sel(n_var=['HJC', 'KJC', 'AJC']).plot.line(x='time', col='side', hue='n_var')
+    # daAllFiles.isel(ID=0).sel(n_var=['HJC', 'KJC', 'AJC']).plot.line(x='time', col='side', hue='n_var')
 
     """
     #Añade coordenada con nombre del tipo de test. Diferencia entre MVC y dinámicos, por el criterio de nombrado
-    if daTodosArchivos.ID[0].str.contains('MVC'):
-        lista_coords = daTodosArchivos.ID.to_series().str.split('_').str[-1].str.split('-').str[-2]
+    if daAllFiles.ID[0].str.contains('MVC'):
+        lista_coords = daAllFiles.ID.to_series().str.split('_').str[-1].str.split('-').str[-2]
     else:
-        lista_coords = daTodosArchivos.ID.to_series().str.split('_').str[-1].str.split('-').str[0]
-    daTodosArchivos = daTodosArchivos.assign_coords(test=('ID', lista_coords))
+        lista_coords = daAllFiles.ID.to_series().str.split('_').str[-1].str.split('-').str[0]
+    daAllFiles = daAllFiles.assign_coords(test=('ID', lista_coords))
     """
 
-    return daTodosArchivos
+    return daAllFiles
 
 
-def separa_trayectorias_lados(daData) -> xr.DataArray:
+def split_trajectories_sides(daData) -> xr.DataArray:
     L = daData.sel(n_var=daData.n_var.str.endswith("_L"))
     R = daData.sel(n_var=daData["n_var"].str.endswith("_R"))
     LR = daData.sel(n_var=daData["n_var"].str.endswith("_LR"))
     # [i for i in da.n_var.data if '_L' in i and '_LR' not in i])#nomVarsContinuas_L) #el L es distinto porque incluye _L y _LR
-    # daTodosArchivos.sel(n_var=list(daTodosArchivos.n_var[daTodosArchivos['n_var'].str.endswith('_LR').data].data))
+    # daAllFiles.sel(n_var=list(daAllFiles.n_var[daAllFiles['n_var'].str.endswith('_LR').data].data))
 
     # Quita las terminaciones después de _
     L["n_var"] = ("n_var", L["n_var"].str.rstrip(to_strip="_L").data)
@@ -1959,30 +1887,24 @@ def separa_trayectorias_lados(daData) -> xr.DataArray:
 
 
 # =============================================================================
-# %%Carga en un mismo dataframe todos los archivos csv, variante cinem y EMG
+# %%Load all csv files in the same dataframe. Knem and EMG version
 # =============================================================================
-def carga_csv_generico_pl_xr(
-    lista_archivos, nom_vars_cargar=None, section=None
-) -> xr.DataArray:
-    # Versión con Polars
-    print("\nCargando los archivos...")
-    timerCarga = time.perf_counter()  # inicia el contador de tiempo
-
-    num_archivos_procesados = 0
-    dfTodos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
+def load_csv_generic_pl_xr(file_list, n_vars_load=None, section=None) -> xr.DataArray:
+    """Load all csv files into the same dataframe. Cinem and EMG version."""
+    # Polars version
+    print("\nLoading files...")
+    timerCarga = time.perf_counter()
+    num_processed_files = 0
+    dfTodos = []
     daTodos = []
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    for nf, file in enumerate(lista_archivos[:]):
-        print(f"Cargando archivo nº {nf+1} / {len(lista_archivos)}: {file.name}")
+    error_files = []
+    for nf, file in enumerate(file_list[:]):
+        print(f"Loading file num. {nf+1} / {len(file_list)}: {file.name}")
         try:
-            timerSub = time.perf_counter()  # inicia el contador de tiempo
+            timerSub = time.perf_counter()
 
             daProvis = read_vicon_csv_pl_xr(
-                file, section=section, n_vars_load=nom_vars_cargar
+                file, section=section, n_vars_load=n_vars_load
             ).expand_dims(
                 {
                     "ID": [
@@ -1993,57 +1915,51 @@ def carga_csv_generico_pl_xr(
             )  # Añade columna ID
             daTodos.append(daProvis)
 
-            print(f"{len(daProvis.time)} filas y {len(daProvis.n_var)} columnas")
-            print("Tiempo {0:.3f} s \n".format(time.perf_counter() - timerSub))
-            num_archivos_procesados += 1
+            print(f"{len(daProvis.time)} rows and {len(daProvis.n_var)} columns")
+            print("Time {0:.3f} s \n".format(time.perf_counter() - timerSub))
+            num_processed_files += 1
 
         except Exception as err:  # Si falla anota un error y continúa
             print(
-                "\nATENCIÓN. No se ha podido procesar {0}, {1}, {2}".format(
+                "\nATTENTION. Unable to process {0}, {1}, {2}".format(
                     file.parent.name, file.name, err
                 ),
                 "\n",
             )
-            ErroresArchivos.append(file.parent.name + " " + file.name + " " + str(err))
+            error_files.append(file.parent.name + " " + file.name + " " + str(err))
             continue
 
     daTodos = xr.concat(daTodos, dim="ID")
     # dfTodos = pl.concat(dfTodos)
 
     print(
-        f"Cargados {num_archivos_procesados} archivos en {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Loaded {num_processed_files} files in {time.perf_counter()-timerCarga:.3f} s \n"
     )
 
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido cargar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to process:")
+        for x in range(len(error_files)):
+            print(error_files[x])
 
     return daTodos
 
 
-def carga_c3d_generico_xr(
-    lista_archivos, nom_vars_cargar=None, section=None
-) -> xr.DataArray:
-    print("\nCargando los archivos...")
-    timerCarga = time.perf_counter()  # inicia el contador de tiempo
+def load_c3d_generic_xr(file_list, n_vars_load=None, section=None) -> xr.DataArray:
+    print("\nLoading files...")
+    timerCarga = time.perf_counter()
 
-    num_archivos_procesados = 0
-    dfTodos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
+    num_processed_files = 0
+    dfTodos = []
     daTodos = []
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    for nf, file in enumerate(lista_archivos[:]):
-        print(f"Cargando archivo nº {nf+1} / {len(lista_archivos)}: {file.name}")
+    error_files = []
+    for nf, file in enumerate(file_list[:]):
+        print(f"Loading file nº {nf+1} / {len(file_list)}: {file.name}")
         try:
-            timerSub = time.perf_counter()  # inicia el contador de tiempo
+            timerSub = time.perf_counter()
 
             daProvis = read_vicon_c3d_xr(
-                file, section=section, n_vars_load=nom_vars_cargar
+                file, section=section, n_vars_load=n_vars_load
             ).expand_dims(
                 {
                     "ID": [
@@ -2051,41 +1967,41 @@ def carga_c3d_generico_xr(
                     ]
                 },
                 axis=0,
-            )  # Añade columna ID
+            )  # add ID columns
             # daProvis.isel(ID=0).sel(n_var='AngArtHip_R', axis='y').plot.line(x='time')
             daTodos.append(daProvis)
 
             print(f"{len(daProvis.time)} filas y {len(daProvis.n_var)} columnas")
-            print("Tiempo {0:.3f} s \n".format(time.perf_counter() - timerSub))
-            num_archivos_procesados += 1
+            print("Time {0:.3f} s \n".format(time.perf_counter() - timerSub))
+            num_processed_files += 1
 
-        except Exception as err:  # Si falla anota un error y continúa
+        except Exception as err:
             print(
-                "\nATENCIÓN. No se ha podido procesar {0}, {1}, {2}".format(
+                "\nATTENTION. Unable to process {0}, {1}, {2}".format(
                     file.parent.name, file.name, err
                 ),
                 "\n",
             )
-            ErroresArchivos.append(file.parent.name + " " + file.name + " " + str(err))
+            error_files.append(file.parent.name + " " + file.name + " " + str(err))
             continue
 
     print(
-        f"Cargados {num_archivos_procesados} archivos en {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Cargados {num_processed_files} archivos en {time.perf_counter()-timerCarga:.3f} s \n"
     )
 
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido cargar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to load:")
+        for x in range(len(error_files)):
+            print(error_files[x])
 
     daTodos = xr.concat(daTodos, dim="ID", coords="minimal").astype("float")
 
     return daTodos
 
 
-def carga_preprocesa_csv_cinem(
-    listaArchivos, nom_vars_cargar=None, nomArchivoPreprocesado=None
+def load_preprocess_csv_cinem(
+    file_list, n_vars_load=None, nomArchivoPreprocesado=None
 ) -> xr.DataArray:
     # if nomArchivoPreprocesado==None:
     #     raise Exception('Debes indicar el nombre de los archivos preprocesados')
@@ -2159,22 +2075,18 @@ def carga_preprocesa_csv_cinem(
         "Z": "z",
     }
 
-    print("Cargando los archivos...")
-    timer = time.time()  # inicia el contador de tiempo
+    print("Loading files...")
+    timer = time.time()
     # nomVarsACargar = nomVarsContinuas#+nomVarsDiscretas
 
-    dfTodosArchivos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    numArchivosProcesados = 0
-    for file in listaArchivos:
+    dfAllFiles = []
+    error_files = []
+    num_processed_files = 0
+    for file in file_list:
         # print(file.name)
         try:
-            timerSub = time.time()  # inicia el contador de tiempo
-            print("Cargando archivo: {0:s}".format(file.name))
+            timerSub = time.time()
+            print("Loading file: {0:s}".format(file.name))
             dfprovis, freq = read_vicon_csv(
                 file, nomBloque="Model Outputs", returnFreq=True, header_format="noflat"
             )
@@ -2188,8 +2100,8 @@ def carga_preprocesa_csv_cinem(
                 .sort_index()
             )
 
-            if nom_vars_cargar:
-                dfprovis = dfprovis[nom_vars_cargar]
+            if n_vars_load:
+                dfprovis = dfprovis[n_vars_load]
 
             # Duplica AngBiela para _L, _R y _LR
             dfprovis = pd.concat(
@@ -2242,57 +2154,57 @@ def carga_preprocesa_csv_cinem(
                 1, "time", np.arange(len(dfprovis))[0 : len(dfprovis)] / freq
             )  # la parte final es para asegurarse de que se queda con el tamaño adecuado
 
-            dfTodosArchivos.append(dfprovis)
+            dfAllFiles.append(dfprovis)
 
-            # dfTodosArchivos.append(dfprovis.assign(**{'ID' : file.parent.parts[-2]+'_'+file.stem, #adaptar esto según la estructura de carpetas
+            # dfAllFiles.append(dfprovis.assign(**{'ID' : file.parent.parts[-2]+'_'+file.stem, #adaptar esto según la estructura de carpetas
             #                                           #'vAngBiela' : vAngBiela,
             #                                           'time' : np.arange(0, len(dfprovis)/freq, 1/freq)[0:len(dfprovis)] #la parte final es para asegurarse de que se queda con el tamaño adecuado
             #                                          }))#.reset_index(drop=True))
 
             print("Tiempo {0:.3f} s \n".format(time.time() - timerSub))
-            numArchivosProcesados += 1
+            num_processed_files += 1
 
-        except Exception as err:  # Si falla anota un error y continua
-            print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
-            ErroresArchivos.append(os.path.basename(file.name) + " " + str(err))
+        except Exception as err:
+            print("\nATTENTION. Unable to process " + file.name, err, "\n")
+            error_files.append(os.path.basename(file.name) + " " + str(err))
             continue
 
-    dfTodosArchivos = pd.concat(dfTodosArchivos)
+    dfAllFiles = pd.concat(dfAllFiles)
 
-    # dfTodosArchivos.loc[:,(slice(None), '')]
+    # dfAllFiles.loc[:,(slice(None), '')]
 
-    # dfTodosArchivos.rename(columns={'':'x'}, inplace=True)
+    # dfAllFiles.rename(columns={'':'x'}, inplace=True)
 
     """
-    dfTodosArchivos.loc[:, ('vAngBiela','')].rename({'':'x'})#, inplace=True)
-    dfTodosArchivos.loc[:, ('vAngBiela','')].columns=pd.MultiIndex.from_frame(('vAngBiela','x'))
-    dfTodosArchivos['vAngBiela'].name=('vAngBiela','x')
-    dfTodosArchivos.loc[:, ('vAngBiela','')].rename(('vAngBiela','x'), inplace=True)
+    dfAllFiles.loc[:, ('vAngBiela','')].rename({'':'x'})#, inplace=True)
+    dfAllFiles.loc[:, ('vAngBiela','')].columns=pd.MultiIndex.from_frame(('vAngBiela','x'))
+    dfAllFiles['vAngBiela'].name=('vAngBiela','x')
+    dfAllFiles.loc[:, ('vAngBiela','')].rename(('vAngBiela','x'), inplace=True)
     """
-    # dfTodosArchivos['SujID'] = dfTodosArchivos['ID'].str.split('_', expand=True)[0]
-    # dfTodosArchivos['Grupo'] = dfTodosArchivos['ID'].str.split('_', expand=True)[2]
+    # dfAllFiles['SujID'] = dfAllFiles['ID'].str.split('_', expand=True)[0]
+    # dfAllFiles['Grupo'] = dfAllFiles['ID'].str.split('_', expand=True)[2]
 
     print(
         "Cargados {0:d} archivos en {1:.3f} s \n".format(
-            numArchivosProcesados, time.time() - timer
+            num_processed_files, time.time() - timer
         )
     )
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido procesar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to process:")
+        for x in range(len(error_files)):
+            print(error_files[x])
     # *******************************************************
 
     # Reordena columnas
-    # if nom_vars_cargar==None: #Se queda con todas las variables
-    #     nom_vars_cargar = dfTodosArchivos.columns.to_list()
+    # if n_vars_load==None: #Se queda con todas las variables
+    #     n_vars_load = dfAllFiles.columns.to_list()
 
-    # dfTodosArchivos = dfTodosArchivos.reindex(columns=['ID', 'time'] + nom_vars_cargar, level=0)
+    # dfAllFiles = dfAllFiles.reindex(columns=['ID', 'time'] + n_vars_load, level=0)
     # -------------------------------
     # Ahora traspasa todos los datos a dadaArray separando en L, R y LR. Se podría hacer que vaya haciendo los cortes antes de juntar L, R y LR
-    # df = dfTodosArchivos.set_index([('ID','x'), ('time','x')]).stack()
-    # df = dfTodosArchivos.set_index(['ID', 'time']).stack().to_xarray().to_array().rename({'variable':'n_var'})
+    # df = dfAllFiles.set_index([('ID','x'), ('time','x')]).stack()
+    # df = dfAllFiles.set_index(['ID', 'time']).stack().to_xarray().to_array().rename({'variable':'n_var'})
     # df.index.rename(['ID', 'time' , 'axis'], inplace=True)
     # df = df.reorder_levels([0,2,1], axis='index')
 
@@ -2300,14 +2212,14 @@ def carga_preprocesa_csv_cinem(
     """
     #Duplica la variable usada para hacer los cortes para que funcione el segmenta_xr
     import itertools
-    dfprovis = dfTodosArchivos.copy()
+    dfprovis = dfAllFiles.copy()
     for bloque in itertools.product(['AngBiela_L', 'AngBiela_R', 'AngBiela_LR'], ['x', 'y', 'z']):
-        dfprovis.loc[:, bloque] = dfTodosArchivos.loc[:, ('AngBiela_LR', 'y')]
+        dfprovis.loc[:, bloque] = dfAllFiles.loc[:, ('AngBiela_LR', 'y')]
     """
     # ----------------
 
     daTodos = (
-        dfTodosArchivos.set_index(["ID", "time"])
+        dfAllFiles.set_index(["ID", "time"])
         .stack()
         .to_xarray()
         .to_array()
@@ -2386,33 +2298,38 @@ def carga_preprocesa_csv_cinem(
     # -------------------------------
 
     # Pone el df en formato 1 nivel encabezados
-    dfTodosArchivos.columns = dfTodosArchivos.columns.map("_".join).str.strip()
-    dfTodosArchivos = dfTodosArchivos.rename(columns={"ID_": "ID", "time_": "time"})
+    dfAllFiles.columns = dfAllFiles.columns.map("_".join).str.strip()
+    dfAllFiles = dfAllFiles.rename(columns={"ID_": "ID", "time_": "time"})
     # EL DATAFRAME VA SIN vAngBiela
 
-    return dfTodosArchivos, daTodos
+    return dfAllFiles, daTodos
 
 
-def carga_preprocesa_c3d_cinem(listaArchivos, nom_vars_cargar=None) -> xr.DataArray:
-    import c3d
+def load_preprocess_c3d_cinem(file_list, n_vars_load=None) -> xr.DataArray:
+    try:
+        import c3d
+    except:
+        raise ImportError("c3d module not found. Install with: pip install c3d")
+    try:
+        import ezc3d
+    except:
+        raise ImportError(
+            "ezc3d module not found. Install with: pip install ezc3d or conda install -c conda-forge ezc3d"
+        )
 
-    print("Cargando los archivos...")
-    timer = time.time()  # inicia el contador de tiempo
+    print("Loading files...")
+    timer = time.time()
 
-    daTodosArchivos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    numArchivosProcesados = 0
-    for file in listaArchivos:
+    daAllFiles = []
+    error_files = []
+    num_processed_files = 0
+    for file in file_list:
         # cambia extensión de csv a c3d
         file = file.with_suffix(".c3d")
         print(file.name)
         try:
-            timerSub = time.time()  # inicia el contador de tiempo
-            print("Cargando archivo: {0:s}".format(file.name))
+            timerSub = time.time()
+            print("Loading file: {0:s}".format(file.name))
 
             with open(file, "rb") as handle:
                 reader = c3d.Reader(handle)
@@ -2448,8 +2365,8 @@ def carga_preprocesa_c3d_cinem(listaArchivos, nom_vars_cargar=None) -> xr.DataAr
             da.time.attrs["units"] = "s"
             # da.isel(ID=0).plot.line(x='time', hue='n_var')
 
-            if nom_vars_cargar:
-                da = da.sel(n_var=nom_vars_cargar)
+            if n_vars_load:
+                da = da.sel(n_var=n_vars_load)
 
             renombrar_vars = {
                 "EMG1": "GLU_R",
@@ -2485,73 +2402,69 @@ def carga_preprocesa_c3d_cinem(listaArchivos, nom_vars_cargar=None) -> xr.DataAr
                 )
             )
 
-            daTodosArchivos.append(da)
+            daAllFiles.append(da)
             print("Tiempo {0:.3f} s \n".format(time.time() - timerSub))
-            numArchivosProcesados += 1
+            num_processed_files += 1
 
-        except Exception as err:  # Si falla anota un error y continua
-            print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
-            ErroresArchivos.append(os.path.basename(file.name) + " " + str(err))
+        except Exception as err:
+            print("\nATTENTION. Unable to process " + file.name, err, "\n")
+            error_files.append(os.path.basename(file.name) + " " + str(err))
             continue
 
-    daTodosArchivos = xr.concat(
-        daTodosArchivos, dim="ID"
+    daAllFiles = xr.concat(
+        daAllFiles, dim="ID"
     )  # .transpose('ID', 'n_var', 'side', 'axis', 'time')
 
     print(
         "Cargados {0:d} archivos en {1:.3f} s \n".format(
-            numArchivosProcesados, time.time() - timer
+            num_processed_files, time.time() - timer
         )
     )
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido procesar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to process:")
+        for x in range(len(error_files)):
+            print(error_files[x])
     # *******************************************************
 
-    daTodosArchivos = pasa_df_a_da_EMG(daTodosArchivos)
+    daAllFiles = from_df_to_da_EMG(daAllFiles)
     # Añade coordenada con nombre del tipo de test. Diferencia entre MVC y dinámicos, por el criterio de nombrado
-    if daTodosArchivos.ID[0].str.contains("MVC"):
+    if daAllFiles.ID[0].str.contains("MVC"):
         lista_coords = (
-            daTodosArchivos.ID.to_series().str.split("_").str[-1].str.split("-").str[-2]
+            daAllFiles.ID.to_series().str.split("_").str[-1].str.split("-").str[-2]
         )
     else:
         lista_coords = (
-            daTodosArchivos.ID.to_series().str.split("_").str[-1].str.split("-").str[0]
+            daAllFiles.ID.to_series().str.split("_").str[-1].str.split("-").str[0]
         )
-    daTodosArchivos = daTodosArchivos.assign_coords(test=("ID", lista_coords))
+    daAllFiles = daAllFiles.assign_coords(test=("ID", lista_coords))
 
-    return daTodosArchivos
+    return daAllFiles
 
 
 # ------------------------------
-def carga_preprocesa_csv_EMG_pl_xr(
-    listaArchivos, nom_vars_cargar=None, nomBloque="Devices", freqEMG=None
+def load_preprocess_csv_EMG_pl_xr(
+    file_list, n_vars_load=None, nomBloque="Devices", freqEMG=None
 ) -> xr.DataArray:
-    # Versión Polars SIN TERMINAR DE ADAPTAR!
-    print("Cargando los archivos...")
-    timer = time.time()  # inicia el contador de tiempo
+    # TODO: Polars version unfinished
+    print("Loading files...")
+    timer = time.time()
 
-    dfTodosArchivos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    numArchivosProcesados = 0
-    for file in listaArchivos:
+    dfAllFiles = []
+    error_files = []
+    num_processed_files = 0
+    for file in file_list:
         print(file.name)
         try:
-            timerSub = time.time()  # inicia el contador de tiempo
-            print("Cargando archivo: {0:s}".format(file.name))
+            timerSub = time.time()
+            print("Loading file: {0:s}".format(file.name))
 
             dfprovis = read_vicon_csv_pl_xr(file, section=nomBloque, to_dataarray=False)
 
             freq = 1 / dfprovis[2, "time"] - dfprovis[0, "time"]
 
-            if nom_vars_cargar:
-                dfprovis = dfprovis[nom_vars_cargar]
+            if n_vars_load:
+                dfprovis = dfprovis[n_vars_load]
 
             if nomBloque == "Devices":
                 renombrar_vars = {
@@ -2606,36 +2519,36 @@ def carga_preprocesa_csv_EMG_pl_xr(
                     1, "time", np.arange(len(dfprovis))[0 : len(dfprovis)] / freq
                 )  # la parte final es para asegurarse de que se queda con el tamaño adecuado
 
-            dfTodosArchivos.append(dfprovis)
+            dfAllFiles.append(dfprovis)
 
-            # dfTodosArchivos.append(dfprovis.assign(**{'ID' : file.parent.parts[-2]+'_'+file.stem, #adaptar esto según la estructura de carpetas
+            # dfAllFiles.append(dfprovis.assign(**{'ID' : file.parent.parts[-2]+'_'+file.stem, #adaptar esto según la estructura de carpetas
             #                                           #'vAngBiela' : vAngBiela,
             #                                           'time' : np.arange(0, len(dfprovis)/freq, 1/freq)[0:len(dfprovis)] #la parte final es para asegurarse de que se queda con el tamaño adecuado
             #                                          }))#.reset_index(drop=True))
 
-            print("Tiempo {0:.3f} s \n".format(time.time() - timerSub))
-            numArchivosProcesados += 1
+            print("Time {0:.3f} s \n".format(time.time() - timerSub))
+            num_processed_files += 1
 
-        except Exception as err:  # Si falla anota un error y continua
-            print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
-            ErroresArchivos.append(os.path.basename(file.name) + " " + str(err))
+        except Exception as err:
+            print("\nATTENTION. Unable to process " + file.name, err, "\n")
+            error_files.append(os.path.basename(file.name) + " " + str(err))
             continue
 
-    dfTodosArchivos = pd.concat(dfTodosArchivos)
+    dfAllFiles = pd.concat(dfAllFiles)
 
     print(
-        "Cargados {0:d} archivos en {1:.3f} s \n".format(
-            numArchivosProcesados, time.time() - timer
+        "{0:d} files loades in {1:.3f} s \n".format(
+            num_processed_files, time.time() - timer
         )
     )
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido procesar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to process:")
+        for x in range(len(error_files)):
+            print(error_files[x])
     # *******************************************************
     # ----------------
-    daTodos = pasa_df_a_da_EMG(dfTodosArchivos)
+    daTodos = from_df_to_da_EMG(dfAllFiles)
     # Añade coordenada con nombre del tipo de test
     daTodos = daTodos.assign_coords(
         test=("ID", daTodos.ID.to_series().str.split("_").str[-1].str.split("-").str[0])
@@ -2652,35 +2565,31 @@ def carga_preprocesa_csv_EMG_pl_xr(
 
     # -------------------------------
 
-    return daTodos  # , dfTodosArchivos, float(freq)
+    return daTodos  # , dfAllFiles, float(freq)
 
 
-def carga_preprocesa_csv_EMG(
-    listaArchivos, nom_vars_cargar=None, nomBloque="Devices", freqEMG=None
+def load_preprocess_csv_EMG(
+    file_list, n_vars_load=None, nomBloque="Devices", freqEMG=None
 ) -> xr.DataArray:
 
-    print("Cargando los archivos...")
-    timer = time.time()  # inicia el contador de tiempo
+    print("Loading files...")
+    timer = time.time()
 
-    dfTodosArchivos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    numArchivosProcesados = 0
-    for file in listaArchivos:
+    dfAllFiles = []
+    error_files = []
+    num_processed_files = 0
+    for file in file_list:
         print(file.name)
         try:
-            timerSub = time.time()  # inicia el contador de tiempo
-            print("Cargando archivo: {0:s}".format(file.name))
+            timerSub = time.time()
+            print("Loading file: {0:s}".format(file.name))
 
             dfprovis, freq = read_vicon_csv(
                 file, nomBloque=nomBloque, returnFreq=True, header_format="noflat"
             )
             # dfprovis, daprovis, freq = read_vicon_csv(file, nomBloque='Model Outputs', returnFreq=True, formatoxArray=True)
-            if nom_vars_cargar:
-                dfprovis = dfprovis[nom_vars_cargar]
+            if n_vars_load:
+                dfprovis = dfprovis[n_vars_load]
 
             if nomBloque == "Devices":
                 renombrar_vars = {
@@ -2735,36 +2644,36 @@ def carga_preprocesa_csv_EMG(
                     1, "time", np.arange(len(dfprovis))[0 : len(dfprovis)] / freq
                 )  # la parte final es para asegurarse de que se queda con el tamaño adecuado
 
-            dfTodosArchivos.append(dfprovis)
+            dfAllFiles.append(dfprovis)
 
-            # dfTodosArchivos.append(dfprovis.assign(**{'ID' : file.parent.parts[-2]+'_'+file.stem, #adaptar esto según la estructura de carpetas
+            # dfAllFiles.append(dfprovis.assign(**{'ID' : file.parent.parts[-2]+'_'+file.stem, #adaptar esto según la estructura de carpetas
             #                                           #'vAngBiela' : vAngBiela,
             #                                           'time' : np.arange(0, len(dfprovis)/freq, 1/freq)[0:len(dfprovis)] #la parte final es para asegurarse de que se queda con el tamaño adecuado
             #                                          }))#.reset_index(drop=True))
 
-            print("Tiempo {0:.3f} s \n".format(time.time() - timerSub))
-            numArchivosProcesados += 1
+            print("Time {0:.3f} s \n".format(time.time() - timerSub))
+            num_processed_files += 1
 
-        except Exception as err:  # Si falla anota un error y continua
-            print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
-            ErroresArchivos.append(os.path.basename(file.name) + " " + str(err))
+        except Exception as err:
+            print("\nATTENTION. Unable to process " + file.name, err, "\n")
+            error_files.append(os.path.basename(file.name) + " " + str(err))
             continue
 
-    dfTodosArchivos = pd.concat(dfTodosArchivos)
+    dfAllFiles = pd.concat(dfAllFiles)
 
     print(
-        "Cargados {0:d} archivos en {1:.3f} s \n".format(
-            numArchivosProcesados, time.time() - timer
+        "{0:d} files loaded in {1:.3f} s \n".format(
+            num_processed_files, time.time() - timer
         )
     )
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido procesar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to process:")
+        for x in range(len(error_files)):
+            print(error_files[x])
     # *******************************************************
     # ----------------
-    daTodos = pasa_df_a_da_EMG(dfTodosArchivos)
+    daTodos = from_df_to_da_EMG(dfAllFiles)
     # Añade coordenada con nombre del tipo de test
     daTodos = daTodos.assign_coords(
         test=("ID", daTodos.ID.to_series().str.split("_").str[-1].str.split("-").str[0])
@@ -2781,31 +2690,30 @@ def carga_preprocesa_csv_EMG(
 
     # -------------------------------
 
-    return daTodos  # , dfTodosArchivos, float(freq)
+    return daTodos  # , dfAllFiles, float(freq)
 
 
-def carga_preprocesa_c3d_EMG(
-    listaArchivos, nom_vars_cargar=None, nomBloque="Devices", freqEMG=None
+def load_preprocess_c3d_EMG(
+    file_list, n_vars_load=None, nomBloque="Devices", freqEMG=None
 ) -> xr.DataArray:
-    import c3d
+    try:
+        import c3d
+    except:
+        raise ImportError("c3d module not found. Install with: pip install c3d")
 
-    print("Cargando los archivos...")
-    timer = time.time()  # inicia el contador de tiempo
+    print("Loading files...")
+    timer = time.time()
 
-    daTodosArchivos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    numArchivosProcesados = 0
-    for file in listaArchivos:
+    daAllFiles = []
+    error_files = []
+    num_processed_files = 0
+    for file in file_list:
         # cambia extensión de csv a c3d
         file = file.with_suffix(".c3d")
         print(file.name)
         try:
-            timerSub = time.time()  # inicia el contador de tiempo
-            print("Cargando archivo: {0:s}".format(file.name))
+            timerSub = time.time()
+            print("Loading file: {0:s}".format(file.name))
 
             with open(file, "rb") as handle:
                 reader = c3d.Reader(handle)
@@ -2818,7 +2726,7 @@ def carga_preprocesa_c3d_EMG(
                     # points.append(p)
                     analog.append(a)
                     if not i % 10000 and i:
-                        print("Extracted %d point frames", len(analog))
+                        print(f"Extracted {len(analog)} point frames")
 
                 labels = [
                     s.split(".")[0].replace(" ", "") for s in reader.analog_labels
@@ -2844,8 +2752,8 @@ def carga_preprocesa_c3d_EMG(
             da.time.attrs["units"] = "s"
             # da.isel(ID=0).plot.line(x='time', hue='n_var')
 
-            if nom_vars_cargar:
-                da = da.sel(n_var=nom_vars_cargar)
+            if n_vars_load:
+                da = da.sel(n_var=n_vars_load)
 
             if nomBloque == "Devices":
                 renombrar_vars = {
@@ -2882,44 +2790,44 @@ def carga_preprocesa_c3d_EMG(
                     )
                 )
 
-            daTodosArchivos.append(da)
-            print("Tiempo {0:.3f} s \n".format(time.time() - timerSub))
-            numArchivosProcesados += 1
+            daAllFiles.append(da)
+            print("Time {0:.3f} s \n".format(time.time() - timerSub))
+            num_processed_files += 1
 
-        except Exception as err:  # Si falla anota un error y continua
-            print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
-            ErroresArchivos.append(os.path.basename(file.name) + " " + str(err))
+        except Exception as err:
+            print("\nATTENTION. Unable to process " + file.name, err, "\n")
+            error_files.append(os.path.basename(file.name) + " " + str(err))
             continue
 
-    daTodosArchivos = xr.concat(
-        daTodosArchivos, dim="ID"
+    daAllFiles = xr.concat(
+        daAllFiles, dim="ID"
     )  # .transpose('ID', 'n_var', 'side', 'axis', 'time')
 
     print(
-        "Cargados {0:d} archivos en {1:.3f} s \n".format(
-            numArchivosProcesados, time.time() - timer
+        "{0:d} files loades in {1:.3f} s \n".format(
+            num_processed_files, time.time() - timer
         )
     )
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido procesar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Inform errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to process:")
+        for x in range(len(error_files)):
+            print(error_files[x])
     # *******************************************************
 
-    daTodosArchivos = pasa_df_a_da_EMG(daTodosArchivos)
+    daAllFiles = from_df_to_da_EMG(daAllFiles)
     # Añade coordenada con nombre del tipo de test. Diferencia entre MVC y dinámicos, por el criterio de nombrado
-    if daTodosArchivos.ID[0].str.contains("MVC"):
+    if daAllFiles.ID[0].str.contains("MVC"):
         lista_coords = (
-            daTodosArchivos.ID.to_series().str.split("_").str[-1].str.split("-").str[-2]
+            daAllFiles.ID.to_series().str.split("_").str[-1].str.split("-").str[-2]
         )
     else:
         lista_coords = (
-            daTodosArchivos.ID.to_series().str.split("_").str[-1].str.split("-").str[0]
+            daAllFiles.ID.to_series().str.split("_").str[-1].str.split("-").str[0]
         )
-    daTodosArchivos = daTodosArchivos.assign_coords(test=("ID", lista_coords))
+    daAllFiles = daAllFiles.assign_coords(test=("ID", lista_coords))
 
-    return daTodosArchivos
+    return daAllFiles
 
 
 # =============================================================================
@@ -2939,21 +2847,19 @@ if __name__ == "__main__":
             r"F:\Investigacion\Proyectos\BikeFitting\Bikefitting\EstudioEMG_MVC\Registros\17_Eduardo"
         )
 
-        lista_archivos = list(
+        file_list = list(
             ruta_trabajo.glob("**/*.c3d")
         )  # incluye los que haya en subcarpetas
-        lista_archivos = [
-            x
-            for x in lista_archivos
-            if "MVC-" not in x.name and "Estatico" not in x.name
+        file_list = [
+            x for x in file_list if "MVC-" not in x.name and "Estatico" not in x.name
         ]
-        lista_archivos.sort()
+        file_list.sort()
 
-        daDatos = carga_c3d_generico_xr(
-            lista_archivos[:10], section="Trajectories"
-        )  # , nom_vars_cargar=['HJC', 'KJC', 'AJC'])
-        daDatos = ajusta_etiquetas_lado_final(daDatos)
-        daDatos = separa_trayectorias_lados(daDatos)
-        # daAngles = calcula_angulos_desde_trajec(daDatos)
+        daDatos = load_c3d_generic_xr(
+            file_list[:10], section="Trajectories"
+        )  # , n_vars_load=['HJC', 'KJC', 'AJC'])
+        daDatos = adjust_labels_side_end(daDatos)
+        daDatos = split_trajectories_sides(daDatos)
+        # daAngles = calculate_angles_desde_trajec(daDatos)
         # daPos = calcula_variables_posicion(daDatos)
         # daCinem = xr.concat([daAngles, daPos], dim='n_var')

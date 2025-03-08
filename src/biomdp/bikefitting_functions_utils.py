@@ -4,10 +4,10 @@
 """
 Created on Fry Jan 12 16:50:46 2024
 
-Funciones comunes para tratar archivos de registros de bikefitting.
-Heredado de Nexus_FuncionesApoyo.py
+Common functions for processing bikefitting registers.
+ATENTION! Adapted for a kinematic model developed in the Biomechanics lab
+at the Research Sports Centre of the University Miguel Hernandez de Elche, Spain.
 
-@author: Jose Luis López Elvira
 """
 
 # =============================================================================
@@ -15,21 +15,24 @@ Heredado de Nexus_FuncionesApoyo.py
 # =============================================================================
 
 
-__filename__ = "bikefittinh_funciones_apoyo"
-__version__ = "0.4.5"
+__filename__ = "bikefitting_functions_utils"
+__version__ = "0.4.6"
 __company__ = "CIDUMH"
-__date__ = "16/08/2024"
+__date__ = "06/03/2025"
 __author__ = "Jose L. L. Elvira"
 
 """
 Modificaciones:
+    06/03/2025, v0.4.6
+        - Adapted to biomdp with translations. 
+    
     16/08/2024, v0.4.5
         - Corregido cálculo AngBiela eje z. 
     
     18/07/2024, v0.4.4
-        - Corregida funciones calcula_angulos_desde_trajec y 
+        - Corregidas funciones calcula_angulos_desde_trajec y 
           calcula_variables_posicion para adaptarla al modelo antiguo.
-        - Corregida función individualiza_ang_biela_sides para que no falle
+        - Corregida función individualize_crank_angle_sides para que no falle
           cuando hay región de interés acotada (no funcionaba con nans).
     
     02/07/2024, v0.4.3
@@ -113,14 +116,13 @@ from matplotlib.lines import (
 import seaborn as sns
 from pathlib import Path
 import time  # para cuantificar tiempos de procesado
-import spm1d  # para comparar curvas
 
 import time
 import sys
 
 # Importa mis funciones necesarias
 import biomdp.biomec_xarray_accessor  # accessor biomxr
-import biomdp.nexus_funciones_apoyo as nfa  # funciones de apoyo con datos del Nexus
+import biomdp.nexus_functions_utils as nfu  # funciones de apoyo con datos del Nexus
 import biomdp.slice_time_series_phases as stsp
 
 # from biomec_processing.slice_time_series_phases import SliceTimeSeriesPhases as stsp  # tratamientos para bike fitting Nexus
@@ -132,7 +134,7 @@ sys.path.append(
     "/media/yomismo/Seagate Basic/Programacion/Python/Mios/Functions"
 )  # para Linux
 import biomec_xarray_processing  # accessor biomxr
-import Nexus_FuncionesApoyo as nfa
+import Nexus_FuncionesApoyo as nfu
 
 # from calculaEulerAngles import euler_angles_from_rot_xyz #para calcular el ángulo entre 2 matrices de rotación
 from slice_time_series_phases import SliceTimeSeriesPhases as stsp
@@ -152,9 +154,9 @@ from slice_time_series_phases import SliceTimeSeriesPhases as stsp
 # =============================================================================
 
 
-def carga_variables_desde_Nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
+def load_variables_nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
 
-    print("Cargando datos...")
+    print("Loading data...")
     timer = time.time()  # inicia el contador de tiempo
 
     n_subject = vicon.GetSubjectNames()[0]
@@ -286,7 +288,7 @@ def carga_variables_desde_Nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
     )  # .transpose('Archivo', 'nom_var', 'eje', 'time')
 
     # Separa trayectorias lados incluyendo LR en L y en R repetido
-    daTodos = nfa.separa_trayectorias_lados(daTodos)
+    daTodos = nfu.split_trajectories_sides(daTodos)
 
     # L = daTodos.sel(n_var=daTodos["n_var"].str.endswith("_L"))
     # R = daTodos.sel(n_var=daTodos["n_var"].str.endswith("_R"))
@@ -308,7 +310,7 @@ def carga_variables_desde_Nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
         dict(n_var=["HJC", "KJC", "AJC"])
     ] /= 10  # pasa las posiciones de los ejes a cm
 
-    # ???daTodos = nfa.ajusta_angulos(daTodos)
+    # ???daTodos = nfu.ajusta_angulos(daTodos)
 
     # Calcula vAngBiela
     if "vAngBiela" not in daTodos.n_var:
@@ -336,12 +338,12 @@ def carga_variables_desde_Nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
     )
     """
     # EL DATAFRAME VA SIN vAngBiela
-    print("Cargados los datos en {0:.3f} s \n".format(time.time() - timer))
+    print("Data loaded in {0:.3f} s \n".format(time.time() - timer))
 
     return daTodos
 
 
-def acota_region_of_interest(da: xr.DataArray) -> np.ndarray:
+def delimit_region_of_interest(da: xr.DataArray) -> np.ndarray:
     # si no está definida la región, busca inicio y final de datos (no nans)
     region_interest = np.nonzero(da.isel(ID=0).sel(axis="x").values >= -1.0)[0]
     # plt.plot(da.isel(ID=0).sel(axis="x").values.T)
@@ -356,26 +358,24 @@ def acota_region_of_interest(da: xr.DataArray) -> np.ndarray:
     return region_interest[0]
 
 
-def calcula_angulos_desde_trajec(
-    daData, modelo_completo=False, verbose=False, region_interest=None
+def calculate_angles_from_trajec(
+    daData, complete_model=False, verbose=False, region_interest=None
 ) -> xr.DataArray:
     """
     Calcula ángulos de articulaciones a partir de las trayectorias.
     Paso intermedio de calcular matrices de rotación
     region_of_interest: de momento solo para calcular vAngBiela cuando empieza con nans
     """
-    print("Calculando matrices de rotación...")
+    print("Calculating rotation matrices...")
     timer_procesa = time.perf_counter()
 
-    dsRlG = nfa.calcula_bases(daData, modelo_completo)  # daData=daDatos.isel(ID=0))
+    dsRlG = nfu.calculate_bases(daData, complete_model)  # daData=daDatos.isel(ID=0))
 
-    print("\nCalculando ángulos de segmentos...")
-    dsAngSegments = nfa.calcula_angulos_segmentos(dsRlG, verbose=verbose)
+    print("\nCalculating segment angles...")
+    dsAngSegments = nfu.calculate_angles_segments(dsRlG, verbose=verbose)
 
-    print("\nCalculando ángulos articulares...")
-    dsAngArtics = nfa.calcula_angulos_articulaciones(
-        dsRlG, modelo_completo, verbose=verbose
-    )
+    print("\nCalculating joint angles...")
+    dsAngArtics = nfu.calculate_angles_joints(dsRlG, complete_model, verbose=verbose)
     # dsAngArtics['AngArtHip_L'].plot.line(x='time', row='ID', hue='axis')
 
     # Calcula ángulos pedales
@@ -408,8 +408,8 @@ def calcula_angulos_desde_trajec(
     )
     # daEjePedal.isel(ID=0, n_var=0).plot.line(x='time', col='axis')
 
-    # TODO: Si hace falta, por aquí seleccionar qué variables se usan para calcular angBiela (modelo_eje_biela='bilateral')
-    dsAngBiela = calcula_ang_biela(
+    # TODO: Si hace falta, por aquí seleccionar qué variables se usan para calcular angBiela (model_crank_axis='bilateral')
+    dsAngBiela = calculate_crank_ang(
         daEje1=daEjePedal.sel(side="R"), daEje2=daEjePedal.sel(side="L")
     ).to_dataset(
         name="AngBiela_LR"
@@ -418,7 +418,7 @@ def calcula_angulos_desde_trajec(
     dsAngBiela.attrs["freq"] = daData.freq
 
     # Calcula velocidad angular biela
-    dsvAngBiela = calcula_vAng_biela(dsAngBiela, region_interest)
+    dsvAngBiela = calculate_crank_vAng(dsAngBiela, region_interest)
     # dsvAngBiela["vAngBiela_LR"].isel(ID=0).plot.line(x='time')
 
     daAngles = (
@@ -429,11 +429,11 @@ def calcula_angulos_desde_trajec(
     )
 
     if "side" in daData.coords:
-        daAngles = nfa.separa_trayectorias_lados(daData=daAngles)
+        daAngles = nfu.split_trajectories_sides(daData=daAngles)
         # daAngles.isel(ID=0, axis=2).plot.line(x='time', row='n_var', sharey=False)
 
         # Desfasa lado R 180º
-        daAngles = individualiza_ang_biela_sides(
+        daAngles = individualize_crank_angle_sides(
             daData=daAngles, region_interest=region_interest
         )
 
@@ -448,13 +448,13 @@ def calcula_angulos_desde_trajec(
     # daAngles.sel(n_var='AngArtHip').plot.line(x='time', row='ID', col='axis', hue='side')
 
     print(
-        f"Tiempo total en procesar {len(daData.ID)} registros: {time.perf_counter() - timer_procesa:.3f} s."
+        f"Total processing time for {len(daData.ID)} files: {time.perf_counter() - timer_procesa:.3f} s."
     )
 
     return daAngles
 
 
-def calcula_ang_biela(daEje1, daEje2) -> xr.DataArray:
+def calculate_crank_ang(daEje1, daEje2) -> xr.DataArray:
     """
     Calcula ángulo de biela. Variable unidimensional, en los ejes se guardan distintas versiones,
     con distinto sistema de referencias.
@@ -493,7 +493,7 @@ def calcula_ang_biela(daEje1, daEje2) -> xr.DataArray:
     """
 
     '''
-    def calc_ang_biela_aux(eje1, eje2):
+    def calc_crank_angle_aux(eje1, eje2):
         # print(eje1)
         # print(eje1.shape, eje2.shape)
         #eje1 y eje2 son ejes pedales R y L o el de la biela según se requiera
@@ -515,7 +515,7 @@ def calcula_ang_biela(daEje1, daEje2) -> xr.DataArray:
         eje1= daEje1[0,0]
         eje2= daEje2[0,0]
         """
-        daAngBiela = xr.apply_ufunc(calc_ang_biela_aux, daEje1, daEje2,
+        daAngBiela = xr.apply_ufunc(calc_crank_angle_aux, daEje1, daEje2,
                         input_core_dims=[['time', 'axis'], ['time', 'axis']],
                         output_core_dims=[['time', 'axis']],
                         #exclude_dims=set(('axis',)),
@@ -531,7 +531,7 @@ def calcula_ang_biela(daEje1, daEje2) -> xr.DataArray:
     return daAngBiela
 
 
-def individualiza_ang_biela_sides(daData, region_interest=None) -> xr.DataArray:
+def individualize_crank_angle_sides(daData, region_interest=None) -> xr.DataArray:
     # TODO: COMPROBAR QUE FUNCIONA EN TODOS LOS CÁLCULOS --> FALLAN EVENTOS EN NEXUS
     # TODO: COMPROBAR QUE FUNCIONA CON MÚLTIPLES ID
 
@@ -540,7 +540,7 @@ def individualiza_ang_biela_sides(daData, region_interest=None) -> xr.DataArray:
     for id, daID in daData.groupby("ID"):
         print(id)
         if region_interest is None:
-            r_i = acota_region_of_interest(
+            r_i = delimit_region_of_interest(
                 daData.sel(ID=[id], n_var="AngBiela", side="L")
             )
         else:
@@ -578,11 +578,11 @@ def individualiza_ang_biela_sides(daData, region_interest=None) -> xr.DataArray:
     return daData
 
 
-def calcula_vAng_biela(dsAngBiela, region_interest) -> xr.Dataset:
+def calculate_crank_vAng(dsAngBiela, region_interest) -> xr.Dataset:
     # np.unwrap NO ADMITE NANs por eso hay que acotarlo
     if region_interest is None:
         # si no está definida la región, busca inicio y final de datos (no nans)
-        region_interest = acota_region_of_interest(dsAngBiela["AngBiela_LR"])
+        region_interest = delimit_region_of_interest(dsAngBiela["AngBiela_LR"])
 
     """
     # Para vAngBiela cuando empieza con nans
@@ -678,15 +678,15 @@ def calcula_vAng_biela(dsAngBiela, region_interest) -> xr.Dataset:
     return dsvAngBiela
 
 
-def calcula_variables_posicion(
-    daData, modelo_eje_biela="bilateral", verbose=False, region_interest=None
+def calculate_variables_position(
+    daData, model_crank_axis="bilateral", verbose=False, region_interest=None
 ) -> xr.DataArray:
     """
     Calcula variables de marcadores a partir de las trayectorias.
-    modelo_eje_biela = 'derecha', 'izquierda' o 'bilateral'. Define cómo se calculará el marcador del eje de la biela, a partir de los dos pies o con uno de ellos
+    model_crank_axis = 'derecha', 'izquierda' o 'bilateral'. Define cómo se calculará el marcador del eje de la biela, a partir de los dos pies o con uno de ellos
     """
 
-    print("\nCalculando variables de marcadores...")
+    print("\nCalculating markers variables...")
     timer_procesa = time.perf_counter()
 
     # Une variable ejes pedales para poder verlos junto a los ángulos
@@ -720,7 +720,7 @@ def calcula_variables_posicion(
     # daEjePedal.isel(n_var=0).plot.line(x='time', row='ID', col='axis')
 
     # ----Calcula eje biela
-    if modelo_eje_biela == "bilateral":
+    if model_crank_axis == "bilateral":
         # Calcula el punto medio entre lado L y R y promedio a lo largo del tiempo
         daEjeBiela = (
             daEjePedal.sel(side=["L", "R"])
@@ -748,7 +748,7 @@ def calcula_variables_posicion(
 
     # TODO: #NO ADAPTADO A XARRAY
     else:
-        raise Exception('Sólo se ha implementado el modelo de biela "bilateral"')
+        raise Exception('Only "bilateral" crank model is implemented yet')
         try:
             # ==============================================================================
             # Calcula el eje del pedalier a partir de 3 puntos del pedal
@@ -910,20 +910,20 @@ def calcula_variables_posicion(
     # daPos.isel(ID=0, axis=0).sel(n_var='PosPedal').plot.line(x='time')
 
     print(
-        f"Procesados {len(daData.ID)} registros en {time.perf_counter() - timer_procesa:.3f} s."
+        f"Processed {len(daData.ID)} files in {time.perf_counter() - timer_procesa:.3f} s."
     )
 
     return daPos
 
 
-def busca_eventos_biela(
+def find_crank_events(
     daData: xr.DataArray, region_interest: list = None, show=False
 ) -> xr.DataArray:
     """Busca posiciones de biela discretas"""
 
     if region_interest is None:
         # si no está definida la región, busca inicio y final de datos (no nans)
-        region_interest = acota_region_of_interest(
+        region_interest = delimit_region_of_interest(
             daData.sel(n_var="AngBiela", side="L")
         )
 
@@ -1129,7 +1129,7 @@ def busca_eventos_biela(
     return dsEvtPosPedal
 
 
-def busca_eventos_max_min(
+def find_max_min_events(
     daData: xr.DataArray,
     evt_pedal: Optional[Union[int, xr.DataArray]] = None,
     mean_pedal_freq: int = None,
@@ -1158,7 +1158,7 @@ def busca_eventos_max_min(
 
     if region_interest is None:
         # si no está definida la región, busca inicio y final de datos (no nans)
-        region_interest = acota_region_of_interest(
+        region_interest = delimit_region_of_interest(
             daData.sel(n_var="AngBiela", side="L")
         )
 
@@ -1243,7 +1243,7 @@ def busca_eventos_max_min(
     return xr.merge([daIndMaxExt, daIndMaxFlex])
 
 
-def discretiza_ciclos(data, events, n_var, side, num_reps_excluir=1) -> xr.DataArray:
+def discretize_cycles(data, events, n_var, side, num_reps_excluir=1) -> xr.DataArray:
     """Repite el mismo valor de ángulo en todo el ciclo.
     Lo mantiene durante el siguiente ciclo.
     La función se usa con xr.apply_ufunc
@@ -1282,10 +1282,10 @@ def discretiza_ciclos(data, events, n_var, side, num_reps_excluir=1) -> xr.DataA
     return discret
 
 
-def discretiza_ciclos_eventos(daData, daEvents) -> xr.DataArray:
+def discretize_cycles_events(daData, daEvents) -> xr.DataArray:
     """Devuelve los valores discretos en instantes de eventos especificados."""
 
-    def _discretiza(data, events, n_var, side):
+    def _discretize(data, events, n_var, side):
         discret = np.full(len(events), np.nan)
 
         try:
@@ -1299,7 +1299,7 @@ def discretiza_ciclos_eventos(daData, daEvents) -> xr.DataArray:
         return discret
 
     return xr.apply_ufunc(
-        _discretiza,
+        _discretize,
         daData,
         daEvents,
         daData.n_var,
@@ -1314,8 +1314,13 @@ def discretiza_ciclos_eventos(daData, daEvents) -> xr.DataArray:
 # =============================================================================
 # %% Funciones complementarias SPM1D
 # =============================================================================
-def calcula_spm1d(df):
-    # Compara lados con spm1d
+def calculate_spm1d(df):
+    """Compare sides with spm1d"""
+    try:
+        import spm1d  # para comparar curvas
+    except:
+        raise ImportError("spm1d module not found.\nInstall with pip install spm1d.")
+
     # Primero selecciona el df con la variable concreta y el lado concreto
     dfProvis_L = df.query(
         "side==@df.side.unique()[0]"
@@ -1386,7 +1391,7 @@ def get_region_of_interest(spmi):
 # =============================================================================
 
 
-def segmenta_ModeloBikefitting_xr_cinem(
+def slice_model_bikefitting_xr_cinem(
     daData: xr.DataArray,
     num_cortes: int = None,
     add_to_ini: int = None,
@@ -1576,9 +1581,7 @@ def segmenta_ModeloBikefitting_xr_cinem(
 # --------------------------------------------
 
 
-def segmenta_ModeloBikefitting_xr_EMG(
-    daDatos, num_cortes=12, show=False
-) -> xr.DataArray:
+def slice_model_bikefitting_xr_EMG(daDatos, num_cortes=12, show=False) -> xr.DataArray:
     # from detecta import detect_peaks
     # from cortar_repes_ciclicas import detect_onset_aux
     print(f"Segmentando {len(daDatos.ID)} archivos.")
@@ -1638,42 +1641,39 @@ def segmenta_ModeloBikefitting_xr_EMG(
 # =============================================================================
 # %% Función para normalizar a 360 datos cada ciclo. Se pasa después de la función Segmenta
 # =============================================================================
-def normaliza_t_aux(
-    data, x, base_norm_horiz
-):  # Función auxiliar para normalizar con xarray
+def normalize_t_aux(data, x, base_norm_horiz):
+    """Auxiliary function for normalizing with xarray"""
     # return tnorm(data, k=1, step=-361, show=False)[0]
     if np.isnan(data).all():
         data = np.full(361, np.nan)
-    else:  # elimina los nan del final y se ajusta
+    # if np.all(np.diff(x) > 0):
+    #     raise ValueError("x is expected to be increasing")
+
+    else:
+        # Remove nans at the end
         data = data[~np.isnan(data)]
         x = x[: len(data)]
 
-        if base_norm_horiz == "biela":
+        if base_norm_horiz == "crank":
             x = np.unwrap(x)
             # x = x - x[0]
-            xi = np.linspace(
-                np.pi, 2 * np.pi + np.pi, 361
-            )  # cuando añade datos de la fase anterior al inicio
-            # xi = np.linspace(-np.pi, np.pi, 361) # cuando NO añade datos de la fase anterior al inicio
+            xi = np.linspace(0, 2 * np.pi, 361)
+            # xi = np.linspace(
+            #     np.pi, 2 * np.pi + np.pi, 361
+            # )  # cuando añade datos de la fase anterior al inicio
+            # # xi = np.linspace(-np.pi, np.pi, 361) # cuando NO añade datos de la fase anterior al inicio
         elif base_norm_horiz == "time":
             x = x - x[0]
             xi = np.linspace(0, x[-1], 361)
 
         data = np.interp(xi, x, data)
-        # plt.plot(data[:])
+        # plt.plot(xi, data)
+        # plt.plot(x)
 
-        """x = x[: len(data)]
-        
-        if base_norm_horiz == "biela":
-            x = np.unwrap(x)
-            x = x - x[0]
-        xi = np.linspace(0, x[-1], 361)
-        data = np.interp(xi, x, data) """
-        # tnorm(data, k=1, step=-361, show=False)[0]
     return data
 
 
-def normaliza_biela_360_xr(
+def normalize_crank_360_xr(
     daData: xr.DataArray,
     base_norm_horiz: str = "time",
     verbose: bool = False,
@@ -1681,25 +1681,25 @@ def normaliza_biela_360_xr(
 ) -> xr.DataArray:  # recibe da de daTodos. Versión con numpy
     if base_norm_horiz == "time":
         eje_x = daData.time
-    elif base_norm_horiz == "biela":
+    elif base_norm_horiz == "crank":
         try:
-            eje_x = daData.sel(n_var="AngBiela", axis="y")
+            eje_x = daData.sel(n_var="AngBiela", axis="x")
         except:
             eje_x = daData.sel(n_var="AngBiela")
     else:
-        print("Base de normalización no reconocida")
+        print("Normalization base unknown")
         return
 
     t_ini = time.perf_counter()
 
     if verbose:
-        print(f"\nNormalizando {len(daData.ID)} archivos...")
+        print(f"\nNormalizing {len(daData.ID)} files...")
     """    
-    data=daData[0,0,0,0,0,0].values
-    x=eje_x[0,0,0,0].values
+    data=daData[0,0,0,0,0].values
+    x=eje_x[0,0,0].values
     """
     daNorm = xr.apply_ufunc(
-        normaliza_t_aux,
+        normalize_t_aux,
         daData,
         eje_x,
         base_norm_horiz,
@@ -1718,6 +1718,7 @@ def normaliza_biela_360_xr(
             ),  # Coords en radianes
         )
     )
+    # daNorm.isel(ID=0).sel(axis='x',n_var='AngArtKnee').plot.line(x='AngBielaInRepe', col='side')
     daNorm.AngBielaInRepe.attrs["units"] = "deg"
     daNorm.AngBielaInRepe_rad.attrs["units"] = "rad"
     daNorm.name = daData.name
@@ -1730,17 +1731,17 @@ def normaliza_biela_360_xr(
 
 
 # =============================================================================
-# %% Calcular datos análisis
+# %% Calculate data analysis
 # =============================================================================
-def calcula_descrip_antropo_global(daData, daDataNorm):
-    """Calcula variables antropométricas global (en todos los IDs)"""
-    # TODO: calcular ángulo inclinación eje cadera-rodilla-tobillo frontal a 90º biela
+def calculate_descrip_anthropo_global(daData, daDataNorm):
+    """Calculates global anthropometric variables (in all IDs)"""
+    # TODO: calculate angle of inclination hip-knee-front ankle axis at 90º crank
     """
     for n, _ in daData.groupby("ID"):
         calcula_descrip_antropo(dagb=daData.sel(ID=n), daNorm=daDataNorm)
     """
 
-    print("ATENCIÓN! ESTA VERSIÓN ACTUALMENTE SE BASA EN LOS DATOS NORMALIZADOS")
+    print("ATTENTION! THIS VERSION IS CURRENTLY BASED ON NORMALIZED DATA")
 
     if "LengthMuslo" in daData.n_var:
         muslo = (
@@ -1926,7 +1927,7 @@ def calcula_descrip_antropo_global(daData, daDataNorm):
     return dfResumen_discreto, dfAntropo, dfCompLados
 
 
-def calcula_descrip_antropo(dagb, daNorm):
+def calculate_descrip_anthropo(dagb, daNorm):
     """Calcula variables antropométricas individual (en un ID)"""
     # TODO: calcular ángulo inclinación eje cadera-rodilla-tobillo frontal a 90º biela
     daNorm = daNorm.sel(ID=dagb.ID.data)
@@ -2104,7 +2105,7 @@ def _draw_error_band(ax, x, y, err, **kwargs):
 
 
 # Función genérica para guardar todas las gráficas creadas
-def _guarda_grafica(nom="A", carpeta_guardar=None, fig=None):
+def _save_graph(nom="A", carpeta_guardar=None, fig=None):
     if carpeta_guardar is None:
         print("No se ha especificado la carpeta de guardado")
         return
@@ -2112,7 +2113,7 @@ def _guarda_grafica(nom="A", carpeta_guardar=None, fig=None):
     # print(carpeta_guardar)
     # print(formato_imagen)
     ruta_fig = carpeta_guardar.joinpath(nom).with_suffix(formato_imagen)
-    # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfa.traduce_variables(nomvar) + '_' + eje + formato_imagen
+    # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfu.rename_variables(nomvar) + '_' + eje + formato_imagen
     if formato_imagen == ".pdf":
         with PdfPages(ruta_fig) as pdf_pages:
             pdf_pages.savefig(fig)
@@ -2120,7 +2121,7 @@ def _guarda_grafica(nom="A", carpeta_guardar=None, fig=None):
         fig.savefig(ruta_fig, dpi=300)
 
 
-def RealizaGraficas_cinem(
+def make_plots_cinem(
     daGraf,
     repes=[0, 10],
     nomvars=["AngArtKnee", "AngArtHip", "AngArtAnkle"],
@@ -2209,7 +2210,7 @@ def RealizaGraficas_cinem(
             for nomvar, eje in itertools.product(nomvars, ejes):
                 # print(nomvar,eje)
                 titulo = "{0:s} {1:s}".format(
-                    nfa.traduce_variables(nomvar), nfa.traduce_variables(eje)
+                    nfu.rename_variables(nomvar), nfu.rename_variables(eje)
                 )
 
                 # fig, ax = plt.subplots(2,1, sharex=True, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(8,6))#para incluir gráfica spm{t}
@@ -2233,7 +2234,7 @@ def RealizaGraficas_cinem(
             for nomvar, eje in itertools.product(nomvars, ejes):
                 # print(nomvar,eje)
                 titulo = "{0:s} {1:s}".format(
-                    nfa.traduce_variables(nomvar), nfa.traduce_variables(eje)
+                    nfu.rename_variables(nomvar), nfu.rename_variables(eje)
                 )
 
                 # fig, ax = plt.subplots(2,1, sharex=True, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(8,6))#para incluir gráfica spm{t}
@@ -2241,7 +2242,7 @@ def RealizaGraficas_cinem(
 
                 # Compara lados con spm1d
                 if compara_lados_graf:
-                    ti = calcula_spm1d(dfGraf.query("n_var==@nomvar & axis==@eje"))
+                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar & axis==@eje"))
 
                     # Marca regiones con diferencia L y R
                     plot_clusters(ti, y=5, ax=ax, print_p=False)
@@ -2465,8 +2466,8 @@ def RealizaGraficas_cinem(
                 plt.tight_layout()
 
                 if carpeta_guardar:
-                    _guarda_grafica(
-                        nom=f"{dfGraf["ID"].iloc[0]}_A_{nfa.traduce_variables(nomvar)}_{eje}",
+                    _save_graph(
+                        nom=f"{dfGraf["ID"].iloc[0]}_A_{nfu.rename_variables(nomvar)}_{eje}",
                         carpeta_guardar=carpeta_output,
                         fig=fig,
                     )
@@ -2481,7 +2482,7 @@ def RealizaGraficas_cinem(
             for nomvar, eje in itertools.product(nomvars, ejes):
                 # print(nomvar,eje)
                 titulo = "{0:s} {1:s}".format(
-                    nfa.traduce_variables(nomvar), nfa.traduce_variables(eje)
+                    nfu.rename_variables(nomvar), nfu.rename_variables(eje)
                 )
 
                 fig, ax = plt.subplots(
@@ -2544,8 +2545,8 @@ def RealizaGraficas_cinem(
                 plt.tight_layout()
 
                 if carpeta_guardar:
-                    _guarda_grafica(
-                        nom=f"{dfGraf["ID"].iloc[0]}_AP_{nfa.traduce_variables(nomvar)}_{eje}",
+                    _save_graph(
+                        nom=f"{dfGraf["ID"].iloc[0]}_AP_{nfu.rename_variables(nomvar)}_{eje}",
                         carpeta_guardar=carpeta_output,
                         fig=fig,
                     )
@@ -2762,13 +2763,13 @@ def RealizaGraficas_cinem(
                     # g.figure.suptitle('{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
                     g.set_title(
                         "Coordinación articular, vista {0:s}".format(
-                            nfa.traduce_variables(eje)
+                            nfu.rename_variables(eje)
                         )
-                    )  #' {0:s}/{1:s} {2:s}'.format(nfa.traduce_variables(parnomvar[0]), nfa.traduce_variables(parnomvar[1]), nfa.traduce_variables(eje))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
+                    )  #' {0:s}/{1:s} {2:s}'.format(nfu.rename_variables(parnomvar[0]), nfu.rename_variables(parnomvar[1]), nfu.rename_variables(eje))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
 
                     g.set(
-                        xlabel=f"{nfa.traduce_variables(parnomvar[1])} (grados)",
-                        ylabel=f"{nfa.traduce_variables(parnomvar[0])} (grados)",
+                        xlabel=f"{nfu.rename_variables(parnomvar[1])} (grados)",
+                        ylabel=f"{nfu.rename_variables(parnomvar[0])} (grados)",
                     )
 
                     # g.axis('equal') #hace los dos ejes proporcionales
@@ -2799,8 +2800,8 @@ def RealizaGraficas_cinem(
                     plt.tight_layout()
 
                     if carpeta_guardar:
-                        _guarda_grafica(
-                            nom=f"{dfGraf["ID"].iloc[0]}_AA_{nfa.traduce_variables(parnomvar[0])}-{nfa.traduce_variables(parnomvar[1])}_{eje}",
+                        _save_graph(
+                            nom=f"{dfGraf["ID"].iloc[0]}_AA_{nfu.rename_variables(parnomvar[0])}-{nfu.rename_variables(parnomvar[1])}_{eje}",
                             carpeta_guardar=carpeta_output,
                             fig=fig,
                         )
@@ -2819,7 +2820,7 @@ def RealizaGraficas_cinem(
                     titulo = "Basculación lateral pelvis"
                 else:
                     titulo = "{0:s} {1:s}".format(
-                        nfa.traduce_variables(nomvar), nfa.traduce_variables(eje)
+                        nfu.rename_variables(nomvar), nfu.rename_variables(eje)
                     )
 
                 fig, ax = plt.subplots(figsize=(4, 3), dpi=300)
@@ -2917,8 +2918,8 @@ def RealizaGraficas_cinem(
                 plt.tight_layout()
 
                 if carpeta_guardar:
-                    _guarda_grafica(
-                        nom=f"{dfGraf["ID"].iloc[0]}_I_{nfa.traduce_variables(nomvar)}_{eje}",
+                    _save_graph(
+                        nom=f"{dfGraf["ID"].iloc[0]}_I_{nfu.rename_variables(nomvar)}_{eje}",
                         carpeta_guardar=carpeta_output,
                         fig=fig,
                     )
@@ -2935,7 +2936,7 @@ def RealizaGraficas_cinem(
                 # nom=dfFactorTodosNorm.loc[dfFactorTodosNorm['side'].str.contains('LR'), 'n_var'].unique()#nombres de variables con LR
 
                 titulo = "{0:s} {1:s}".format(
-                    nfa.traduce_variables(nomvar), nfa.traduce_variables(eje)
+                    nfu.rename_variables(nomvar), nfu.rename_variables(eje)
                 )
 
                 fig, ax = plt.subplots(
@@ -2981,8 +2982,8 @@ def RealizaGraficas_cinem(
                 plt.tight_layout()
 
                 if carpeta_guardar:
-                    _guarda_grafica(
-                        nom=f"{dfGraf["ID"].iloc[0]}_IP_{nfa.traduce_variables(nomvar)}_{eje}",
+                    _save_graph(
+                        nom=f"{dfGraf["ID"].iloc[0]}_IP_{nfu.rename_variables(nomvar)}_{eje}",
                         carpeta_guardar=carpeta_output,
                         fig=fig,
                     )
@@ -3004,8 +3005,8 @@ def RealizaGraficas_cinem(
                     df = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")[
                         ["ID", "phase", "side", "axis", "AngBielaInRepe"]
                     ].reset_index(drop=True)
-                    var1 = nfa.traduce_variables("Eje " + parejes[0])
-                    var2 = nfa.traduce_variables("Eje " + parejes[1])
+                    var1 = nfu.rename_variables("Eje " + parejes[0])
+                    var2 = nfu.rename_variables("Eje " + parejes[1])
                     df[var1] = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")[
                         "value"
                     ].reset_index(drop=True)
@@ -3315,8 +3316,8 @@ def RealizaGraficas_cinem(
                     # g.figure.suptitle('{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
                     g.set_title(
                         "Vista {0:s} {1:s}".format(
-                            nfa.traduce_variables([parejes[0], parejes[1]]),
-                            nfa.traduce_variables(nomvar),
+                            nfu.rename_variables([parejes[0], parejes[1]]),
+                            nfu.rename_variables(nomvar),
                         )
                     )  #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
                     g.set(xlabel=var1 + " (cm)", ylabel=var2 + " (cm)")  # ($^\circ$)
@@ -3348,8 +3349,8 @@ def RealizaGraficas_cinem(
                     plt.tight_layout()
 
                     if carpeta_guardar:
-                        _guarda_grafica(
-                            nom=f"{dfGraf["ID"].iloc[0]}_P_{nfa.traduce_variables(nomvar)}_frontal",
+                        _save_graph(
+                            nom=f"{dfGraf["ID"].iloc[0]}_P_{nfu.rename_variables(nomvar)}_frontal",
                             carpeta_guardar=carpeta_output,
                             fig=fig,
                         )
@@ -3362,7 +3363,7 @@ def RealizaGraficas_cinem(
     # ---------------------------------------
 
 
-def RealizaGraficas_triples_cinem(
+def make_plots_triples_cinem(
     daGraf,
     repes=[0, 10],
     tipo_graf=None,
@@ -3387,7 +3388,6 @@ def RealizaGraficas_triples_cinem(
         '_A3D_': Gráfica Ángulo de misma variable en 3 ejes
     """
     # TODO: FALTA QUE SELECCIONE REPES SUELTAS
-
     numreps = int(daGraf.phase.max())  # dfGraf["phase"].max()
     if repes is not None:  # si no se indica nada, muestra todas las repeticiones
         if repes[-1] > numreps:
@@ -3410,7 +3410,7 @@ def RealizaGraficas_triples_cinem(
     # Cambia los nombres de las variables
     dfGraf["n_var"] = dfGraf["n_var"].replace(
         {
-            dfGraf.n_var.unique()[i]: nfa.traduce_variables(dfGraf.n_var.unique()[i])
+            dfGraf.n_var.unique()[i]: nfu.rename_variables(dfGraf.n_var.unique()[i])
             for i in range(len(dfGraf.n_var.unique()))
         }
     )
@@ -3538,14 +3538,14 @@ def RealizaGraficas_triples_cinem(
                 # ax.set_xlabel('Ángulo de biela (grados)')
 
                 if compara_lados_graf:
-                    ti = calcula_spm1d(dfGraf.query("n_var==@nomvar"))
+                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar"))
                     # Marca regiones con diferencia L y R
                     plot_clusters(ti, y=5, ax=ax, print_p=False)
 
             # plt.tight_layout()
 
             if carpeta_guardar:
-                _guarda_grafica(
+                _save_graph(
                     nom=f"{dfGraf["ID"].iloc[0]}_A_Triple_{dfGraf.axis.unique()[0]}",
                     carpeta_guardar=carpeta_output,
                     fig=g.figure,
@@ -3631,7 +3631,7 @@ def RealizaGraficas_triples_cinem(
             # plt.tight_layout()
 
             if carpeta_guardar:
-                _guarda_grafica(
+                _save_graph(
                     nom=f"{dfGraf["ID"].iloc[0]}_AP_Triple_{dfGraf.axis.unique()[0]}",
                     carpeta_guardar=carpeta_output,
                     fig=g.figure,
@@ -3925,7 +3925,7 @@ def RealizaGraficas_triples_cinem(
             plt.tight_layout()
 
             if carpeta_guardar:
-                _guarda_grafica(
+                _save_graph(
                     nom=f"{dfGraf["ID"].iloc[0]}_AA_Triple_{dfGraf.axis.unique()[0]}",
                     carpeta_guardar=carpeta_output,
                     fig=g.figure,
@@ -4239,7 +4239,7 @@ def RealizaGraficas_triples_cinem(
             plt.tight_layout()
 
             if carpeta_guardar:
-                _guarda_grafica(
+                _save_graph(
                     nom=f"{dfGraf['ID'].iloc[0]}_PP_{dfGraf['n_var'][0]}_Triple",
                     carpeta_guardar=carpeta_output,
                     fig=g.figure,
@@ -4388,7 +4388,7 @@ def RealizaGraficas_triples_cinem(
                 # plt.tight_layout()
 
             if carpeta_guardar:
-                _guarda_grafica(
+                _save_graph(
                     nom=f"{dfGraf['ID'].iloc[0]}_PPM_Multiple_Triple",
                     carpeta_guardar=carpeta_output,
                     fig=g.figure,
@@ -4405,9 +4405,9 @@ def RealizaGraficas_triples_cinem(
         if "3D_lin" in tipo_graf:
             dfGraf["axis"].replace(
                 {
-                    "x": "Vista " + nfa.traduce_variables("x"),
-                    "y": "Vista " + nfa.traduce_variables("y"),
-                    "z": "Vista " + nfa.traduce_variables("z"),
+                    "x": "Vista " + nfu.rename_variables("x"),
+                    "y": "Vista " + nfu.rename_variables("y"),
+                    "z": "Vista " + nfu.rename_variables("z"),
                 },
                 inplace=True,
             )  # {'x':u'Basculación ant./post.', 'y':u'Basculación lat.', 'z':u'Rotación'}, inplace=True)
@@ -4476,7 +4476,7 @@ def RealizaGraficas_triples_cinem(
             # plt.tight_layout()
 
             if carpeta_guardar:
-                _guarda_grafica(
+                _save_graph(
                     nom=f"{dfGraf['ID'].iloc[0]}_A3D_{dfGraf["n_var"][0]}_Triple",
                     carpeta_guardar=carpeta_output,
                     fig=g.figure,
@@ -4492,7 +4492,7 @@ def RealizaGraficas_triples_cinem(
         # ---------------------------------------
 
 
-def RealizaGraficas_EMG(
+def make_plots_EMG(
     daGraf,
     repes=[0, 10],
     nomvars=["REC", "BIC"],
@@ -4523,7 +4523,7 @@ def RealizaGraficas_EMG(
         dfGraf = daGraf.to_dataframe(name="value").dropna().reset_index()
 
     # Cambia los nombres de las variables
-    # dfGraf['n_var'] = dfGraf['n_var'].replace({dfGraf.n_var.unique()[i]:nfa.traduce_variables(dfGraf.n_var.unique()[i]) for i in range(len(dfGraf.n_var.unique()))})
+    # dfGraf['n_var'] = dfGraf['n_var'].replace({dfGraf.n_var.unique()[i]:nfu.rename_variables(dfGraf.n_var.unique()[i]) for i in range(len(dfGraf.n_var.unique()))})
     dfGraf["side"] = dfGraf["side"].replace({"L": "Izq", "R": "Der"})
 
     numreps = dfGraf["phase"].max()
@@ -4565,7 +4565,7 @@ def RealizaGraficas_EMG(
         ruta_fig = carpeta_guardar.joinpath(dfGraf["ID"].iloc[0] + nom).with_suffix(
             formato_imagen
         )
-        # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfa.traduce_variables(nomvar) + '_' + eje + formato_imagen
+        # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfu.rename_variables(nomvar) + '_' + eje + formato_imagen
         if formato_imagen == ".pdf":
             with PdfPages(ruta_fig) as pdf_pages:
                 pdf_pages.savefig(fig)
@@ -4578,14 +4578,14 @@ def RealizaGraficas_EMG(
         if "lados_lin" in tipo_graf:
             for nomvar in nomvars:
                 # print(nomvar)
-                titulo = nfa.traduce_variables(nomvar)
+                titulo = nfu.rename_variables(nomvar)
 
                 # fig, ax = plt.subplots(2,1, sharex=True, gridspec_kw = {'height_ratios':[4, 1]}, figsize=(8,6))#para incluir gráfica spm{t}
                 fig, ax = plt.subplots(figsize=(4, 3), dpi=300)
 
                 # Compara lados con spm1d
                 if compara_lados_graf:
-                    ti = calcula_spm1d(dfGraf.query("n_var==@nomvar"))
+                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar"))
 
                     # Marca regiones con diferencia L y R
                     if ti != None:
@@ -4653,7 +4653,7 @@ def RealizaGraficas_EMG(
                 plt.tight_layout()
 
                 if carpeta_guardar:
-                    guarda_grafica(nom=f"_E_{nfa.traduce_variables(nomvar)}")
+                    guarda_grafica(nom=f"_E_{nfu.rename_variables(nomvar)}")
 
                 # plt.show()
 
@@ -4661,7 +4661,7 @@ def RealizaGraficas_EMG(
         if "lados_circ" in tipo_graf:
             for nomvar in nomvars:
                 # print(nomvar,eje)
-                titulo = nfa.traduce_variables(nomvar)
+                titulo = nfu.rename_variables(nomvar)
 
                 fig, ax = plt.subplots(
                     figsize=(3, 3), subplot_kw=dict(projection="polar"), dpi=300
@@ -4722,10 +4722,10 @@ def RealizaGraficas_EMG(
                 plt.tight_layout()
 
                 if carpeta_guardar:
-                    guarda_grafica(nom=f"_EP_{nfa.traduce_variables(nomvar)}")
+                    guarda_grafica(nom=f"_EP_{nfu.rename_variables(nomvar)}")
 
-                # ruta_fig = carpeta_output.joinpath(dfGraf['ID'].iloc[0] + '_AP_' + nfa.traduce_variables(nomvar) + '_' + eje).with_suffix(formato_imagen)
-                # #CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_AP_' + nfa.traduce_variables(nomvar) + '_' + eje + formato_imagen
+                # ruta_fig = carpeta_output.joinpath(dfGraf['ID'].iloc[0] + '_AP_' + nfu.rename_variables(nomvar) + '_' + eje).with_suffix(formato_imagen)
+                # #CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_AP_' + nfu.rename_variables(nomvar) + '_' + eje + formato_imagen
                 # if formato_imagen=='.pdf':
                 #     with PdfPages(ruta_fig) as pdf_pages:
                 #         pdf_pages.savefig(fig)
@@ -4884,11 +4884,11 @@ def RealizaGraficas_EMG(
                 # g.figure.suptitle('{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
                 g.set_title(
                     "Coordinación muscular"
-                )  # {0:s}/{1:s}'.format(nfa.traduce_variables(parnomvar[0]), nfa.traduce_variables(parnomvar[1]))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
+                )  # {0:s}/{1:s}'.format(nfu.rename_variables(parnomvar[0]), nfu.rename_variables(parnomvar[1]))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
 
                 g.set(
-                    xlabel=f"{nfa.traduce_variables(parnomvar[1])} (%MVC)",
-                    ylabel=f"{nfa.traduce_variables(parnomvar[0])} (%MVC)",
+                    xlabel=f"{nfu.rename_variables(parnomvar[1])} (%MVC)",
+                    ylabel=f"{nfu.rename_variables(parnomvar[0])} (%MVC)",
                 )
 
                 # g.axis('equal') #hace los dos ejes proporcionales
@@ -4915,7 +4915,7 @@ def RealizaGraficas_EMG(
 
                 if carpeta_guardar:
                     guarda_grafica(
-                        nom=f"_EE_{nfa.traduce_variables(parnomvar[0])}_{nfa.traduce_variables(parnomvar[1])}"
+                        nom=f"_EE_{nfu.rename_variables(parnomvar[0])}_{nfu.rename_variables(parnomvar[1])}"
                     )
 
                 # plt.show()
@@ -4952,7 +4952,10 @@ def RealizaGraficas_EMG(
             # reprocesa EMG dinámica
             # _, dadinamic, _ = carga_preprocesa_csv_EMG([(carpeta_guardar / daGraf.ID.data[0].split('_')[-1]).with_suffix('.csv')], nomBloque='Devices')
             daDinamic = otros_datos[0]
-            da_tkeo = nfa.procesaEMG(daDinamic, fc_band=[30, 300], fclow=10, btkeo=True)
+
+            from biomdp.general_processing_functions import procesaEMG
+
+            da_tkeo = procesaEMG(daDinamic, fc_band=[30, 300], fclow=10, btkeo=True)
             # da_tkeo.plot.line(x='time', row='n_var', col='side')
 
             # dakinem = carga_preprocesa_csv_EMG([(carpeta_guardar / daGraf.ID.data[0].split('_')[-1]).with_suffix('.csv')], nomBloque='Model Outputs')
@@ -4980,7 +4983,7 @@ def RealizaGraficas_EMG(
                 0
             ]  # .parent
             da_tkeoMVC = xr.load_dataarray(ruta)
-            da_tkeoMVC = nfa.procesaEMG(
+            da_tkeoMVC = nfu.procesaEMG(
                 da_tkeoMVC, fc_band=[30, 300], fclow=10, btkeo=True
             )
             da_tkeoMVC = limpia_MVC(da_tkeoMVC)
@@ -5014,7 +5017,7 @@ def RealizaGraficas_EMG(
             da_tkeo.attrs["units"] = "%MVC"
             da_tkeo.time.attrs["units"] = daDinamic.time.attrs["units"]
 
-            da_tkeo = segmenta_ModeloBikefitting_xr_EMG(da_tkeo).sel(
+            da_tkeo = sliceModelBikefitting_xr_EMG(da_tkeo).sel(
                 n_var=orden_musculos
             )  # se queda solo con los músculos por si hay alguna variable cinemática de segmentar
             # da_tkeo.isel(ID=0).sel(n_var='VME').plot.line(x='time', col='side')
@@ -5309,12 +5312,12 @@ def RealizaGraficas_EMG(
             )  # , bbox_to_anchor=(1.0, 1.01)
 
             for nomvar, ax in g.axes_dict.items():
-                ax.set_title(nfa.traduce_variables(nomvar))
+                ax.set_title(nfu.rename_variables(nomvar))
                 # ax.xaxis.grid(
                 #     True, linestyle="dashed", dash_capstyle="round", alpha=0.8, zorder=1
                 # )
                 if compara_lados_graf:
-                    ti = calcula_spm1d(dfGraf.query("n_var==@nomvar"))
+                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar"))
                     # Marca regiones con diferencia L y R
                     plot_clusters(ti, y=5, ax=ax, print_p=False)
 
@@ -5403,7 +5406,7 @@ def RealizaGraficas_EMG(
             )
 
             for nomvar, ax in g.axes_dict.items():
-                ax.set_title(nfa.traduce_variables(nomvar))
+                ax.set_title(nfu.rename_variables(nomvar))
                 # ax.xaxis.grid(True, linestyle='dashed', dashes=(5, 5), dash_capstyle='round', alpha=0.8, zorder=1)
 
             plt.tight_layout()
@@ -5430,9 +5433,9 @@ def RealizaGraficas_EMG(
             plt.tight_layout()
 
 
-def RealizaGraficas_cinem_completo(daGraf) -> None:
+def make_plots_cinem_complete(daGraf) -> None:
     da = daGraf.isel(ID=0)
-    RealizaGraficas_triples_cinem(
+    make_plots_triples_cinem(
         da, tipo_graf=["lados_lin"], repes=None, ensemble_avg="completo"
     )  # , carpeta_guardar=carpeta_graficas)
 
@@ -5448,8 +5451,8 @@ def crea_df_comparacion_pares(dfGraf, nomvar, parejes):
     df = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")[
         ["ID", "phase", "side", "axis", "AngBielaInRepe"]
     ].reset_index(drop=True)
-    var1 = nfa.traduce_variables("Eje " + parejes[0])
-    var2 = nfa.traduce_variables("Eje " + parejes[1])
+    var1 = nfu.rename_variables("Eje " + parejes[0])
+    var2 = nfu.rename_variables("Eje " + parejes[1])
     df[var1] = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")["value"].reset_index(
         drop=True
     )
@@ -5536,7 +5539,7 @@ def guardar_graficas_exploracion_globales_cinem(
                     zorder=1,
                 )
                 .set(xlim=(0, 360), xticks=np.linspace(0, 360, 5))
-                .set_axis_labels("ang biela", "ang rodilla (deg)")
+                .set_axis_labels("crank angle", "ang rodilla (deg)")
             )
             plt.suptitle(f"Ángulo rodillas {n_generico_archivos}", y=1)
             plt.tight_layout()  # rect=[0,0,1,0.99])
@@ -5827,7 +5830,7 @@ def guardar_graficas_exploracion_globales_cinem(
                     zorder=1,
                 )
                 .set(xlim=(0, 360), xticks=np.linspace(0, 360, 5))
-                .set_axis_labels("ang biela", "basculación lateral pelvis (deg)")
+                .set_axis_labels("crank angle", "basculación lateral pelvis (deg)")
             )
             plt.suptitle(f"Áng Pelvis {n_generico_archivos}", y=1)
             plt.tight_layout()  # rect=[0,0,1,0.99])
@@ -5899,7 +5902,7 @@ def guardar_graficas_exploracion_globales_cinem(
                     zorder=1,
                 )
                 .set(xlim=(0, 180), xticks=np.linspace(0, 180, 5))
-                .set_axis_labels("ang biela", "v ang biela (deg/s)")
+                .set_axis_labels("crank angle", "v ang biela (deg/s)")
             )
             plt.suptitle(f"Velocidad angular biela {n_generico_archivos}", y=1)
             plt.tight_layout()  # rect=[0,0,1,0.99])
@@ -6455,7 +6458,7 @@ if __name__ == "__main__":
     ############### PRUEBAS ANTIGUAS
     r"""
     sys.path.append(r'F:\Programacion\Python\Mios\Functions')
-    import Nexus_FuncionesApoyo as nfa
+    import Nexus_FuncionesApoyo as nfu
     import bikefitting_funciones_apoyo as bfa
     r"""
     # Cargando directamente desde c3d
@@ -6471,11 +6474,11 @@ if __name__ == "__main__":
     ]
     lista_archivos.sort()
 
-    daDatos = nfa.carga_c3d_generico_xr(
+    daDatos = nfu.carga_c3d_generico_xr(
         lista_archivos[:10], section="Trajectories"
     )  # , nom_vars_cargar=['HJC', 'KJC', 'AJC'])
-    daDatos = nfa.ajusta_etiquetas_lado_final(daDatos)
-    daDatos = nfa.separa_trayectorias_lados(daDatos)
+    daDatos = nfu.ajusta_etiquetas_lado_final(daDatos)
+    daDatos = nfu.separa_trayectorias_lados(daDatos)
     daAngles = calcula_angulos_desde_trajec(daDatos)
     daPos = calcula_variables_posicion(daDatos)
     daCinem = xr.concat([daAngles, daPos], dim="n_var")
@@ -6496,12 +6499,12 @@ if __name__ == "__main__":
     ]
 
     num_cortes = 12
-    base_normaliz = "biela"
+    base_normaliz = "crank"
     daDin_global_cinem = xr.load_dataarray(lista_archivos_Din[0])
     # daDin_global_cinem = daDin_global_cinem.rename(
     #     {"Archivo": "ID", "nom_var": "n_var", "lado": "side", "eje": "axis"}
     # )
-    daData_trat = segmenta_ModeloBikefitting_xr_cinem(
+    daData_trat = sliceModelBikefitting_xr_cinem(
         daDin_global_cinem, num_cortes=num_cortes
     )
 

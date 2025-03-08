@@ -2,16 +2,19 @@
 #!/usr/bin/env python
 
 """
-Aplica filtro paso Butterworth. Se puede pasar array 1D o en pandas DataFrame 2D.
+Aplica filtro paso Butterworth. Se puede pasar array 1D, pandas DataFrame 2D
+o dataarray de xarray.
 Función de paso bajo o alto y función de bandpass.
+Applies Butterworth pass filter. You can pass 1D array, pandas 2D DataFrame
+or xarray dataarray.
+Low or high pass function and bandpass function.
 """
 
 
 # =============================================================================
-# %% INICIA
+# %% LOAD MODULES
 # =============================================================================
 
-# from __future__ import division, print_function
 from typing import Optional, Union, Any
 import numpy as np
 import pandas as pd
@@ -19,13 +22,16 @@ import xarray as xr
 import scipy.signal
 
 
-__author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.6.1"
+__author__ = "Jose L. L. Elvira"
+__version__ = "v.1.6.2"
 __date__ = "17/02/2025"
 
 
 """
 Modificaciones:
+    05/03/2025, v1.6.2
+        - Name translations.
+    
     17/02/2025, v1.6.1
         - Si se pasa un dataarray con atributo freq y sin parámetro fr,
           lo utiliza.
@@ -54,61 +60,69 @@ Modificaciones:
 
 
 # =============================================================================
-# %% Función filtrar low o High pass
+# %% Functions
 # =============================================================================
-def filtrar_Butter(
+def filter_butter(
     dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
-    fr: Optional[Union[float, int]]=None,
-    fc: Optional[Union[float, int]]=None,
-    order: Optional[Union[float, int]]=2.0,
-    kind: Optional[str]="low",
-    returnRMS: Optional[bool]=False,
-    show: Optional[bool]=False,
-    ax: Optional[Any]=None,
+    fr: Optional[Union[float, int]] = None,
+    fc: Optional[Union[float, int]] = None,
+    order: Optional[Union[float, int]] = 2.0,
+    kind: Optional[str] = "low",
+    returnRMS: Optional[bool] = False,
+    show: Optional[bool] = False,
+    ax: Optional[Any] = None,
 ) -> Union[np.ndarray, pd.DataFrame, xr.DataArray]:
     """
+    Applies a Butterworth pass filter to data.
+
     Parameters
     ----------
-    dat_orig : array 1D o dataframe de pandas en 2D o xarray.
-            Datos originales a filtrar.
-    fr : frecuencia de registro.
-    fc : frecuencia de corte del filtro.
-    order : 'agudeza' del filtro.
-            2 por defecto.
-    kind : 'low' o 'high'
-            low por defecto.
-    returnRMS: True o False
-                (False por defecto). Devuelve o no el RMS de la diferencia
-                entre filtrado y original.
-    show : muestra o no el gráfico con datos originales y filtrados con el RMSE.
-    ax : ejes de una figura creada previamente.
+    dat_orig : array_like, numpy, pandas or dataarray
+        Original data to filter.
+    fr : float, optional
+        Sample frequency. Defaults to None.
+    fc : float, optional
+        Cut-off frequency. Defaults to None.
+    order : float, optional
+        Filter order. Defaults to 2.0.
+    kind : str, optional
+        Filter type. 'low' or 'high'. Defaults to 'low'.
+    returnRMS : bool, optional
+        Whether to return the root mean square (RMS) of the difference between
+        the original and filtered data. Defaults to False.
+    show : bool, optional
+        Whether to display a plot of the original and filtered data. Defaults to False.
+    ax : matplotlib axes, optional
+        Axes on which to plot the data. Defaults to None.
 
     Returns
     -------
-    filtData : array de datos filtrados.
-    RMS: root mean square de la diferencia entre los datos originales y los filtrados.
+    filtData : array_like
+        Filtered data.
+    RMS : float, optional
+        Root mean square of the difference between the original and filtered data.
 
     Notes
     -----
-    Describir filtro de 2º orden y 2 pasadas como "double 2nd order Butterworth filter"
+    Describe 2nd order, 2-pass filter as "double 2nd order Butterworth filter"
     (van den Bogert) http://biomch-l.isbweb.org/threads/26625-Matlab-Code-for-EMG-processing-(negative-deflection-after-normalization!!!)?p=32073#post32073
 
 
     Examples
     --------
     >>> import numpy as np
-    >>> from filtrar_Butter import filtrar_Butter
+    >>> from biomdp.filter_butter import filter_butter
     >>> y = np.cumsum(np.random.randn(1000))
-    >>> fy = filtrar_Butter(y, fr=1000, fc=10, order=2, show=True)
+    >>> fy = filter_butter(y, fr=1000, fc=10, order=2, show=True)
     >>>
-    >>> dfCaminos = pd.DataFrame((np.random.random([100, 4])-0.5).cumsum(axis=0), columns=['A','B','C','D'])
-    >>> dfCaminosFilt, RMS = filtrar_Butter(dfCaminos, 1000, 50, 2, show=True, returnRMS=True)
+    >>> dfWalks = pd.DataFrame((np.random.random([100, 4])-0.5).cumsum(axis=0), columns=['A','B','C','D'])
+    >>> dfWalks_Filt, RMS = filter_butter(dfWalks, 1000, 50, 2, show=True, returnRMS=True)
 
     """
     RMS = []
 
-    # orden = 2 #orden 2 para que al hacer el doble paso sea de 4th orden
-    passes = 2.0  # nº de pasadas del filtro adelante y atrás
+    # order = 2 #order 2 so that when doing the double pass it is 4th order
+    passes = 2.0  # number of passes, forward and backward
 
     if fr is None:
         if isinstance(dat_orig, xr.DataArray) and "freq" in dat_orig.attrs:
@@ -122,7 +136,7 @@ def filtrar_Butter(
                     )
                 ).data
             else:
-                raise RuntimeError("Debe especificarse la frequencia de registro (fr)")
+                raise RuntimeError("The sampling frequency (fr) must be specified.")
 
     # fc = 15
     Cf = (2 ** (1 / passes) - 1) ** (
@@ -132,7 +146,8 @@ def filtrar_Butter(
 
     b, a = scipy.signal.butter(order, Wn, btype=kind)
 
-    if isinstance(dat_orig, pd.DataFrame):  # Si los datos son pandas dataframe
+    # Pandas dataframe
+    if isinstance(dat_orig, pd.DataFrame):
         dat_filt = pd.DataFrame()
 
         for i in range(dat_orig.shape[1]):
@@ -150,6 +165,7 @@ def filtrar_Butter(
                     dat_filt.iloc[:, i].values - dat_orig.iloc[:, i].values
                 ) / np.sqrt(len(dat_orig.iloc[:, i]))
 
+    # Pandas series
     elif isinstance(dat_orig, pd.Series):
         dat_filt = pd.Series(
             scipy.signal.filtfilt(b, a, dat_orig),
@@ -160,6 +176,7 @@ def filtrar_Butter(
         if returnRMS or show == True:
             RMS = np.linalg.norm(dat_filt - dat_orig) / np.sqrt(len(dat_orig))
 
+    # Xarray dataarray
     elif isinstance(dat_orig, xr.DataArray):
         # dat_filt = xr.apply_ufunc(scipy.signal.filtfilt, b, a, dat_orig.dropna(dim='time')) #se asume que hay una dimensión tiempo
         dat_filt = xr.apply_ufunc(
@@ -169,10 +186,9 @@ def filtrar_Butter(
             dat_orig.interpolate_na(
                 dim="time", method="linear", fill_value="extrapolate"
             ),
-        )  # rellena los nan con datos interpolados
-        dat_filt = dat_filt.where(
-            xr.where(np.isnan(dat_orig), False, True), np.nan
-        )  # recupera el nº de datos original rellenando con nan los finales como el original
+        )  # pad with nan the interpolated data
+        # Retrieves the original data number by filling in with nan the endings as the original one
+        dat_filt = dat_filt.where(xr.where(np.isnan(dat_orig), False, True), np.nan)
         dat_filt.attrs = dat_orig.attrs
         dat_filt = dat_filt.astype(dat_orig.dtype)
 
@@ -183,13 +199,9 @@ def filtrar_Butter(
                     dat_filt[i, :] - dat_orig[i, :]
                 ) / np.sqrt(len(dat_orig[i, :]))
                 # xr.apply_ufunc(np.linalg.norm, dat_filt[0,:], dat_orig[0,:])
-            # pip install xskillscore
-            # import xskillscore as xs
-            # RMS = xs.rmse(dat_filt, dat_orig, dim='time')
-            # Investigar para hacer el RMSE directamente sin necesitar la librería xskillscore
-            # CON XARRAY NO FUNCIONAN LOS GRÁFICOS
 
-    else:  # si los datos no son alguno de los reconocidos
+    # Other data types
+    else:
         dat_filt = scipy.signal.filtfilt(b, a, dat_orig)
 
         if returnRMS or show == True:
@@ -208,11 +220,15 @@ def filtrar_Butter(
 
 
 # =============================================================================
-# Presenta la gráfica
+# Shows plot
 # =============================================================================
-def _plot(dat_orig:Union[np.ndarray, pd.DataFrame, xr.DataArray],
-          dat_filt:Union[np.ndarray, pd.DataFrame, xr.DataArray],
-          RMS, fc, ax):
+def _plot(
+    dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
+    dat_filt: Union[np.ndarray, pd.DataFrame, xr.DataArray],
+    RMS,
+    fc,
+    ax,
+):
     import matplotlib.pyplot as plt
 
     if isinstance(dat_orig, xr.DataArray):
@@ -238,7 +254,8 @@ def _plot(dat_orig:Union[np.ndarray, pd.DataFrame, xr.DataArray],
             bNecesarioCerrarFigura = True
             fig, ax = plt.subplots(1, 1, figsize=(10, 4))
 
-        if isinstance(dat_orig, pd.DataFrame):  # Si los datos son pandas dataframe
+        # Pandas dataframe
+        if isinstance(dat_orig, pd.DataFrame):
             import seaborn as sns
 
             cmap = sns.color_palette("bright", n_colors=dat_orig.shape[1])
@@ -250,7 +267,8 @@ def _plot(dat_orig:Union[np.ndarray, pd.DataFrame, xr.DataArray],
             ]
             plt.legend(labels)
 
-        else:  # cuando no son dataframe, incluso si son pandas series
+        # Non pandas dataframe
+        else:
             ax.plot(dat_filt, "b-", label="Filt (RMSE={:.3f})".format(RMS))
             ax.plot(dat_orig, "r:", alpha=0.8, label="Original")
             plt.legend(loc="best")
@@ -263,52 +281,52 @@ def _plot(dat_orig:Union[np.ndarray, pd.DataFrame, xr.DataArray],
             plt.show()
 
 
-# =============================================================================
-
-
-# =============================================================================
-# %% Función filtrar band pass
-# =============================================================================
-def filtrar_Butter_bandpass(
+def filter_butter_bandpass(
     dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
-    fr: Optional[Union[float, int]]=None,
-    fclow: Optional[Union[float, int]]=None,
-    fchigh: Optional[Union[float, int]]=None,
-    order: Optional[Union[float, int]]=2.0,
-    show: Optional[bool]=False,
-    ax: Optional[Any]=None,
+    fr: Optional[Union[float, int]] = None,
+    fclow: Optional[Union[float, int]] = None,
+    fchigh: Optional[Union[float, int]] = None,
+    order: Optional[Union[float, int]] = 2.0,
+    show: Optional[bool] = False,
+    ax: Optional[Any] = None,
 ) -> Union[np.ndarray, pd.DataFrame, xr.DataArray]:
     """
+    Applies a Butterworth bandpass filter to data.
+
     Parameters
     ----------
-    dat_orig : array 1D o dataframe de pandas en 2D.
-            Datos originales a filtrar.
-    fr : frecuencia de registro.
-    fclow, fchigh : frecuencias de corte del filtro.
-    order : 'agudeza' del filtro.
-            2 por defecto.
-
-    show : muestra o no el gráfico con datos originales y filtrados con el RMSE.
-    ax : ejes de una figura creada previamente.
+    dat_orig : array_like, numpy, pandas or dataarray
+        Original data to filter.
+    fr : float, optional
+        Sample frequency. Defaults to None.
+    fclow, fchigh : float, optional
+        Cut-off frequencies. Defaults to None.
+    order : float, optional
+        Filter order. Defaults to 2.0.
+    show : bool, optional
+        Whether to display a plot of the original and filtered data. Defaults to False.
+    ax : matplotlib axes, optional
+        Axes on which to plot the data. Defaults to None.
 
     Returns
     -------
-    filtData : array de datos filtrados.
+    filtData : array_like
+        Filtered data.
 
     Notes
     -----
-    Información sobre el filtro Butterworth de bandpass en
+    Información about bandpass Butterworth filter in:
     https://scipy-cookbook.readthedocs.io/items/ButterworthBandpass.html
 
     Examples
     --------
     >>> import numpy as np
-    >>> from filtrar_Butter import filtrar_Butter
+    >>> from biomdp.filter_butter import filter_butter
     >>> y = np.cumsum(np.random.randn(1000))
-    >>> fy = filtrar_Butter(y, fr=1000, fc=10, order=2, show=True)
+    >>> fy = filter_butter(y, fr=1000, fc=10, order=2, show=True)
     >>>
-    >>> dfCaminos = pd.DataFrame((np.random.random([100, 4])-0.5).cumsum(axis=0), columns=['A','B','C','D'])
-    >>> dfCaminosFilt, RMS = filtrar_Butter(dfCaminos, 1000, 50, 2, show=True, returnRMS=True)
+    >>> dfWalks = pd.DataFrame((np.random.random([100, 4])-0.5).cumsum(axis=0), columns=['A','B','C','D'])
+    >>> dfWalks_filt, RMS = filter_butter(dfWalks, 1000, 50, 2, show=True, returnRMS=True)
 
     """
 
@@ -317,7 +335,8 @@ def filtrar_Butter_bandpass(
     high = fchigh / nyq
     b, a = scipy.signal.butter(order, [low, high], btype="band")
 
-    if isinstance(dat_orig, pd.DataFrame):  # Si los datos son pandas dataframe
+    # Pandas dataframe
+    if isinstance(dat_orig, pd.DataFrame):
         dat_filt = pd.DataFrame()
         RMS = pd.DataFrame()
         for i in range(dat_orig.shape[1]):
@@ -326,8 +345,9 @@ def filtrar_Butter_bandpass(
             )
         dat_filt.index = (
             dat_orig.index
-        )  # esto es necesario por si se pasa un slice del dataframe
+        )  # this is necessary in case a slice of the dataframe is passed
 
+    # Pandas series
     elif isinstance(dat_orig, pd.Series):
         dat_filt = pd.Series(
             scipy.signal.filtfilt(b, a, dat_orig),
@@ -335,6 +355,7 @@ def filtrar_Butter_bandpass(
             name=dat_orig.name,
         )
 
+    # Xarray dataarray
     elif isinstance(dat_orig, xr.DataArray):
         # dat_filt = xr.apply_ufunc(scipy.signal.filtfilt, b, a, dat_orig.dropna(dim='time')) #se asume que hay una dimensión tiempo
         dat_filt = xr.apply_ufunc(
@@ -362,45 +383,42 @@ def filtrar_Butter_bandpass(
 
 
 # =============================================================================
-# %% PRUEBAS
+# %% TESTS
 # =============================================================================
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
 
     np.random.seed(2)
     y = np.cumsum(np.random.randn(1000))
-    fy, rms = filtrar_Butter(y, 1000, 10, 2, show=True, returnRMS=True)
-    fy2, rms2 = filtrar_Butter(y[100:300], 1000, 10, 2, show=True, returnRMS=True)
-
-    import matplotlib.pyplot as plt
+    fy, rms = filter_butter(y, 1000, 10, 2, show=True, returnRMS=True)
+    fy2, rms2 = filter_butter(y[100:300], 1000, 10, 2, show=True, returnRMS=True)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     fig.suptitle("Título grande", y=1.03)
 
-    fy = filtrar_Butter(y, 1000, 50, 2, show=True, ax=ax)
+    fy = filter_butter(y, 1000, 50, 2, show=True, ax=ax)
     ax.set_title("Superpone el Título pequeno", y=1.0)
     plt.show()
 
     # Con dataframe de varias columnas
     num = 1000
     colNames = ["A", "B", "C", "D"]
-    dfCaminos = pd.DataFrame(
+    dfWalks = pd.DataFrame(
         (np.random.random([num, 4]) - 0.5).cumsum(axis=0), columns=colNames
     )
 
-    dfCaminosFilt = filtrar_Butter(dfCaminos, 1000, 5, 2, show=True)
-    dfCaminosFilt, RMS = filtrar_Butter(
-        dfCaminos, 1000, 50, 2, show=True, returnRMS=True
-    )
+    dfWalks_filt = filter_butter(dfWalks, 1000, 5, 2, show=True)
+    dfWalks_filt, RMS = filter_butter(dfWalks, 1000, 50, 2, show=True, returnRMS=True)
 
     # con pd series
-    dfCaminosFilt, RMS = filtrar_Butter(
-        dfCaminos.iloc[:, 0], 1000, 5, 2, show=True, returnRMS=True
+    dfWalks_filt, RMS = filter_butter(
+        dfWalks.iloc[:, 0], 1000, 5, 2, show=True, returnRMS=True
     )
-    dfCaminosFilt, RMS = filtrar_Butter(
-        dfCaminos["A"], 1000, 50, 2, show=True, returnRMS=True
+    dfWalks_filt, RMS = filter_butter(
+        dfWalks["A"], 1000, 50, 2, show=True, returnRMS=True
     )
 
-    # %%Onda con ruido
+    # %% Noisy wave
     t = np.arange(0, 2, 1 / 1000)
     # offset vertical
     of = [0, 0, 0, 0]
@@ -408,32 +426,32 @@ if __name__ == "__main__":
     a = [3, 0.5, 5, 0.3]
     # frecuencias
     f = [1, 60, 3, 40]
-    # phase angle, ángulo al inicio del tiempo
+    # phase angle
     pa = [0, 0, 0, 0]
-    ondas = pd.DataFrame(
+    waves = pd.DataFrame(
         np.array(
             [of[i] + a[i] * np.sin(2 * np.pi * f[i] * t + pa[i]) for i in range(len(a))]
         ).T
     )
 
-    Onda = pd.DataFrame({"Onda1": ondas[0] + ondas[1], "Onda2": ondas[2] + ondas[3]})
+    Wave = pd.DataFrame({"Wave1": waves[0] + waves[1], "Wave2": waves[2] + waves[3]})
 
-    dfOndaFilt = filtrar_Butter(Onda, 1000, 10, 2, show=True)
+    dfWave_filt = filter_butter(Wave, 1000, 10, 2, show=True)
 
-    # con cambio de index
-    dfOndaFiltCacho = filtrar_Butter(Onda[100:300], 1000, 20, 2, show=True)
+    # With index change
+    dfWave_filtCacho = filter_butter(Wave[100:300], 1000, 20, 2, show=True)
 
-    dfOndaFiltCacho, RMS = filtrar_Butter(
-        Onda.iloc[100:300, 0], 1000, 20, 2, show=True, returnRMS=True
+    dfWave_filtCacho, RMS = filter_butter(
+        Wave.iloc[100:300, 0], 1000, 20, 2, show=True, returnRMS=True
     )
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    fy = filtrar_Butter(Onda.iloc[400:600, 0], 1000, 50, 2, show=True, ax=ax)
-    ax.set_title("(Superpone el Título pequeño)", y=1.0)
-    plt.suptitle("Título grande", y=1.03)
+    fy = filter_butter(Wave.iloc[400:600, 0], 1000, 50, 2, show=True, ax=ax)
+    ax.set_title("(Sup little title)", y=1.0)
+    plt.suptitle("Big title", y=1.03)
     plt.show()
 
-    # %%prueba bandpass
+    # %% Bandpass tests
     # Filter a noisy signal.
     fs = 5000.0
     lowcut = 500.0
@@ -442,14 +460,14 @@ if __name__ == "__main__":
     T = 0.05
     nsamples = T * fs
     t = np.linspace(0, T, int(nsamples), endpoint=False)
-    a = 0.02  # amplitud de la señal
-    f0 = 600.0  # frecuencia principal a extraer de la señal
+    a = 0.02
+    f0 = 600.0  # principal frequency to extract
     x = 0.1 * np.sin(2 * np.pi * 1.2 * np.sqrt(t))
     x += 0.01 * np.cos(2 * np.pi * 312 * t + 0.1)
     x += a * np.cos(2 * np.pi * f0 * t + 0.11)
     x += 0.03 * np.cos(2 * np.pi * 2000 * t)
 
-    xFiltBand = filtrar_Butter_bandpass(
+    xFiltBand = filter_butter_bandpass(
         x, fs, lowcut, highcut, order=6, show=False, ax=None
     )
 
@@ -457,38 +475,38 @@ if __name__ == "__main__":
     ax.plot(t, x, "b--")
     ax.plot(t, xFiltBand, "r")
     plt.hlines([-a, a], 0, T, "r", linestyles="--")
-    plt.title("Filtro bandpass")
+    plt.title("Bandpass Filter")
     plt.show()
 
     ###############################
-    # %%prueba con xarray
+    # %%xarray
     t = np.arange(0, 2, 1 / 1000)
-    # offset vertical
+    # vertical offset
     of = [0, 0, 0, 0]
     # ampitudes
     a = [3, 0.5, 5, 0.3]
-    # frecuencias
+    # frequencies
     f = [1, 60, 3, 40]
-    # phase angle, ángulo al inicio del tiempo
+    # phase angle
     pa = [0, 0, 0, 0]
-    ondas = pd.DataFrame(
+    waves = pd.DataFrame(
         np.array(
             [of[i] + a[i] * np.sin(2 * np.pi * f[i] * t + pa[i]) for i in range(len(a))]
         ).T
     )
 
-    Onda = pd.DataFrame({"Onda1": ondas[0] + ondas[1], "Onda2": ondas[2] + ondas[3]})
+    Wave = pd.DataFrame({"Wave1": waves[0] + waves[1], "Wave2": waves[2] + waves[3]})
 
     da = xr.DataArray(
-        data=np.array(Onda).T,
+        data=np.array(Wave).T,
         dims=["channel", "time"],
         coords={
-            "channel": Onda.columns,
-            "time": np.arange(0, len(Onda) / 1000, 1 / 1000),
+            "channel": Wave.columns,
+            "time": np.arange(0, len(Wave) / 1000, 1 / 1000),
         },
     )
     o = da.isel(channel=-1)
-    da.plot.line(x="time")  # sin filtrar
+    da.plot.line(x="time")  # unfiltered
     da.isel(channel=1).plot()
     plt.show()
 
@@ -496,35 +514,17 @@ if __name__ == "__main__":
         len(da.isel(channel=0))
     )
 
-    o_filt, RMSEda = filtrar_Butter(
+    oFilt, RMSEda = filter_butter(
         da, fr=1000, fc=10, order=2, returnRMS=True, show=False
     )
-    da.plot.line(x="time")  # sin filtrar
-    o_filt.plot.line(x="time")  # filtrado
+    da.plot.line(x="time")  # unfiltered
+    oFilt.plot.line(x="time")  # filtered
     plt.show()
 
-    # Al compararlo con el pandas sale igual
-    dfOndaFilt, RMSEdf = filtrar_Butter(
-        Onda, fr=1000, fc=10, order=2, returnRMS=True, show=True
+    # Compared with pandas is the same
+    dfWave_filt, RMSEdf = filter_butter(
+        Wave, fr=1000, fc=10, order=2, returnRMS=True, show=True
     )
 
     da.attrs["freq"] = 1000
-    o_filt = filtrar_Butter(da, fc=10, order=2, returnRMS=False, show=True)
-
-    # %% Con xarray con varias dimensiones
-    from pathlib import Path  # para gestión de archivos y carpetas
-
-    # Carga un archivo con datos aleatorios
-    ruta_trabajo = Path(
-        r"F:\Programacion\Python\Mios\TratamientoDatos\BasesDatosCreadas\ArchivosPorFactoresCinematicaFake"
-    )
-    da2 = xr.load_dataset(ruta_trabajo / "DataArrayPruebas.nc").to_array()
-    del da2["variable"]  # la quita de coordenadas
-    da2 = da2.squeeze("variable")  # la quita de dimensiones
-
-    da_filt = filtrar_Butter(da2, fr=100, fc=2, order=2, kind="low")
-
-    da2.plot.line(x="time", col="partID", col_wrap=4)
-
-    da2.sel(partID="s04").plot.line(x="time")
-    da_filt.sel(partID="s04").plot.line(x="time")
+    oFilt = filter_butter(da, fc=10, order=2, returnRMS=False, show=True)

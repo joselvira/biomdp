@@ -1,28 +1,18 @@
 # %% -*- coding: utf-8 -*-
 """
 Created on Thu Sep 30 18:01:08 2021
-Funciones para realizar cortes en señales cíclicas usando un criterio interno o externo.
-Basado en xarray.
+Functions to perform slices on cyclic signals using an internal or external criterion.
+Based on xarray.
 
 @author: josel
 """
 
 
 # =============================================================================
-# %% Load libraries
+# %% LOAD LIBRARIES
 # =============================================================================
 
-from typing import Optional, Union, Any
-
-import numpy as np
-import xarray as xr
-
-import itertools
-
-import matplotlib.pyplot as plt
-
-
-__author__ = "Jose Luis Lopez Elvira"
+__author__ = "Jose L. L. Elvira"
 __version__ = "v.4.2.1"
 __date__ = "13/12/2024"
 
@@ -96,6 +86,16 @@ Modificaciones:
     30/09/2021, v1.0.0
         - Versión inicial
 """
+
+
+from typing import Optional, Union, Any
+
+import numpy as np
+import xarray as xr
+
+import itertools
+
+import matplotlib.pyplot as plt
 
 
 # =============================================================================

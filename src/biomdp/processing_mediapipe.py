@@ -3,19 +3,51 @@ Created on Thu Jul 04 09:35:20 2024
 
 @author: Jose L. L. Elvira
 
-Carga y procesa vídeo con cambios de dirección.
-
-INSTALAR:
+INSTALL:
 # - pip install OpenCV-python
 - conda install -c conda-forge opencv
 
 - pip install mediapipe
 
+More info:
+https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
+
 """
 
 # =============================================================================
-# %% IMPORTA LIBRERIAS
+# %% LOAD LIBRARIES
 # =============================================================================
+__author__ = "Jose L. L. Elvira"
+__version__ = "v.1.1.2"
+__date__ = "28/02/2025"
+
+
+"""
+Modificaciones:
+    04/03/2025, v1.1.2
+        - Incluida opción de escapar de los vídeos con tecla Esc.
+
+    01/03/2025, v1.1.1
+        - Creada función para añadir marcadores centro_caderas y centro_hombros.
+        - En discreto, independiente show markers y save_fot_file.
+
+    28/02/2025, v1.1.0
+        - Incluida posibilidad de procesar un nº concreto de fotograma
+          del vídeo. Guarda la imagen del fotograma procesado.
+
+    26/02/2025, v1.0.2
+        - Añadida versión calculo ángulos para numpy.
+    
+    14/02/2025, v1.0.1
+        - Cambiados nombres funciones a procesa_imagen y procesa_video
+          en lugar de procesa_imagen_moderno y procesa_video_moderno.
+    
+    07/02/2025, v1.0.0
+        - Iniciado a partir de pruebas anteriores.
+        - Añadidas funciones separa_dim_lado y asigna_subcategorias_xr
+        - Perfeccionada función procesar imagen y vídeo.
+    
+"""
 
 import numpy as np
 import xarray as xr
@@ -49,38 +81,6 @@ try:
     # para usarlo, @deprecated("usa la nueva función xx")
 except:
     print('No se ha podido cargar la librería "warnings.deprecated".')
-
-__author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.1.2"
-__date__ = "28/02/2025"
-
-
-"""
-Modificaciones:
-    04/03/2025, v1.1.2
-        - Incluida opción de escapar de los vídeos con tecla Esc.
-
-    01/03/2025, v1.1.1
-        - Creada función para añadir marcadores centro_caderas y centro_hombros.
-        - En discreto, independiente show markers y save_fot_file.
-
-    28/02/2025, v1.1.0
-        - Incluida posibilidad de procesar un nº concreto de fotograma
-          del vídeo. Guarda la imagen del fotograma procesado.
-
-    26/02/2025, v1.0.2
-        - Añadida versión calculo ángulos para numpy.
-    
-    14/02/2025, v1.0.1
-        - Cambiados nombres funciones a procesa_imagen y procesa_video
-          en lugar de procesa_imagen_moderno y procesa_video_moderno.
-    
-    07/02/2025, v1.0.0
-        - Iniciado a partir de pruebas anteriores.
-        - Añadidas funciones separa_dim_lado y asigna_subcategorias_xr
-        - Perfeccionada función procesar imagen y vídeo.
-    
-"""
 
 
 # =============================================================================

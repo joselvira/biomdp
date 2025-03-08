@@ -9,8 +9,22 @@ Mainly based on xarray.
 
 
 # =============================================================================
-# %% Load libraries
+# %% LOAD LIBRARIES
 # =============================================================================
+
+__filename__ = "create_time_series"
+__version__ = "0.0.1"
+__company__ = "CIDUMH"
+__date__ = "05/03/2025"
+__author__ = "Jose L. L. Elvira"
+
+"""
+Updates:
+    05/03/2025, v0.0.1
+        - Initial version with create_time_series_xr function.
+
+"""
+
 
 import numpy as np
 import time
@@ -21,7 +35,8 @@ from scipy.signal import butter, filtfilt
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import seaborn as sns
+
+# import seaborn as sns
 
 
 def create_time_series_xr(
@@ -108,9 +123,9 @@ def create_time_series_xr(
         # sujeto.append(pd.DataFrame(senal + noise, columns=['value']).assign(**{'ID':'{0:02d}'.format(subj+IDini), 'time':np.arange(0, len(senal)/fs, 1/fs)}))
 
     # Pad data to last the same
-    import itertools
+    from itertools import zip_longest
 
-    data = np.array(list(itertools.zip_longest(*subjects, fillvalue=np.nan)))
+    data = np.array(list(zip_longest(*subjects, fillvalue=np.nan)))
 
     data = xr.DataArray(
         data=data,

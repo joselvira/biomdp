@@ -9,12 +9,15 @@ import xarray as xr
 
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.0.2.0"
-__date__ = "07/12/2024"
+__version__ = "v.0.3.0"
+__date__ = "07/03/2025"
 
 
 """
 Modificaciones:
+    07/03/2025, v.0.3.0
+        - Modified fitrar_Butter to filter_butter.
+    
     31/10/2024, v.0.2.0
         - Incluidas funcionnes nanargmax_xr y nanargmin_xr.
     
@@ -138,7 +141,7 @@ class DataArrayAccessor:
     ) -> xr.DataArray:
 
         import numpy as np
-        from biomdp.filtrar_Butter import filtrar_Butter
+        from biomdp.filter_butter import filter_butter
 
         if fr is None:
             if "freq" in self._obj.attrs:
@@ -152,7 +155,7 @@ class DataArrayAccessor:
                         )
                     ).data
 
-        return filtrar_Butter(
+        return filter_butter(
             dat_orig=self._obj,
             fr=fr,
             fc=fc,

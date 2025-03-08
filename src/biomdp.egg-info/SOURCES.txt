@@ -6,9 +6,10 @@ src/biomdp/__init__.py
 src/biomdp/_version.py
 src/biomdp/bikefitting_funciones_apoyo.py
 src/biomdp/biomec_xarray_accessor.py
-src/biomdp/filtrar_Butter.py
+src/biomdp/create_time_series.py
+src/biomdp/filter_butter.py
 src/biomdp/general_processing_functions.py
-src/biomdp/nexus_funciones_apoyo.py
+src/biomdp/nexus_functions_utils.py
 src/biomdp/processing_mediapipe.py
 src/biomdp/read_isen_csv.py
 src/biomdp/read_kistler_c3d.py
