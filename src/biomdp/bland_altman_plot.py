@@ -2,13 +2,50 @@
 """
 Created on Mon Apr 26 17:02:27 2017
 
-@author: YoMismo
+
 """
 
-from __future__ import (
-    division,
-    print_function,
-)  # division #Ensure division returns float
+
+# =============================================================================
+# %% LOAD LIBRARIES
+# =============================================================================
+
+
+__author__ = "Jose L. L. Elvira"
+__version__ = "1.1.6"
+__date__ = "10/03/2025"
+
+
+"""
+Updates:
+    14/03/2025, v1.1.6
+        - Adapted to biomdp with translations.
+        - Changed file name from Blan_AltmanPlot to bland_altman_plot
+
+    12/07/2023,v1.1.5
+        - Corregido error al calcular regresión cuando todas las x son iguales.
+
+    18/03/2021, v1.1.4:
+        - Añadido el argumento num_decimals para poder especificar el número de decimales cuando muesra el BIAS y LOA.
+
+    v1.1.3:
+        - Exporta los LOA sin multiplicar por 2.
+        - Representa el texto del bias y LOA en las líneas correspondientes.
+          color_lin controla el color del texto de bias_loa.
+        - Introducido parámetro show_text, que puede ser 'bias_loa', 'regr', 'publication' o 'all'. El parámetro show_bias_LOA
+
+    v1.1.2:
+        - Corregidas las gráficas, con ax en lugar de plt. Antes no funcionaba con varios subplots.
+        - Con color_lin se puede controlar el color de las líneas bias y LOA. Útil cuando se quieren solapar gráficas de varios conjuntos de datos.
+    
+    v1.1.1:
+        - Cálculo R2 con sklearn, con statsmodels falla por la versión de scikit.
+        - Quita las filas con valores nulos.
+
+    v1.1.0:
+        - Quitados adaptadores para etiquetas.
+        - Se puede elegir el tcrit 1.96 o ajustarlo a la n.
+"""
 
 import numpy as np
 import pandas as pd
@@ -18,93 +55,61 @@ from scipy import stats
 import matplotlib.pyplot as plt
 
 
-__author__ = "Jose Luis Lopez Elvira"
-__version__ = "1.1.4"
-__date__ = "18/03/2021"
+# ==========================================================================
+# %% Functions
+# =============================================================================
 
 
-# %%
 def bland_altman_plot(
-    data1,
-    data2,
-    unidad="",
-    etiquetaCasos=False,
-    regr=0,
-    tcrit_Exacto=False,
-    n_decimales=1,
+    data1: pd.DataFrame | pd.Series,
+    data2: pd.DataFrame | pd.Series,
+    units: str = "",
+    label_cases: bool = False,
+    regr: int = 0,
+    tcrit_exact: bool = False,
+    num_decimals: int = 1,
     ax=None,
-    show_text=None,
-    show_bias_LOA=False,
-    color_lin=None,
+    show_text: str | None = None,
+    show_bias_LOA: bool = False,
+    color_lin: str | None = None,
     *args,
-    **kwargs
+    **kwargs,
 ) -> tuple:
-    """Realiza gráfico de Bland-Altman para dos variables con medidas similares.
-    Ejemplo de explicación en: https://www.medcalc.org/manual/blandaltman.php
+    """
+    Perform Bland-Altman plot for two variables with similar measures.
+    Explanation example in: https://www.medcalc.org/manual/blandaltman.php
 
     Parameters
     ----------
     data1 : 1D array_like data pandas DataFrame.
     data2 : 1D array_like data pandas DataFrame.
-    unidad: opcional, incluye la unidad de medida en las etiquetas de los ejes
-    etiquetaCasos: opcional, pone un número al lado de cada caso
-    regr: si es mayor que cero, incluye en el gráfico la línea de regresión con
-          el exponente indicado. También presenta el valor de la correlación
-          con su p, de R2 y del error medio cuadrático.
-    tcrit_Exacto : con False toma el valor t crítico = 1.96; con True lo
-          calcula a partir de n (#stats.t.ppf(q=0.975, df=n1 + n2-2))
-    n_decimales : especifica el número de decimales a mostrar en BIAS y LOA.
-    ax : ejes para el grafico resultante.
-    show_text : indica si muestra texto informativo.
-                Puede ser 'bias_loa', 'regr', 'publication', 'all'.
-                defoult=None.
-    show_bias_LOA : True/False. Muestra el valor del bias y limits of agreement
-          en el gráfico.
-    color_lin: Si se quiere controlar el color de las líneas bias y LOA. Por
-          defecto (None), mantiene color negro para bias y gris para LOA.
-          Útil cuando se quieren solapar varios grupos de datos en la misma
-          gráfica.
-    *args y **kwargs especificaciones de formato para los puntos del grafico.
+    units: optional, include the unit of measurement in the axis labels
+    label_cases: optional, put a number next to each case
+    regr: if greater than zero, include the regression line with the indicated exponent.
+          Also presents the correlation coefficient with its p-value, R2 and
+          root mean squared error.
+    tcrit_exact : with False takes the critical t-value = 1.96; with True
+                  calculates it from n (#stats.t.ppf(q=0.975, df=n1 + n2-2))
+    num_decimals: optional, number of decimal places to show in the bias and LOA.
+    ax: optional, matplotlib axes where to plot
+    show_text: optional, string indicating what text to show in the plot. Possibilities:
+              'bias_loa', 'regr', 'publication' or 'all'. The 'publication' option
+              is like 'all' but without the bias and LOA.
+    show_bias_LOA: optional, boolean indicating whether to show or not the bias and LOA
+    color_lin: optional, color of the bias and LOA lines
 
     Returns
     -------
-
-    grafico Bland-Altman
-    Bias, media de las diferencias
-    LOA, limits of agreement.
+    tuple with the bias and limits of agreement
 
     Example
     -------
     bland_altman_plot(s1, s2, lw=0, color='k', s=40)
-    bias, LOA = bland_altman_plot(s1, s2, etiquetaCasos= True, regr=2, unidad='m', tcrit_Exacto=True, show_bias_LOA=True, lw=1, color='b', s=20, ax=ax)
+    bias, LOA = bland_altman_plot(s1, s2, label_cases= True, regr=2, units='m', tcrit_exact=True, show_bias_LOA=True, lw=1, color='b', s=20, ax=ax)
 
-    Version history
-    ---------------
-    '1.1.5', 12/07/2023
-            Corregido error al calcular regresión cuando todas las x son iguales.
-
-    '1.1.4':
-            Añadido el argumento n_decimales para poder especificar el número de decimales cuando muesra el BIAS y LOA.
-
-    '1.1.3':
-            Exporta los LOA sin multiplicar por 2.
-            Representa el texto del bias y LOA en las líneas correspondientes.
-            color_lin controla el color del texto de bias_loa.
-            Introducido parámetro show_text, que puede ser 'bias_loa', 'regr', 'publication' o 'all'. El parámetro show_bias_LOA
-
-    '1.1.2':
-            Corregidas las gráficas, con ax en lugar de plt. Antes no funcionaba con varios subplots.
-            Con color_lin se puede controlar el color de las líneas bias y LOA. Útil cuando se quieren solapar gráficas de varios conjuntos de datos.
-    '1.1.1':
-            Cálculo R2 con sklearn, con statsmodels falla por la versión de scikit.
-            Quita las filas con valores nulos.
-
-    '1.1.0':
-            Quitados adaptadores para etiquetas.
-            Se puede elegir el tcrit 1.96 o ajustarlo a la n.
     """
     if len(data1) != len(data2):
-        raise ValueError("Los dos grupos de datos no tienen la misma longitud.")
+        raise ValueError("The two sets of data must be the same length.")
 
     # primero agrupa las dos variables en un dataframe para quitar los casos nulos de cualquiera de los dos.
     data = pd.concat([pd.DataFrame(data1), pd.DataFrame(data2)], axis=1).dropna()
@@ -122,11 +127,11 @@ def bland_altman_plot(
     md = np.mean(diff)  # Mean of the difference
     sd = np.std(diff, axis=0, ddof=1)  # Standard deviation of the difference
     t_crit = (
-        1.96 if tcrit_Exacto == False else stats.t.ppf(q=0.975, df=n1 + n2 - 2)
+        1.96 if tcrit_exact == False else stats.t.ppf(q=0.975, df=n1 + n2 - 2)
     )  # por defecto 1.96, de esta forma se ajusta a la n
 
-    if unidad != "":
-        unidad = " (" + unidad + ")"
+    if units != "":
+        units = " (" + units + ")"
 
     # make plot if not axis was provided
     if ax is None:
@@ -291,12 +296,12 @@ def bland_altman_plot(
             linewidth=1.5,
         )
 
-    if etiquetaCasos:
+    if label_cases:
         font = {
             "family": "sans",
             "color": "red",
             "weight": "normal",
-            "size": 8,
+            "size": 10,
             "alpha": 0.7,
         }
         for num in range(len(data1)):
@@ -304,9 +309,9 @@ def bland_altman_plot(
                 plt.text(mean[num], diff[num], str(num), fontdict=font)
 
     etiquetaY = "Difference"
-    etiquetaY = etiquetaY + unidad
+    etiquetaY = etiquetaY + units
     etiquetaX = "Mean"
-    etiquetaX = etiquetaX + unidad
+    etiquetaX = etiquetaX + units
 
     ax.set_xlabel(etiquetaX)
     ax.set_ylabel(etiquetaY)
@@ -324,7 +329,7 @@ def bland_altman_plot(
         ax.text(
             ax.get_xlim()[1],
             md + (ax.get_ylim()[1] - ax.get_ylim()[0]) / 1000,
-            "Bias {0:.{dec}f}".format(md, dec=n_decimales),
+            "Bias {0:.{dec}f}".format(md, dec=num_decimals),
             fontsize=12,
             color=color_lin,
             horizontalalignment="right",
@@ -337,7 +342,7 @@ def bland_altman_plot(
         ax.text(
             ax.get_xlim()[1],
             (md + t_crit * sd) + (ax.get_ylim()[1] - ax.get_ylim()[0]) / 1000,
-            "LOA {0:.{dec}f}".format(md + t_crit * sd, dec=n_decimales),
+            "LOA {0:.{dec}f}".format(md + t_crit * sd, dec=num_decimals),
             fontsize=10,
             color=color_lin,
             horizontalalignment="right",
@@ -349,7 +354,7 @@ def bland_altman_plot(
         ax.text(
             ax.get_xlim()[1],
             (md - t_crit * sd) + (ax.get_ylim()[1] - ax.get_ylim()[0]) / 1000,
-            "LOA {0:.{dec}f}".format(md - t_crit * sd, dec=n_decimales),
+            "LOA {0:.{dec}f}".format(md - t_crit * sd, dec=num_decimals),
             fontsize=10,
             color=color_lin,
             horizontalalignment="right",
@@ -362,7 +367,10 @@ def bland_altman_plot(
     return (md, t_crit * sd)
 
 
-# %%
+# =============================================================================
+# %% TESTS
+# =============================================================================
+
 if __name__ == "__main__":
     import pandas as pd
 
@@ -437,7 +445,7 @@ if __name__ == "__main__":
         ]
     )
 
-    bland_altman_plot(metodo_A, metodo_B, regr=2, tcrit_Exacto=True)
+    bland_altman_plot(metodo_A, metodo_B, regr=2, tcrit_exact=True)
     plt.show()
 
     # %%
@@ -474,14 +482,14 @@ if __name__ == "__main__":
     bland_altman_plot(instr1, instr2, color="r", s=80, show_bias_LOA=True)
 
     # Se puede pedir que etiquete cada caso para poder identificarlos
-    bland_altman_plot(instr1, instr2, etiquetaCasos=True, color="b", show_bias_LOA=True)
+    bland_altman_plot(instr1, instr2, label_cases=True, color="b", show_bias_LOA=True)
 
     # También puede calcular si existe tendencia en los datos. Presenta la R2 y Pearson
     bland_altman_plot(instr1, instr2, regr=1, color="b", show_bias_LOA=True)
 
     # para poder controlar el aspecto de los ejes, etiquetas, etc. incluirlo en una figura
     fig, ax = plt.subplots()
-    bland_altman_plot(instr1, instr2, etiquetaCasos=False, ax=ax, color="k", s=40)
+    bland_altman_plot(instr1, instr2, label_cases=False, ax=ax, color="k", s=40)
     plt.title("Bland-Altman plot")
     ax.set_ylabel("Bias")
     ax.set_xlabel("Media entre instrumento 1 e instrumento 2")
@@ -509,6 +517,7 @@ if __name__ == "__main__":
     Datos = pd.read_excel(
         r"F:\Programacion\Python\Mios\Estadistica\EjemploDatos-Bland-AltmanPlot.xlsx",
         "Hoja1",
+        engine="calamine",
         index_col=None,
         na_values=[" "],
     )
@@ -616,7 +625,7 @@ if __name__ == "__main__":
     Data1 = pd.Series(Data1)
     Data2 = pd.Series(Data2)
 
-    bland_altman_plot(Data2, Data1, unidad="cm")
+    bland_altman_plot(Data2, Data1, units="cm")
     plt.title("Bland-Altman Plot")
     plt.show()
 
@@ -696,9 +705,9 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(1, 1, figsize=(4, 3), dpi=150)
     kargs = {"lw": 0, "color": "b", "s": 40, "alpha": 0.5}
-    # bland_altman_plot(s1, s2, etiquetaCasos=True, ax=ax, **kargs, idioma='esp')#en python 2 no funciona
+    # bland_altman_plot(s1, s2, label_cases=True, ax=ax, **kargs, idioma='esp')#en python 2 no funciona
     bland_altman_plot(
-        s1, s2, etiquetaCasos=True, ax=ax, lw=0, color="b", regr=1, alpha=0.5, s=40
+        s1, s2, label_cases=True, ax=ax, lw=0, color="b", regr=1, alpha=0.5, s=40
     )
     plt.title("iguales + una diferencia aleatoria normal")
     plt.show()
@@ -715,7 +724,7 @@ if __name__ == "__main__":
     s2 = pd.Series(s2)
 
     fig, ax = plt.subplots(1, 1, figsize=(4, 3), dpi=150)
-    bland_altman_plot(s1, s2, etiquetaCasos=True, ax=ax, lw=0, color="k", s=40)
+    bland_altman_plot(s1, s2, label_cases=True, ax=ax, lw=0, color="k", s=40)
     plt.title("iguales + una diferencia constante")
     plt.show()
 
@@ -736,7 +745,7 @@ if __name__ == "__main__":
     # s2[6]=np.nan
 
     fig, ax = plt.subplots(1, 1, figsize=(4, 3), dpi=150)
-    bland_altman_plot(s1, s2, etiquetaCasos=True, ax=ax, lw=0, color="k", s=40)
+    bland_altman_plot(s1, s2, label_cases=True, ax=ax, lw=0, color="k", s=40)
     plt.title("iguales + una diferencia aleatoria normal")
     plt.show()
 
@@ -753,7 +762,7 @@ if __name__ == "__main__":
     s2 = pd.Series(s2)
 
     fig, ax = plt.subplots(1, 1, figsize=(4, 3), dpi=150)
-    bland_altman_plot(s1, s2, etiquetaCasos=False, ax=ax, lw=0, color="k", regr=1, s=40)
+    bland_altman_plot(s1, s2, label_cases=False, ax=ax, lw=0, color="k", regr=1, s=40)
     plt.title("iguales + una diferencia aleatoria normal")
     plt.show()
 
@@ -777,23 +786,23 @@ if __name__ == "__main__":
     bland_altman_plot(
         s1,
         s2,
-        etiquetaCasos=False,
+        label_cases=False,
         ax=ax[0],
         lw=0,
         color="k",
         regr=1,
         s=40,
         show_text="bias_loa",
-        n_decimales=3,
+        num_decimals=3,
     )
     # plt.xlim(0.244, 0.252)
-    ax[0].set_title("Gráfica1")
+    ax[0].set_title("Graph1")
 
     bland_altman_plot(
-        s12, s22, etiquetaCasos=False, ax=ax[1], lw=0, color="k", regr=1, s=40
+        s12, s22, label_cases=False, ax=ax[1], lw=0, color="k", regr=1, s=40
     )
     # plt.xlim(0.244, 0.252)
-    ax[1].set_title("Gráfica2")
+    ax[1].set_title("Graph2")
 
     # %% Con color uniforme para cada conjunto de datos
     fig, ax = plt.subplots(figsize=(5, 5), dpi=150)  # , constrained_layout=True
@@ -801,7 +810,7 @@ if __name__ == "__main__":
     bland_altman_plot(
         s1,
         s2,
-        etiquetaCasos=False,
+        label_cases=False,
         ax=ax,
         regr=1,
         s=70,
@@ -816,7 +825,7 @@ if __name__ == "__main__":
     bland_altman_plot(
         s12,
         s22,
-        etiquetaCasos=False,
+        label_cases=False,
         ax=ax,
         regr=1,
         s=70,
@@ -827,6 +836,6 @@ if __name__ == "__main__":
         show_text="bias_loa",
     )
     # plt.xlim(0.244, 0.252)
-    ax.set_title("Gráfica2")
+    ax.set_title("Graph2")
 
 # %%

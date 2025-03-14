@@ -4,37 +4,35 @@ Created on Fry Mar 8 13:15:58 2024
 
 @author: jose.lopeze
 
-Lectura de archivos .csv exportados de Noraxon con IMU.
+Reading of .csv files exported from Noraxon with IMU.
 """
 
 
 # =============================================================================
-# %% INICIA
+# %% LOAD LIBRARIES
 # =============================================================================
 
-__filename__ = "read_noraxon_csv"
-__author__ = "Jose Luis Lopez Elvira"
-__version__ = "0.1.0"
-__date__ = "08/03/2024"
+__author__ = "Jose L. L. Elvira"
+__version__ = "0.1.1"
+__date__ = "13/03/2025"
 
 """
-Modificaciones:    
+Updates:
+    13/03/2025, v0.1.1
+        - Adapted to biomdp with translations.
+
     08/03/2024, v0.1.0
-            - Empezado tomando trozos sueltos.
+        - Empezado tomando trozos sueltos.
             
 """
 
-
-# =============================================================================
-# %% Carga librerías
-# =============================================================================
-
+from typing import List
 import numpy as np
 import pandas as pd
 import xarray as xr
 import polars as pl
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 # from matplotlib.backends.backend_pdf import PdfPages #para guardar gráficas en pdf
 # import seaborn as sns
@@ -51,11 +49,11 @@ import time  # para cuantificar tiempos de procesado
 
 
 # =============================================================================
-# %% Carga archivos iSen
+# %% Processing functions
 # =============================================================================
 
 
-def separa_dim_axis(da):
+def split_dim_axis(da: xr.DataArray) -> xr.DataArray:
     # Separa el xarray en ejes creando dimensión axis
     if "Accel " in da.n_var.to_series().iloc[0]:
         sensor_type = "Accel "
@@ -95,7 +93,7 @@ def separa_dim_axis(da):
     return da
 
 
-def separa_dim_lado(da):
+def split_dim_side(da: xr.DataArray) -> xr.DataArray:
     # Separa el xarray en ejes creando dimensión axis
 
     L = da.sel(n_var=da.n_var.str.contains("izquierda"))
@@ -114,12 +112,14 @@ def separa_dim_lado(da):
     return da
 
 
-def asigna_subcategorias_xr(da, n_estudio=None):
+def assign_subcategories_xr(
+    da: xr.DataArray, n_project: str | None = None
+) -> xr.DataArray:
 
     if len(da.ID.to_series().iloc[0].split("_")) == 5:
         da = da.assign_coords(
             estudio=(
-                n_estudio
+                n_project
             ),  # "ID", da.ID.to_series().str.split("_").str[0].to_list()),
             particip=("ID", da.ID.to_series().str.split("_").str[1].to_list()),
             tipo=("ID", da.ID.to_series().str.split("_").str[2].to_list()),
@@ -128,10 +128,10 @@ def asigna_subcategorias_xr(da, n_estudio=None):
         )
 
     elif len(da.ID.to_series().iloc[0].split("_")) == 4:
-        if n_estudio is None:
-            n_estudio = "X"
+        if n_project is None:
+            n_project = "X"
         da = da.assign_coords(
-            estudio=("ID", [n_estudio] * len(da.ID)),
+            estudio=("ID", [n_project] * len(da.ID)),
             particip=("ID", da.ID.to_series().str.split("_").str[0].to_list()),
             tipo=("ID", da.ID.to_series().str.split("_").str[1].to_list()),
             subtipo=("ID", da.ID.to_series().str.split("_").str[2].to_list()),
@@ -160,13 +160,13 @@ def asigna_subcategorias_xr(da, n_estudio=None):
         #if len(n.str.split('_'))
         partes = n.str.split(dim='splt', sep='_')
         if len(partes)==3:
-            est.append(n_estudio)
+            est.append(n_project)
             partic.append(partes.data[0])
             tip.append(partes.data[1])
             subtip.append(subtipo)
             repe.append(partes.data[-1])
         elif len(partes)==4:
-            est.append(n_estudio)
+            est.append(n_project)
             partic.append(partes.data[0])
             tip.append(partes.data[1])
             subtip.append(partes.data[2])
@@ -188,31 +188,33 @@ def asigna_subcategorias_xr(da, n_estudio=None):
     return da
 
 
-def pasa_df_a_da(dfTodos, n_estudio=None, show=False):
-    if isinstance(dfTodos, pl.DataFrame):
+def df_to_da(
+    dfAll: pl.DataFrame | pd.DataFrame, n_project: str | None = None, show: bool = False
+) -> xr.DataArray:
+    if isinstance(dfAll, pl.DataFrame):
         # Transforma df polars a dataarray con todas las variables cargadas
-        vars_leidas = dfTodos.select(
+        vars_leidas = dfAll.select(
             pl.exclude(
                 ["time", "estudio", "tipo", "subtipo", "ID", "particip", "repe"]
             ),
         ).columns
 
-        dfpd = dfTodos.melt(
+        dfpd = dfAll.melt(
             id_vars=["ID", "time"], value_vars=vars_leidas, variable_name="n_var"
         ).to_pandas()
 
-    else:  # viene con pandas
-        vars_leidas = dfTodos.drop(
+    else:  # from pandas
+        vars_leidas = dfAll.drop(
             columns=["time", "estudio", "tipo", "subtipo", "ID", "particip", "repe"]
         ).columns
-        dfpd = dfTodos.drop(
+        dfpd = dfAll.drop(
             columns=["estudio", "tipo", "subtipo", "particip", "repe"]
         ).melt(id_vars=["ID", "time"], var_name="n_var")
 
-    daTodos = (
+    daAll = (
         # dfpd.drop(columns=["estudio", "tipo", "subtipo", "particip", "repe"])
         dfpd  # .melt(id_vars=["ID", "time"], var_name="n_var")
-        # pd.melt(dfTodosArchivos.to_pandas().drop(columns=['estudio','tipo','subtipo']), id_vars=['ID', 'repe', 'time'], var_name='axis')
+        # pd.melt(dfAllArchivos.to_pandas().drop(columns=['estudio','tipo','subtipo']), id_vars=['ID', 'repe', 'time'], var_name='axis')
         .set_index(["ID", "n_var", "time"])
         .to_xarray()
         .to_array()
@@ -220,31 +222,33 @@ def pasa_df_a_da(dfTodos, n_estudio=None, show=False):
         .drop_vars("variable")
     )
 
-    # Asigna coordenadas extra
-    daTodos = asigna_subcategorias_xr(da=daTodos, n_estudio=n_estudio)
-    # daTodos = daTodos.assign_coords(estudio=('ID', dfTodos.filter(pl.col('time')==0.000).get_column('estudio').to_list()),
-    #                                          particip=('ID', dfTodos.filter(pl.col('time')==0.000).get_column('particip').to_list()),
-    #                                          tipo=('ID', dfTodos.filter(pl.col('time')==0.000).get_column('tipo').to_list()),
-    #                                          subtipo=('ID', dfTodos.filter(pl.col('time')==0.000).get_column('subtipo').to_list()),
-    #                                          repe=('ID', dfTodos.filter(pl.col('time')==0.000).get_column('repe').to_list()),
+    # Assign extra coordinates
+    daAll = assign_subcategories_xr(da=daAll, n_project=n_project)
+    # daAll = daAll.assign_coords(estudio=('ID', dfAll.filter(pl.col('time')==0.000).get_column('estudio').to_list()),
+    #                                          particip=('ID', dfAll.filter(pl.col('time')==0.000).get_column('particip').to_list()),
+    #                                          tipo=('ID', dfAll.filter(pl.col('time')==0.000).get_column('tipo').to_list()),
+    #                                          subtipo=('ID', dfAll.filter(pl.col('time')==0.000).get_column('subtipo').to_list()),
+    #                                          repe=('ID', dfAll.filter(pl.col('time')==0.000).get_column('repe').to_list()),
     #                                          )
     # Ajusta tipo de coordenada tiempo, necesario??
-    ###########daTodosArchivos = daTodosArchivos.assign_coords(time=('time', daTodosArchivos.time.astype('float32').values))
+    ###########daAllArchivos = daAllArchivos.assign_coords(time=('time', daAllArchivos.time.astype('float32').values))
 
-    # daTodosArchivos.sel(ID='PCF_SCT05', axis='z').plot.line(x='time', col='repe')
-    # daTodosArchivos.assign_coords(time=daTodosArchivos.time.astype('float32'))
+    # daAllArchivos.sel(ID='PCF_SCT05', axis='z').plot.line(x='time', col='repe')
+    # daAllArchivos.assign_coords(time=daAllArchivos.time.astype('float32'))
 
-    # daTodos.attrs = {
-    #     "freq": (np.round(1 / (daTodos.time[1] - daTodos.time[0]), 1)).data,
+    # daAll.attrs = {
+    #     "freq": (np.round(1 / (daAll.time[1] - daAll.time[0]), 1)).data,
     #     "units": "N",
     # }
-    daTodos.attrs["freq"] = (np.round(1 / (daTodos.time[1] - daTodos.time[0]), 1)).data
-    daTodos.time.attrs["units"] = "s"
+    daAll.attrs["freq"] = (np.round(1 / (daAll.time[1] - daAll.time[0]), 1)).data
+    daAll.time.attrs["units"] = "s"
 
-    return daTodos
+    return daAll
 
 
-def read_noraxon_pd(file, n_vars_load=None, to_dataarray=False):
+def read_noraxon_pd(
+    file: str | Path, n_vars_load: List[str] | None = None, to_dataarray: bool = False
+) -> xr.DataArray | pl.DataFrame:
     # file = Path(r"F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\PilotoNoraxon\S000\2024-03-08-10-43_PO_S000_carrera_001.csv")
     df = pd.read_csv(
         file, skiprows=3, header=0, engine="c"
@@ -261,13 +265,16 @@ def read_noraxon_pd(file, n_vars_load=None, to_dataarray=False):
     # df.filter(regex="Tiempo.")
 
     if to_dataarray:
+        print("_to_dataarray not implemented yet. Try using read_noraxon_pl")
         da = xr.DataArray()
         return da
 
     return df
 
 
-def read_noraxon_pl(file, n_vars_load=None, to_dataarray=False):
+def read_noraxon_pl(
+    file: str | Path, n_vars_load: List[str] | None = None, to_dataarray: bool = False
+) -> xr.DataArray | pl.DataFrame:
     # file = Path(r"F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\PilotoNoraxon\S000\2024-03-08-10-43_PO_S000_carrera_001.csv")
 
     df = (
@@ -331,20 +338,20 @@ def read_noraxon_pl(file, n_vars_load=None, to_dataarray=False):
 
 
 def load_merge_noraxon_csv(
-    ruta,
-    section="EMG",
-    n_estudio=None,
-    data_type=None,
-    show=False,
-):
+    path: str | Path,
+    section: str = "EMG",
+    n_project: str | None = None,
+    data_type: str | None = None,
+    show: bool = False,
+) -> xr.DataArray:
     """
     Parameters
     ----------
-    ruta_trabajo : TYPE
+    path : TYPE
         DESCRIPTION.
     n_vars_load : TYPE, optional
         DESCRIPTION. The default is None.
-    n_estudio : string, optional
+    n_project : string, optional
         DESCRIPTION. The name of the study.
     data_type:
         Conversión al tipo de datos indicado. Por defecto es None, que quiere
@@ -352,32 +359,27 @@ def load_merge_noraxon_csv(
     show : bool, optional
         DESCRIPTION. The default is False.
 
-    Raises
-    ------
-    Exception
-        DESCRIPTION.
 
     Returns
     -------
-    daTodosArchivos : xarray DataArray
-        DESCRIPTION.
-    dfTodosArchivos : pandas DataFrame
-        DESCRIPTION.
+    daAllArchivos : xarray DataArray
+        DESCRIPTION. DataArray with the loaded files concatenated.
+
 
     """
     if data_type is None:
         data_type = float
 
-    lista_archivos = sorted(
-        list(ruta.glob("*.csv"))  # "**/*.csv"
+    files_list = sorted(
+        list(path.glob("*.csv"))  # "**/*.csv"
     )  #'**/*.txt' incluye los que haya en subcarpetas
-    lista_archivos = [
+    files_list = [
         x
-        for x in lista_archivos
+        for x in files_list
         if "error" not in x.name and "info" not in x.name and "_error" not in x.name
     ]  # selecciona archivos
 
-    todas_vars = [
+    all_vars = [
         "Ultium EMG.EMG 1 (uV)",
         "Ultium EMG.Internal Accel 1 Ax (mG)",
         "Ultium EMG.Internal Accel 1 Ay (mG)",
@@ -481,23 +483,21 @@ def load_merge_noraxon_csv(
     else:
         sect = section
 
-    n_vars_load = ["time"] + [s for s in todas_vars if sect in s]
+    n_vars_load = ["time"] + [s for s in all_vars if sect in s]
 
     # file = Path("F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\PilotoNoraxon\S000\2024-03-08-10-43_PO_S000_carrera_001.csv")
 
-    print("\nCargando los archivos...")
+    print("\nLoading files...")
     timerCarga = time.perf_counter()  # inicia el contador de tiempo
 
-    numArchivosProcesados = 0
-    dfTodos = (
+    num_processed_files = 0
+    dfAll = (
         []
     )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    daTodos = []
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    for nf, file in enumerate(lista_archivos):
-        print(f"Cargando archivo nº {nf+1}/{len(lista_archivos)}: {file.name}")
+    daAll = []
+    error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
+    for nf, file in enumerate(files_list):
+        print(f"Cargando archivo nº {nf+1}/{len(files_list)}: {file.name}")
         try:
             timerSub = time.perf_counter()  # inicia el contador de tiempo
 
@@ -506,12 +506,12 @@ def load_merge_noraxon_csv(
                 1:
             ]  # para quitar lo primero que pone, que es la fecha
             if len(n_file) == 5:
-                n_estudio = n_file[0] if n_estudio is None else n_estudio
+                n_project = n_file[0] if n_project is None else n_project
                 particip = n_file[-4]
                 tipo = n_file[-3]
                 subtipo = n_file[-2]
             elif len(n_file) == 4:
-                n_estudio = n_file[0]
+                n_project = n_file[0]
                 particip = n_file[1]
                 tipo = n_file[2]
                 subtipo = "X"
@@ -519,18 +519,18 @@ def load_merge_noraxon_csv(
                 particip = n_file[0]
                 tipo = n_file[-2]
                 subtipo = "X"
-            if n_estudio is None:
-                n_estudio = "EstudioX"
+            if n_project is None:
+                n_project = "EstudioX"
 
             repe = str(int(n_file[-1]))  # int(file.stem.split('.')[0][-1]
-            ID = f"{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_estudio}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
+            ID = f"{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_project}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
 
             # freq = np.round(1/(dfProvis['time'][1]-dfProvis['time'][0]),1)
 
             # Añade categorías
             dfProvis = dfProvis.with_columns(
                 [
-                    pl.lit(n_estudio).alias("estudio"),
+                    pl.lit(n_project).alias("estudio"),
                     pl.lit(tipo).alias("tipo"),
                     pl.lit(subtipo).alias("subtipo"),
                     pl.lit(ID).alias("ID"),
@@ -539,503 +539,61 @@ def load_merge_noraxon_csv(
                 ]
             )  # .select(['estudio', 'tipo', 'subtipo', 'ID', 'repe'] + nom_vars_cargar)
 
-            dfTodos.append(dfProvis)
+            dfAll.append(dfProvis)
 
-            print(f"{dfTodos[-1].shape[0]} filas y {dfTodos[-1].shape[1]} columnas")
-            print("Tiempo {0:.3f} s \n".format(time.perf_counter() - timerSub))
-            numArchivosProcesados += 1
+            print(f"{dfAll[-1].shape[0]} rows and {dfAll[-1].shape[1]} columns")
+            print("Time {0:.3f} s \n".format(time.perf_counter() - timerSub))
+            num_processed_files += 1
 
         except Exception as err:  # Si falla anota un error y continúa
             print(
-                "\nATENCIÓN. No se ha podido procesar {0}, {1}, {2}".format(
-                    file.parent.name, file.name, err
-                ),
-                "\n",
+                f"\nATTENTION. Unable to process {file.parent.name}, {file.name}, {err}\n"
             )
-            ErroresArchivos.append(file.parent.name + " " + file.name + " " + str(err))
+            error_files.append(file.parent.name + " " + file.name + " " + str(err))
             continue
 
-    dfTodos = pl.concat(dfTodos)
+    dfAll = pl.concat(dfAll)
 
     print(
-        f"Cargados {numArchivosProcesados} archivos en {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Loaded {num_processed_files} files in {time.perf_counter()-timerCarga:.3f} s \n"
     )
 
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido cargar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
+    # Show file errors
+    if len(error_files) > 0:
+        print("\nATTENTION. Unable to load:")
+        for x in range(len(error_files)):
+            print(error_files[x])
 
-    if isinstance(
-        data_type, str
-    ):  # si se ha definido algún tipo de datos, por defecto es 'float64'
+    if isinstance(data_type, str):
         cast = pl.Float32() if data_type == "float32" else pl.Float64()
-        dfTodos = dfTodos.select(
-            # pl.col(['n_estudio', 'tipo', 'subtipo', 'ID', 'repe']),
+        dfAll = dfAll.select(
+            # pl.col(['n_project', 'tipo', 'subtipo', 'ID', 'repe']),
             pl.exclude(n_vars_load),
             pl.col(n_vars_load).cast(cast),
         )
 
-    # Renombra archivos
+    # Rename files
     n_vars_load2 = [s.split(".")[-1] for s in n_vars_load[1:] if sect in s]
 
-    # Renombra columnas
+    # Rename columnas
     # if section == 'EMG':
-    #     renombra = [s.split('Internal ')[-1][:-5] for s in n_vars_load2]
+    #     rename = [s.split('Internal ')[-1][:-5] for s in n_vars_load2]
     # elif section == 'Accel':
-    #     renombra = [s.split('Internal ')[-1][:-5] for s in n_vars_load2]
+    #     rename = [s.split('Internal ')[-1][:-5] for s in n_vars_load2]
     # elif section == 'Gyro':
-    renombra = [s.split("Internal ")[-1].split(" (")[0] for s in n_vars_load2]
+    rename = [s.split("Internal ")[-1].split(" (")[0] for s in n_vars_load2]
 
-    dfTodos = dfTodos.rename(
-        dict(zip(dfTodos.columns[1 : len(renombra) + 1], renombra))
-    )
+    dfAll = dfAll.rename(dict(zip(dfAll.columns[1 : len(rename) + 1], rename)))
 
-    daTodos = pasa_df_a_da(dfTodos, n_estudio=n_estudio)
-    daTodos.name = section
-    daTodos.attrs["units"] = n_vars_load2[0].split("(")[-1].split(")")[0]
+    daAll = df_to_da(dfAll, n_project=n_project)
+    daAll.name = section
+    daAll.attrs["units"] = n_vars_load2[0].split("(")[-1].split(")")[0]
 
-    # daTodos = separa_dim_axis(daTodos)
+    # daAll = split_dim_axis(daAll)
 
-    # daTodos = separa_dim_lado(daTodos)
+    # daAll = split_dim_side(daAll)
 
-    return daTodos
-
-
-def load_merge_iSen_sensores_csv(
-    ruta,
-    n_vars_load=None,
-    n_estudio=None,
-    data_type=None,
-    show=False,
-):
-    """
-    Parameters
-    ----------
-    ruta_trabajo : TYPE
-        DESCRIPTION.
-    n_vars_load : TYPE, optional
-        DESCRIPTION. The default is None.
-    n_estudio : string, optional
-        DESCRIPTION. The name of the study.
-    data_type:
-        Conversión al tipo de datos indicado. Por defecto es None, que quiere
-        decir que se mantiene el tipo original ('float64')
-    show : bool, optional
-        DESCRIPTION. The default is False.
-
-    Raises
-    ------
-    Exception
-        DESCRIPTION.
-
-    Returns
-    -------
-    daTodosArchivos : xarray DataArray
-        DESCRIPTION.
-    dfTodosArchivos : pandas DataFrame
-        DESCRIPTION.
-
-    """
-    if data_type is None:
-        data_type = float
-
-    lista_archivos = sorted(
-        list(ruta.glob("*.csv"))  # "**/*.csv"
-    )  #'**/*.txt' incluye los que haya en subcarpetas
-    lista_archivos = [
-        x
-        for x in lista_archivos
-        if "error" not in x.name and "aceleración local" in x.name
-    ]  # selecciona archivos
-
-    # file = Path("F:/Investigacion/Proyectos/Tesis/TesisCoralPodologa/Registros/PRUEBASiSEN/ANGULOS.csv")
-
-    print("\nCargando los archivos...")
-    timerCarga = time.perf_counter()  # inicia el contador de tiempo
-
-    numArchivosProcesados = 0
-    dfTodos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    daTodos = []
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-    for nf, file in enumerate(lista_archivos):
-        print(f"Cargando archivo nº {nf+1}/{len(lista_archivos)}: {file.name}")
-        try:
-            timerSub = time.perf_counter()  # inicia el contador de tiempo
-
-            dfProvis = read_isen_pl(file, n_vars_load)
-
-            if len(file.stem.split("_")) == 5:
-                n_estudio = file.stem.split("_")[0] if n_estudio is None else n_estudio
-                particip = file.stem.split("_")[-4]
-                tipo = file.stem.split("_")[-3]
-                subtipo = file.stem.split("_")[-2]
-            elif len(file.stem.split("_")) == 4:
-                # estudio = file.stem.split("_")[0]
-                particip = file.stem.split("_")[0]
-                tipo = file.stem.split("_")[-3]
-                subtipo = file.stem.split("_")[-2]
-            elif len(file.stem.split("_")) == 3:
-                particip = file.stem.split("_")[0]
-                tipo = file.stem.split("_")[-2]
-                subtipo = "X"
-            if n_estudio is None:
-                n_estudio = "EstudioX"
-
-            repe = str(int(file.stem.split("_")[-1]))  # int(file.stem.split('.')[0][-1]
-            ID = f"{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_estudio}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
-
-            # freq = np.round(1/(dfProvis['time'][1]-dfProvis['time'][0]),1)
-
-            # Añade categorías
-            dfProvis = dfProvis.with_columns(
-                [
-                    pl.lit(n_estudio).alias("estudio"),
-                    pl.lit(tipo).alias("tipo"),
-                    pl.lit(subtipo).alias("subtipo"),
-                    pl.lit(ID).alias("ID"),
-                    pl.lit(particip).alias("particip"),
-                    pl.lit(repe).alias("repe"),
-                ]
-            )  # .select(['estudio', 'tipo', 'subtipo', 'ID', 'repe'] + nom_vars_cargar)
-
-            dfTodos.append(dfProvis)
-
-            print(f"{dfTodos[-1].shape[0]} filas y {dfTodos[-1].shape[1]} columnas")
-            print("Tiempo {0:.3f} s \n".format(time.perf_counter() - timerSub))
-            numArchivosProcesados += 1
-
-        except Exception as err:  # Si falla anota un error y continúa
-            print(
-                "\nATENCIÓN. No se ha podido procesar {0}, {1}, {2}".format(
-                    file.parent.name, file.name, err
-                ),
-                "\n",
-            )
-            ErroresArchivos.append(file.parent.name + " " + file.name + " " + str(err))
-            continue
-
-    dfTodos = pl.concat(dfTodos)
-
-    print(
-        f"Cargados {numArchivosProcesados} archivos en {time.perf_counter()-timerCarga:.3f} s \n"
-    )
-
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido cargar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
-
-    if isinstance(
-        data_type, str
-    ):  # si se ha definido algún tipo de datos, por defecto es 'float64'
-        cast = pl.Float32() if data_type == "float32" else pl.Float64()
-        dfTodos = dfTodos.select(
-            # pl.col(['n_estudio', 'tipo', 'subtipo', 'ID', 'repe']),
-            pl.exclude(n_vars_load),
-            pl.col(n_vars_load).cast(cast),
-        )
-
-    dfTodos = dfTodos.rename({"Tiempo": "time"})  # , 'Fx':'x', 'Fy':'y', 'Fz':'z'})
-
-    daTodos = pasa_df_a_da(dfTodos, n_estudio=n_estudio)
-
-    return daTodos
-
-
-def load_merge_iSen_csvxxxx(ruta):
-
-    print("\nCargando los archivos iSen...")
-    timerCarga = time.time()  # inicia el contador de tiempo
-    # nomVarsACargar = nomVarsContinuas#+nomVarsDiscretas
-
-    # Selecciona los archivos en la carpeta
-    lista_archivos = sorted(
-        ruta.glob("*.csv")  # "**/*.csv"
-    )  # list((ruta).glob('**/*.csv'))#incluye los que haya en subcarpetas
-    lista_archivos = [
-        x for x in lista_archivos if "error" not in x.name and "SENSORES" not in x.name
-    ]  # selecciona archivos
-
-    print("\nCargando los archivos...")
-    timerCarga = time.perf_counter()  # inicia el contador de tiempo
-
-    numArchivosProcesados = 0
-    dfTodos = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    ErroresArchivos = (
-        []
-    )  # guarda los nombres de archivo que no se pueden abrir y su error
-
-    for nf, file in enumerate(lista_archivos[:]):
-        print(f"Cargando archivo nº {nf}/{len(lista_archivos)}: {file.name}")
-        """
-        #Selecciona archivos según potencia
-        if file.parent.parts[-1] not in ['2W', '6W']: #si no es de marcha se lo salta
-            #print('{} archivo estático'.format(file.stem))
-            continue
-        """
-        # # Selecciona archivos según variable
-        # if file.stem not in [
-        #     r"Flexo-extensión caderas",
-        #     r"Flexo-extensión rodillas",
-        #     r"Dorsiflexión-plantarflexión tobillos",
-        # ]:  # si no es de marcha se lo salta
-        #     # print('{} archivo estático'.format(file.stem))
-        #     continue
-        # print(file)
-
-        try:
-            timerSub = time.time()  # inicia el contador de tiempo
-            dfprovis = pd.read_csv(
-                file, sep=","
-            )  # .filter(regex="::Y")  # se queda solo con las columnas de datos, descarta las de tiempos
-
-            # Ajusta los nombres R y L
-            dfprovis.rename(
-                columns={
-                    str(dfprovis.filter(regex="derech").columns.values)[2:-2]: "R",
-                    str(dfprovis.filter(regex="izquierd").columns.values)[2:-2]: "L",
-                },
-                inplace=True,
-            )
-            # dfprovis.columns=['R', 'L']
-
-            freq = (
-                1 / dfprovis["Tiempo"].diff().mean()
-            )  # (dfprovis["Tiempo"][1] - dfprovis["Tiempo"][0])
-
-            # Añade columna tiempo
-            t = np.arange(0, len(dfprovis) / freq)[
-                : len(dfprovis)
-            ]  # ajuste al cargar el tiempo porque en algunos t sale con un dato de más
-
-            nom = file.parent.parts[-2]
-            pot = file.parent.parts[-1]
-            artic = file.stem.split()[-1][:-1]
-            if "flex" in file.stem.lower():
-                eje = "x"
-
-            """
-            if file.stem == 'Dorsiflexión-plantarflexión tobillos':
-                artic = 'tobillo'
-                eje='x'
-            elif file.stem == 'Flexo-extensión rodillas':
-                artic = 'rodilla'
-                eje='x'
-            elif file.stem == 'Flexo-extensión caderas':
-                artic = 'cadera'
-                eje='x'
-            """
-
-            # Añade etiquetas
-            dfprovis = dfprovis.assign(
-                **{
-                    "nombre": nom,
-                    "potencia": pot,
-                    "articulacion": artic,
-                    "eje": eje,
-                    "time": t,
-                }
-            ).reset_index(drop=True)
-
-            # Para formato tidy
-            dfprovis = dfprovis.reindex(
-                columns=["nombre", "potencia", "articulacion", "eje", "time", "R", "L"]
-            )
-
-            # Transforma a formato long, mejor dejarlo en tidy para que ocupe menos al guardarlo
-            # dfprovis = pd.melt(dfprovis, id_vars=['nombre', 'potencia', 'articulacion', 'eje', 'time'], var_name='lado')#, value_vars=dfprovis[pot].iloc[:, :-4])
-            # dfprovis = dfprovis.reindex(columns=['nombre', 'potencia', 'articulacion', 'eje', 'lado', 'time', 'value'])
-
-            dfTodosArchivos.append(dfprovis)
-
-            print(
-                "{0} filas y {1} columnas".format(
-                    dfTodosArchivos[-1].shape[0], dfTodosArchivos[-1].shape[1]
-                )
-            )
-            print("Tiempo {0:.3f} s \n".format(time.time() - timerSub))
-            numArchivosProcesados += 1
-
-        except Exception as err:  # Si falla anota un error y continua
-            print(
-                "\nATENCIÓN. No se ha podido procesar {0}, {1}, {2}".format(
-                    file.parent.name, file.name, err
-                ),
-                "\n",
-            )
-            ErroresArchivos.append(file.parent.name + " " + file.name + " " + str(err))
-            continue
-    dfTodosArchivos = pd.concat(dfTodosArchivos)
-    print(
-        "Cargados {0:d} archivos en {1:.3f} s \n".format(
-            numArchivosProcesados, time.time() - timerCarga
-        )
-    )
-
-    # Si no ha podido cargar algún archivo, lo indica
-    if len(ErroresArchivos) > 0:
-        print("\nATENCIÓN. No se ha podido cargar:")
-        for x in range(len(ErroresArchivos)):
-            print(ErroresArchivos[x])
-
-    # =============================================================================
-    # Lo pasa a DataArray
-    # =============================================================================
-    # Transforma a formato long
-    dfTodosMulti = (
-        pd.melt(
-            dfTodosArchivos,
-            id_vars=["nombre", "potencia", "articulacion", "eje", "time"],
-            var_name="lado",
-        )
-        .reindex(
-            columns=[
-                "nombre",
-                "potencia",
-                "articulacion",
-                "eje",
-                "lado",
-                "time",
-                "value",
-            ]
-        )
-        .set_index(["nombre", "potencia", "articulacion", "eje", "lado", "time"])
-    )
-
-    try:
-        daTodosSujetos = dfTodosMulti.to_xarray().to_array()
-        daTodosSujetos = daTodosSujetos.sel(time=slice(0, 63))
-        del daTodosSujetos["variable"]  # la quita de coordenadas
-        daTodosSujetos = daTodosSujetos.squeeze("variable")  # la quita de dimensiones
-        daTodosSujetos.attrs["frec"] = frec
-        daTodosSujetos.attrs["units"] = "grados"
-        daTodosSujetos.time.attrs["units"] = "s"
-
-        if bGraficasComprobaciones:
-            daTodosSujetos.sel(
-                nombre="Javi", potencia="2W", articulacion="rodilla", eje="x"
-            ).plot.line(x="time", hue="lado")
-            daTodosSujetos.sel(potencia="2W", articulacion="cadera").plot.line(
-                x="time", row="nombre", col="lado"
-            )
-
-    except:
-        print(
-            "Es posible que haya algún archivo duplicado. Buscar el archivo con duración distinta"
-        )
-        # Si no funciona el data array, comprueba si hay duplicados
-        for n, df in dfTodosArchivos.set_index(
-            list(dfTodosArchivos.columns[:-2])
-        ).groupby(list(dfTodosArchivos.columns[:-2])):
-            print(n, len(df))
-
-    if bGuardaGraficasPdf:
-        # Comparativa Todas las variables de side L y R juntas en una misma hoja de cada sujeto
-        nompdf = ruta_trabajo / "CamparacionVicon_iSen_PorArtics_iSen.pdf"
-        with PdfPages(nompdf) as pdf_pages:
-            for n, gda in daTodosSujetos.sel(eje="x").groupby("nombre"):
-                g = gda.plot.line(
-                    x="time",
-                    row="potencia",
-                    col="articulacion",
-                    hue="lado",
-                    sharey=False,
-                    aspect=1.5,
-                )
-                for h, ax in enumerate(g.axes):  # extrae cada fila
-                    for i in range(len(ax)):  # extrae cada axis (gráfica)
-                        nom = str(g.data.loc[g.name_dicts[h, i]].nombre.data)
-                        pot = str(g.data.loc[g.name_dicts[h, i]].potencia.data)
-                        # print(nom, pot)
-                        try:
-                            ax[i].axvline(
-                                x=dfFrames.loc[(nom, pot), "ini"] / frec, c="r", ls="--"
-                            )
-                            ax[i].axvline(
-                                x=dfFrames.loc[(nom, pot), "fin"] / frec, c="r", ls="--"
-                            )
-                        except:
-                            continue
-
-                g.fig.subplots_adjust(top=0.95)
-                g.fig.suptitle(n)
-                pdf_pages.savefig(g.fig)
-                plt.show()
-
-    # =============================================================================
-    #   Guarda archivos cargados
-    # =============================================================================
-    # Guarda xarray
-    tpoGuardar = time.time()
-    daTodosSujetos.to_netcdf(
-        (ruta_trabajo / (nomArchivoPreprocesado + "_iSen")).with_suffix(".nc")
-    )
-    print(
-        "\nGuardado el Dataframe preprocesado {0} en {1:0.2f} s.".format(
-            nomArchivoPreprocesado + "_iSen.nc", time.time() - tpoGuardar
-        )
-    )
-
-    # Guarda dataframetpoGuardar = time.time()
-    tpoGuardar = time.time()
-    dfTodosArchivos.to_csv(
-        (ruta_trabajo / (nomArchivoPreprocesado + "_iSen_tidy")).with_suffix(".csv"),
-        index=False,
-    )
-    print(
-        "\nGuardado el DataArray preprocesado {0} en {1:0.2f} s.".format(
-            nomArchivoPreprocesado + "_iSen_tidy.csv", time.time() - tpoGuardar
-        )
-    )
-    # Transforma a formato long
-    # dfTodosArchivos = pd.melt(dfTodosArchivos, id_vars=['nombre', 'potencia', 'articulacion', 'eje', 'time'], var_name='lado')#, value_vars=dfprovis[pot].iloc[:, :-4])
-    # dfTodosArchivos = dfTodosArchivos.reindex(columns=['nombre', 'potencia', 'articulacion', 'eje', 'lado', 'time', 'value'])
-
-
-def carga_preprocesados(ruta_trabajo, nomArchivoPreprocesado):
-    # CARGA VICON
-    if Path(
-        (ruta_trabajo / (nomArchivoPreprocesado + "_Vicon")).with_suffix(".nc")
-    ).is_file():
-        tpo = time.time()
-        ds_Vicon = xr.load_dataset(
-            (ruta_trabajo / (nomArchivoPreprocesado + "_Vicon")).with_suffix(".nc")
-        )
-        # daTodosArchivos = xr.load_dataarray((ruta_trabajo / (nomArchivoPreprocesado+'_Vicon')).with_suffix('.nc'))
-        print(
-            "\nCargado archivo preprocesado ",
-            nomArchivoPreprocesado
-            + "_Vicon.nc en {0:.3f} s.".format(time.time() - tpo),
-        )
-    else:
-        raise Exception("No se encuentra el archivo Vicon preprocesado")
-
-    # CARGA ISEN
-    if Path(
-        (ruta_trabajo / (nomArchivoPreprocesado + "_iSen")).with_suffix(".nc")
-    ).is_file():
-        tpo = time.time()
-        da_iSen = xr.load_dataarray(
-            (ruta_trabajo / (nomArchivoPreprocesado + "_iSen")).with_suffix(".nc")
-        )
-        print(
-            "\nCargado archivo preprocesado ",
-            (ruta_trabajo / (nomArchivoPreprocesado + "_iSen")).with_suffix(".nc").name,
-            "en {0:.3f} s.".format(time.time() - tpo),
-        )
-    else:
-        raise Exception("No se encuentra el archivo iSen preprocesado")
-
-    return ds_Vicon, da_iSen
+    return daAll
 
 
 # =============================================================================
@@ -1049,24 +607,24 @@ if __name__ == "__main__":
     # TAMBIÉN SCIKIT-KINEMATICS http://work.thaslwanter.at/skinematics/html/
     # pip install scikit-kinematics
     ###################################
-    # ruta_trabajo = Path('F:\Programacion\Python\Mios\TratamientoDatos\EjemploBikefitting')
-    ruta_trabajo = Path(
+    # work_path = Path('F:\Programacion\Python\Mios\TratamientoDatos\EjemploBikefitting')
+    work_path = Path(
         r"F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\PilotoNoraxon\S000"
     )
 
     # Carga EMG
-    daEMG = load_merge_noraxon_csv(ruta=ruta_trabajo, section="EMG")
+    daEMG = load_merge_noraxon_csv(path=work_path, section="EMG")
     # daEMG.attrs['units'] = 'uV'
     daEMG.plot.line(x="time", col="n_var", row="ID", sharey=False)
 
-    # Carga Acelerómetro
-    daAcc = load_merge_noraxon_csv(ruta=ruta_trabajo, section="Accel")
-    daAcc = separa_dim_axis(da=daAcc)
+    # Load Acelerometer
+    daAcc = load_merge_noraxon_csv(path=work_path, section="Accel")
+    daAcc = split_dim_axis(da=daAcc)
     daAcc.plot.line(x="time", col="n_var", row="ID", sharey=False)
 
-    # Carga Giroscopio
-    daGyro = load_merge_noraxon_csv(ruta=ruta_trabajo, section="Gyro")
-    daGyro = separa_dim_axis(da=daGyro)
+    # Load Gyroscope
+    daGyro = load_merge_noraxon_csv(path=work_path, section="Gyro")
+    daGyro = split_dim_axis(da=daGyro)
     daGyro.plot.line(x="time", col="n_var", row="ID", sharey=False)
     daGyro.where(daGyro.tipo == "salto", drop=True).isel(ID=0).plot.line(
         x="time", col="n_var", col_wrap=4, sharey=False
@@ -1075,9 +633,9 @@ if __name__ == "__main__":
         x="time", col="n_var", col_wrap=4, sharey=False
     )
 
-    # Carga Magnetómetro
-    daMag = load_merge_noraxon_csv(ruta=ruta_trabajo, section="Mag")
-    daMag = separa_dim_axis(da=daMag)
+    # Load Magnetometer
+    daMag = load_merge_noraxon_csv(path=work_path, section="Mag")
+    daMag = split_dim_axis(da=daMag)
     daMag.plot.line(x="time", col="n_var", row="ID", sharey=False)
     daMag.sel(ID=daMag.ID.str.contains("salto")).isel(ID=0).plot.line(
         x="time", col="n_var", col_wrap=4, sharey=False

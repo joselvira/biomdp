@@ -17,19 +17,23 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 # %% LOAD LIBRARIES
 # =============================================================================
+
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.1.2"
-__date__ = "28/02/2025"
+__version__ = "v.1.1.3"
+__date__ = "09/03/2025"
 
 
 """
-Modificaciones:
+Updates:
+    09/03/2025, v1.6.3
+        - Adapted to biomdp with translations.
+
     04/03/2025, v1.1.2
         - Incluida opción de escapar de los vídeos con tecla Esc.
 
     01/03/2025, v1.1.1
         - Creada función para añadir marcadores centro_caderas y centro_hombros.
-        - En discreto, independiente show markers y save_fot_file.
+        - En discreto, independiente show markers y save_frame_file.
 
     28/02/2025, v1.1.0
         - Incluida posibilidad de procesar un nº concreto de fotograma
@@ -44,11 +48,12 @@ Modificaciones:
     
     07/02/2025, v1.0.0
         - Iniciado a partir de pruebas anteriores.
-        - Añadidas funciones separa_dim_lado y asigna_subcategorias_xr
+        - Añadidas funciones split_dim_side y asigna_subcategorias_xr
         - Perfeccionada función procesar imagen y vídeo.
     
 """
 
+from typing import List
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -61,7 +66,7 @@ try:
     import cv2
 except:
     raise ImportError(
-        'No se ha podido cargar la librería "opencv".\nInstalar con conda install conda-forge::opencv.'
+        "Could not load the “opencv” library. \nInstall with conda install conda-forge::opencv."
     )
 
 try:
@@ -73,24 +78,53 @@ try:
     from mediapipe.tasks.python import vision
 except:
     raise ImportError(
-        'No se ha podido cargar la librería "mediapipe".\nInstalar con pip install mediapipe.\nInstalar con pip install mediapipe'
+        "Could not load the “mediapipe” library.\nInstall with pip install mediapipe."
     )
-try:
-    from warnings import deprecated
-
-    # para usarlo, @deprecated("usa la nueva función xx")
-except:
-    print('No se ha podido cargar la librería "warnings.deprecated".')
 
 
 # =============================================================================
-# %% CARGA FUNCIONES
+# %% LOAD FUNCTIONS
 # =============================================================================
 # Nombres marcadores originales
 # n_markers = [marker.name for marker in mp.solutions.pose.PoseLandmark]
 
 # Nombres marcadores adaptados
 N_MARKERS = [
+    "nose",
+    "eye_inner_L",
+    "eye_center_L",
+    "eye_outer_L",
+    "eye_inner_R",
+    "eye_center_R",
+    "eye_outer_R",
+    "ear_L",
+    "ear_R",
+    "mouth_L",
+    "mouth_R",
+    "shoulder_L",
+    "shoulder_R",
+    "elbow_L",
+    "elbow_R",
+    "wrist_L",
+    "wrist_R",
+    "pinky_L",
+    "pinky_R",
+    "index_L",
+    "index_R",
+    "thumb_L",
+    "thumb_R",
+    "hip_L",
+    "hip_R",
+    "knee_L",
+    "knee_R",
+    "ankle_L",
+    "ankle_R",
+    "heel_L",
+    "heel_R",
+    "toe_L",
+    "toe_R",
+]
+N_MARCADORES = [
     "nariz",
     "ojo_int_L",
     "ojo_cent_L",
@@ -155,7 +189,7 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     return annotated_image
 
 
-def extrae_marcadores(data_mark, coords):
+def extract_markers(data_mark, coords):
     return xr.DataArray(
         data=data_mark,
         dims=coords.keys(),
@@ -189,7 +223,7 @@ def pose_landmarkers_to_xr(pose_landmarker_result, image):
     )
 
 
-def asigna_subcategorias_xr(da, estudio=None) -> xr.DataArray:
+def assign_subcategories_xr(da, estudio=None) -> xr.DataArray:
     if estudio is None:
         estudio = "X"
 
@@ -204,9 +238,9 @@ def asigna_subcategorias_xr(da, estudio=None) -> xr.DataArray:
     return da
 
 
-def separa_dim_lado(daDatos, n_bilat=None):
-    """n_bilat: lista, numpy array, dataarray
-    lista con variables bilaterales, a incluir repetida en las dos coordenadas (L y R)
+def split_dim_side(daDatos, n_bilat=None):
+    """n_bilat: list, numpy array, dataarray
+    list with bilateral variables, to be included repeated in the two coordinates (L and R)
 
     """
     if n_bilat is not None:
@@ -231,7 +265,7 @@ def separa_dim_lado(daDatos, n_bilat=None):
     return daDatos_side
 
 
-def add_centro_hombros_caderas(daDatos):
+def add_shoulder_hip_centers(daDatos):
     if "cadera" not in daDatos.marker and "hombro" not in daDatos.marker:
         raise ValueError("No hay marcadores caderas ni hombros")
 
@@ -244,17 +278,17 @@ def add_centro_hombros_caderas(daDatos):
     return xr.concat([daDatos, c_cad, c_hom], dim="marker")
 
 
-def calcula_angulo(puntos):
-    if len(puntos) == 3:
-        a = np.array([puntos[0].x, puntos[0].y])
-        b = np.array([puntos[1].x, puntos[1].y])
-        c = np.array([puntos[1].x, puntos[1].y])
-        d = np.array([puntos[2].x, puntos[2].y])
-    elif len(puntos) == 4:
-        a = np.array([puntos[0].x, puntos[0].y])
-        b = np.array([puntos[1].x, puntos[1].y])
-        c = np.array([puntos[2].x, puntos[2].y])
-        d = np.array([puntos[3].x, puntos[3].y])
+def calculate_angle(points):
+    if len(points) == 3:
+        a = np.array([points[0].x, points[0].y])
+        b = np.array([points[1].x, points[1].y])
+        c = np.array([points[1].x, points[1].y])
+        d = np.array([points[2].x, points[2].y])
+    elif len(points) == 4:
+        a = np.array([points[0].x, points[0].y])
+        b = np.array([points[1].x, points[1].y])
+        c = np.array([points[2].x, points[2].y])
+        d = np.array([points[3].x, points[3].y])
 
     radians = np.arctan2(np.linalg.norm(np.cross(a - b, d - c)), np.dot(a - b, d - c))
     angle = np.abs(np.rad2deg(radians))
@@ -265,17 +299,17 @@ def calcula_angulo(puntos):
     return round(angle)
 
 
-def calcula_angulo_np(puntos):
-    if len(puntos) == 3:
-        a = puntos[0]  # np.array([puntos[0].x, puntos[0].y])
-        b = puntos[1]  # np.array([puntos[1].x, puntos[1].y])
-        c = puntos[1]  # np.array([puntos[1].x, puntos[1].y])
-        d = puntos[2]  # np.array([puntos[2].x, puntos[2].y])
-    elif len(puntos) == 4:
-        a = puntos[0]  # np.array([puntos[0].x, puntos[0].y])
-        b = puntos[1]  # np.array([puntos[1].x, puntos[1].y])
-        c = puntos[2]  # np.array([puntos[2].x, puntos[2].y])
-        d = puntos[3]  # np.array([puntos[3].x, puntos[3].y])
+def calculate_angle_np(points):
+    if len(points) == 3:
+        a = points[0]  # np.array([points[0].x, points[0].y])
+        b = points[1]  # np.array([points[1].x, points[1].y])
+        c = points[1]  # np.array([points[1].x, points[1].y])
+        d = points[2]  # np.array([points[2].x, points[2].y])
+    elif len(points) == 4:
+        a = points[0]  # np.array([points[0].x, points[0].y])
+        b = points[1]  # np.array([points[1].x, points[1].y])
+        c = points[2]  # np.array([points[2].x, points[2].y])
+        d = points[3]  # np.array([points[3].x, points[3].y])
 
     radians = np.arctan2(np.linalg.norm(np.cross(a - b, d - c)), np.dot(a - b, d - c))
     angle = np.abs(np.rad2deg(radians))
@@ -286,32 +320,32 @@ def calcula_angulo_np(puntos):
     return angle
 
 
-def calcula_angulo_xr(markers: xr.DataArray) -> np.ndarray:
-    if len(markers) == 3:
+def calculate_angle_xr(daPoints: xr.DataArray) -> np.ndarray:
+    if len(daPoints.marker) == 3:
         a = (
-            markers.isel(marker=0).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=0).sel(axis=["x", "y"]).data
         )  # np.array([puntos[0].x, puntos[0].y])
         b = (
-            markers.isel(marker=1).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=1).sel(axis=["x", "y"]).data
         )  # np.array([puntos[1].x, puntos[1].y])
         c = (
-            markers.isel(marker=1).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=1).sel(axis=["x", "y"]).data
         )  # np.array([puntos[1].x, puntos[1].y])
         d = (
-            markers.isel(marker=2).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=2).sel(axis=["x", "y"]).data
         )  # np.array([puntos[2].x, puntos[2].y])
-    elif len(markers) == 4:
+    elif len(daPoints.marker) == 4:
         a = (
-            markers.isel(marker=0).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=0).sel(axis=["x", "y"]).data
         )  # np.array([puntos[0].x, puntos[0].y])
         b = (
-            markers.isel(marker=1).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=1).sel(axis=["x", "y"]).data
         )  # np.array([puntos[1].x, puntos[1].y])
         c = (
-            markers.isel(marker=2).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=2).sel(axis=["x", "y"]).data
         )  # np.array([puntos[2].x, puntos[2].y])
         d = (
-            markers.isel(marker=3).sel(axis=["x", "y"]).data
+            daPoints.isel(marker=3).sel(axis=["x", "y"]).data
         )  # np.array([puntos[3].x, puntos[3].y])
 
     radians = np.arctan2(np.linalg.norm(np.cross(a - b, d - c)), np.dot(a - b, d - c))
@@ -323,12 +357,14 @@ def calcula_angulo_xr(markers: xr.DataArray) -> np.ndarray:
     return angle
 
 
-def procesa_video_antiguo(file, lado, fv=30, show=False):
-    print("This function is deprecated. Use procesa_video instead.")
-    return procesa_video_antiguo(file, lado, fv, show)
+def process_video_old(file, side, fv=30, show=False):
+    print("This function is deprecated. Use process_video instead.")
+    return process_video(file, side, fv, show)
 
 
-def procesa_video_deprecated(file, lado, fv=30, show=False):
+def process_video_deprecated(
+    file, side: str, fv: int = 30, show: bool = False
+) -> xr.DataArray:
     mp_pose = mp.solutions.pose
     mp_drawing = mp.solutions.drawing_utils
     mp_drawing_styles = mp.solutions.drawing_styles
@@ -373,7 +409,7 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
             annotated_image = img.copy()
 
             if results.pose_landmarks:
-                if lado == "D":
+                if side == "D":
                     hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value]
                     knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value]
                     ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value]
@@ -387,7 +423,7 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
                     heel = landmarks[mp_pose.PoseLandmark.LEFT_HEEL.value]
                     foot = landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value]
                     shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
-                if lado == "D":
+                if side == "D":
                     shoulder2 = "hombro_R"
                     hip2 = "cadera_R"
                     knee2 = "rodilla_R"
@@ -401,23 +437,23 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
                     ankle2 = "tobillo_L"
                     heel2 = "talon_L"
                     toe2 = "toe_L"
-                da_mark = extrae_marcadores(data_mark[frame])
+                da_mark = extract_markers(data_mark[frame])
                 ang_cadera = (
-                    calcula_angulo_xr(
+                    calculate_angle_xr(
                         marcadores=da_mark.sel(marcador=[knee2, hip2, shoulder2])
                     )
                     .round()
                     .astype(int)
                 )
                 ang_rodilla = (
-                    calcula_angulo_xr(
+                    calculate_angle_xr(
                         marcadores=da_mark.sel(marcador=[ankle2, knee2, hip2])
                     )
                     .round()
                     .astype(int)
                 )
                 ang_tobillo = (
-                    calcula_angulo_xr(
+                    calculate_angle_xr(
                         marcadores=da_mark.sel(marcador=[toe2, heel2, ankle2, knee2])
                     )
                     .round()
@@ -518,7 +554,7 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
         )
         cv2.putText(
             annotated_image,
-            "pulsa q para salir",
+            "q or Esc to exit",
             (30, 70),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -528,15 +564,15 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
 
         if num_frames == 1:
             cv2.imwrite(
-                (file.parent / (file.stem + "_angulos.jpg")).as_posix(),
+                (file.parent / (file.stem + "_angles.jpg")).as_posix(),
                 annotated_image,
             )
             print(
-                "\nGuardada la imagen",
-                (file.parent / (file.stem + "_angulos.jpg")).as_posix(),
+                "\nImage saved",
+                (file.parent / (file.stem + "_angles.jpg")).as_posix(),
             )
 
-        cv2.imshow("Imagen", annotated_image)
+        cv2.imshow("Image", annotated_image)
         frame += 1
 
         if cv2.waitKey(1) in [ord("q"), 27]:
@@ -546,21 +582,21 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
     # Pasa los marcadores a xarary
     coords = {
         "time": np.arange(0, num_frames) / fv,
-        "marcador": N_MARKERS,
-        "eje": ["x", "y", "z"],
+        "marker": N_MARKERS,
+        "axis": ["x", "y", "z"],
     }
     da = xr.DataArray(
         data=data_mark,
         dims=coords.keys(),
         coords=coords,
-    ).transpose("marcador", "eje", "time")
+    ).transpose("marker", "axis", "time")
     if len(da.time) > 1:  # si es vídeo filtra
         da_filt = da  # filtrar_Butter(da, fr=fv, fc=6)
         da.sel(marcador=["tobillo_L", "tobillo_R"]).plot.line(
-            x="time", col="eje", sharey=False
+            x="time", col="axis", sharey=False
         )
         da_filt.sel(marcador=["tobillo_L", "tobillo_R"]).plot.line(
-            x="time", col="eje", sharey=False
+            x="time", col="axis", sharey=False
         )
         plt.show()
 
@@ -568,7 +604,7 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
         da_filt = da
 
     # Calcula ángulos
-    if lado == "D":
+    if side == "R":
         shoulder = "hombro_R"
         hip = "cadera_R"
         knee = "rodilla_R"
@@ -588,24 +624,24 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
     tobillo = []
     for i in range(num_frames):
         cadera.append(
-            calcula_angulo_xr(
+            calculate_angle_xr(
                 marcadores=da_filt.isel(time=i).sel(marcador=[knee, hip, shoulder])
             )
         )
         rodilla.append(
-            calcula_angulo_xr(
+            calculate_angle_xr(
                 marcadores=da_filt.isel(time=i).sel(marcador=[ankle, knee, hip])
             )
         )
         tobillo.append(
-            calcula_angulo_xr(
+            calculate_angle_xr(
                 marcadores=da_filt.isel(time=i).sel(marcador=[toe, heel, ankle, knee])
             )
         )
 
     # Pasa los ángulos a xarary
     coords = {
-        "angulo": ["obj_cadera", "obj_rodilla", "obj_tobillo"],
+        "angle": ["obj_cadera", "obj_rodilla", "obj_tobillo"],
         "time": np.arange(0, num_frames) / fv,
     }
     da_ang = xr.DataArray(
@@ -646,20 +682,20 @@ def procesa_video_deprecated(file, lado, fv=30, show=False):
     )
     dfResumen["obj_ang"] = dfResumen["obj_ang"].astype(int)
 
-    dfResumen[["angulo", "obj_ang"]].to_csv(
+    dfResumen[["angle", "obj_ang"]].to_csv(
         (file.parent / (file.stem + "_Objetivo_ang")).with_suffix(".txt"),
         sep=" ",
         index=False,
         header=False,
     )
     print(
-        f"Guardado el archivo {(file.parent / (file.stem+'_Objetivo_ang')).with_suffix('.txt')}"
+        f"File saved {(file.parent / (file.stem+'_Objetivo_ang')).with_suffix('.txt')}"
     )
 
     return da_ang_result
 
 
-def procesa_imagen_antiguo(file=None, image=None, model_path=None, show=False):
+def process_image_old(file=None, image=None, model_path=None, show=False):
     """
     show = False, 'markers' o 'mask'
     """
@@ -711,7 +747,7 @@ def procesa_imagen_antiguo(file=None, image=None, model_path=None, show=False):
     return detection_result
 
 
-def procesa_imagen_moderno(
+def process_image_modern(
     file=None,
     image=None,
     mpdc=0.8,
@@ -721,8 +757,8 @@ def procesa_imagen_moderno(
     show=False,
     format="xr",
 ):
-    print("This function is deprecated. Use procesa_imagen instead.")
-    return procesa_imagen(
+    print("This function is deprecated. Use process_image instead.")
+    return process_image(
         file,
         image,
         mpdc=mpdc,
@@ -734,22 +770,48 @@ def procesa_imagen_moderno(
     )
 
 
-def procesa_imagen(
-    file=None,
+def process_image(
+    file: str | Path | None = None,
     image=None,
-    mpdc=0.8,
-    mppc=0.8,
-    mtc=0.8,
-    model_path=None,
-    show=False,
-    format="xr",
+    mpdc: float = 0.8,
+    mppc: float = 0.8,
+    mtc: float = 0.8,
+    model_path: str | Path | None = None,
+    show: bool | str = False,
+    format: str = "xr",
 ):
     """
-    show: 'markers'
-          'mask'
-    format: 'raw', as PoseLandmarkerResult
-            'xr', as xarray
+    Process a single image using the PoseLandmarker model.
+
+    Parameters
+    ----------
+    file : str or Path
+        Path to the image file.
+    image : numpy array
+        Image data.
+    mpdc : float
+        Minimum pose detection confidence.
+    mppc : float
+        Minimum pose presence confidence.
+    mtc : float
+        Minimum tracking confidence.
+    model_path : str or Path
+        Path to the PoseLandmarker model.
+    show : bool or str
+        If True, show the image with pose landmarks.
+        If 'colab' open in Google Colab
+        If 'mask', show the segmentation mask.
+    format : str
+        Format of the output.
+        'raw' returns the PoseLandmarkerResult object,
+        'xr' returns an xarray object.
+
+    Returns
+    -------
+    detection_result : PoseLandmarkerResult or xarray.DataArray
+        Object containing the pose landmarks and segmentation mask.
     """
+
     if isinstance(file, Path):
         file = file.as_posix()
 
@@ -767,12 +829,11 @@ def procesa_imagen(
         output_segmentation_masks=False,
     )
 
-    # CARGA IMAGEN
-    # EJEMPLO https://github.com/google-ai-edge/mediapipe-samples/blob/main/examples/pose_landmarker/python/%5BMediaPipe_Python_Tasks%5D_Pose_Landmarker.ipynb
-    # img = cv2.imread("image.jpg")
+    # LOAD IMAGE
     if image is None:
         image = mp.Image.create_from_file(file)
-    elif isinstance(image, np.ndarray):  # funciona para cuando es imagen cv2?
+        # image = cv2.imread(file)
+    elif isinstance(image, np.ndarray):  # does it work for cv2 image?
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
 
     # Load the input image from a numpy array.
@@ -783,13 +844,26 @@ def procesa_imagen(
         # The pose landmarker must be created with the image mode.
         pose_landmarker_result = landmarker.detect(image)
 
-    if show:
+    if show is not False:
         annotated_image = draw_landmarks_on_image(
             image.numpy_view(), pose_landmarker_result
         )
 
-        if show == "markers":
-            cv2.imshow("window_name", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+        if show == "colab":
+            from google.colab.patches import cv2_imshow
+
+            cv2_imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+            # waits for user to press any key
+            # (this is necessary to avoid Python kernel form crashing)
+            cv2.waitKey(0)
+
+            # closing all open windows
+            cv2.destroyAllWindows()
+
+        elif show == True:
+            cv2.imshow(
+                "Marker detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+            )
             # waits for user to press any key
             # (this is necessary to avoid Python kernel form crashing)
             cv2.waitKey(0)
@@ -798,7 +872,6 @@ def procesa_imagen(
             cv2.destroyAllWindows()
 
         elif show == "mask":
-            # Ejemplo de máscara
             segmentation_mask = pose_landmarker_result.segmentation_masks[
                 0
             ].numpy_view()
@@ -806,7 +879,7 @@ def procesa_imagen(
                 np.repeat(segmentation_mask[:, :, np.newaxis], 3, axis=2) * 255
             )
 
-            cv2.imshow("window_name", visualized_mask)
+            cv2.imshow("Mask results", visualized_mask)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
@@ -819,7 +892,7 @@ def procesa_imagen(
         raise ValueError(f"Format {format} not recognized. Must be 'raw' or 'xr'")
 
 
-def procesa_video_moderno(
+def procesS_video_modern(
     file,
     fv=30,
     n_vars_load=None,
@@ -830,7 +903,7 @@ def procesa_video_moderno(
     show=False,
 ):
     print("This function is deprecated. Use procesa_video instead.")
-    return procesa_video(
+    return process_video(
         file,
         fv,
         n_vars_load,
@@ -842,27 +915,59 @@ def procesa_video_moderno(
     )
 
 
-def procesa_video(
-    file,
-    fv=30,
-    n_vars_load=None,
-    mpdc=0.5,
-    mppc=0.5,
-    mtc=0.5,
-    model_path=None,
-    num_fot=None,
-    save_fot_file=True,
-    show=False,
-):
+def process_video(
+    file: str | Path,
+    fv: int = 30,
+    n_vars_load: List[str] | None = None,
+    mpdc: float = 0.5,
+    mppc: float = 0.5,
+    mtc: float = 0.5,
+    model_path: str | Path | None = None,
+    num_frame: int | None = None,
+    save_frame_file: bool = True,
+    show: bool | str = False,
+    show_every_frames: int = 10,
+) -> xr.DataArray:
     """
-    num_fot: number of frame to process. If None, all frames are processed
-    mpdc = min_pose_detection_confidence
-    mppc = min_pose_presence_confidence
-    mtc = min_tracking_confidence
-    show = False, 'markers' o 'mask'
+    Processes a video file to extract pose landmarks using MediaPipe Pose.
+
+    Parameters
+    ----------
+    file : str or Path
+        Path to the video file to be processed.
+    fv : int, optional
+        Frame rate of the video, defaults to 30.
+    n_vars_load : list os str, optional
+        List of variables to load, defaults to None.
+    mpdc : float, optional
+        Minimum pose detection confidence, defaults to 0.5.
+    mppc : float, optional
+        Minimum pose presence confidence, defaults to 0.5.
+    mtc : float, optional
+        Minimum tracking confidence, defaults to 0.5.
+    model_path : str or Path, optional
+        Path to the model file, defaults to None, which uses "pose_landmarker_heavy.task".
+    num_frame : int, optional
+        Number of frames to process, if None, all frames are processed.
+    save_frame_file : bool, optional
+        Flag to save frames to file, defaults to True.
+    show : bool or str, optional
+        If False, no display is shown. If True, it displays the frames with markers in a local environment.
+        If 'colab', it displays the frames in Google Colab.
+    show_every_frames : int, optional
+        Frame skip number to display.
+
+    Returns
+    -------
+    xarray.DataArray
+        A DataArray containing the pose landmarks and additional metadata.
     """
+
+    if not isinstance(file, Path):
+        file = Path(file)
+
     t_ini = time.perf_counter()
-    # print(f"Procesando vídeo{file.name}...")
+    # print(f"Processing video {file.name}...")
 
     BaseOptions = mp.tasks.BaseOptions
     PoseLandmarker = mp.tasks.vision.PoseLandmarker
@@ -887,15 +992,16 @@ def procesa_video(
         num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         vid_fps = cap.get(cv2.CAP_PROP_FPS)
         # print(f"Video fps:{vid_fps}")
-        if num_fot is not None and (num_fot > num_frames or num_fot < 0):
+        if num_frame is not None and (num_frame > num_frames or num_frame < 0):
             raise ValueError(
-                f"num_fot {num_fot} is out of range of video frames (0-{num_frames})"
+                f"num_frame {num_frame} is out of range of video frames (0-{num_frames})"
             )
 
         pTime = 0
         frame = 0
         # data_mark = np.full((num_frames, 33, 3), np.nan)
 
+        # Precreate Dataarray
         coords = {
             "time": np.arange(0, num_frames),  # / fv,
             "marker": N_MARKERS,
@@ -911,19 +1017,21 @@ def procesa_video(
             .copy()
         )  # .transpose("marker", "axis", "time")
 
-        # Procesa fotograma a fotograma
+        # Process frame by frame
         while frame < num_frames:  # cap.isOpened()
-            if num_fot is not None:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, num_fot)  # restar 1?????
-                # frame = num_fot
+            if num_frame is not None:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame)  # restar 1?????
+                if show not in [True, "colab"]:
+                    show = True
+
             success, img = cap.read()
             if not success:
                 break
 
-            # Reajusta colores. No es necesario pero parece que no retrasa
+            # Reset colors. It is not necessary but it does not seem to slow down
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-            # Probar reajuste
+            # Test readjustment
             # Convert the frame received from OpenCV to a MediaPipe’s Image object.
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img)
 
@@ -978,62 +1086,62 @@ def procesa_video(
             ############################
 
             # Anota en las imágenes
-            annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
-            cv2.putText(
-                annotated_image,
-                "q para salir",
-                (30, 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 0, 0),
-                2,
-            )
-            show_frame = frame if num_fot is None else frame + num_fot
-            cv2.putText(
-                annotated_image,
-                f"Frame {show_frame}/{num_frames} fps: {fps:.2f}",
-                (30, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 0, 0),
-                2,
-            )
-
-            if num_fot is not None and save_fot_file:
-                cv2.imwrite(
-                    (file.parent / f"{file.stem}_fot{num_fot}")
-                    .with_suffix(".jpg")
-                    .as_posix(),
-                    cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+            if show in [True, "colab"]:
+                annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
+                cv2.putText(
+                    annotated_image,
+                    "q or Esc to exit",
+                    (30, 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 0, 0),
+                    2,
                 )
-                print(f"Guardado fotograma {num_fot}")
-
-            if show == "markers":
-                cv2.imshow(
-                    r"Marker detection",
-                    cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+                show_frame = frame if num_frame is None else frame + num_frame
+                cv2.putText(
+                    annotated_image,
+                    f"Frame {show_frame}/{num_frames} fps: {fps:.2f}",
+                    (30, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 0, 0),
+                    2,
                 )
 
-            elif show == "mask":
-                # Ejemplo de máscara
-                segmentation_mask = pose_landmarker_result.segmentation_masks[
-                    0
-                ].numpy_view()
-                visualized_mask = (
-                    np.repeat(segmentation_mask[:, :, np.newaxis], 3, axis=2) * 255
-                )
+                if show == True:
+                    cv2.imshow(
+                        r"Marker detection",
+                        cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+                    )
 
-                cv2.imshow("window_name", visualized_mask)
+                elif show == "colab":
+                    from google.colab.patches import cv2_imshow
 
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
+                    if frame % show_every_frames == 0:
+                        cv2_imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+                        # waits for user to press any key
+                        # (this is necessary to avoid Python kernel form crashing)
+                        cv2.waitKey(0)
 
-            else:
-                if frame % 10 == 0:
+                        # closing all open windows
+                        cv2.destroyAllWindows()
+
+                # Save the selected num_frame
+                if num_frame is not None and save_frame_file:
+                    cv2.imwrite(
+                        (file.parent / f"{file.stem}_fot{num_frame}")
+                        .with_suffix(".jpg")
+                        .as_posix(),
+                        cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+                    )
+                    print(f"Saved frame {num_frame}")
+
+            else:  # if show== False
+                if frame % show_every_frames == 0:
                     print(f"Frame {frame}/{num_frames} fps: {fps:.2f}")
 
-            # waits for user to press any key
-            if cv2.waitKey(1) in [ord("q"), 27] or num_fot is not None:
+            # Waits for user to press any key
+            if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
                 break
             # cv2.waitKey(0)
 
@@ -1043,26 +1151,30 @@ def procesa_video(
     # closing all open windows
     cv2.destroyAllWindows()
 
-    print(f"Terminado el procesado en {time.perf_counter() - t_ini:.2f} s")
+    print(f"Video processed in {time.perf_counter() - t_ini:.2f} s")
 
-    # Corrige la coordenada time
-    if num_fot is None:
+    # Adjust time coordinate
+    if num_frame is None:
         daMarkers = daMarkers.assign_coords(time=np.arange(0, num_frames) / fv)
     else:  # con un solo fotograma
         # daMarkers = daMarkers.isel(time=slice(frame - 3, frame + 3)).assign_coords(
         #     time=np.arange(frame - 3, frame + 3) / fv
         # )
-        daMarkers = daMarkers.isel(time=frame).assign_coords(time=num_fot / fv)
+        daMarkers = daMarkers.isel(time=frame).assign_coords(time=num_frame / fv)
 
     if n_vars_load is not None:
         daMarkers = daMarkers.sel(marker=n_vars_load)
+
+    # Invert y coordinates
+    daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+
     return daMarkers
 
 
-def procesa_video_mixto(file, fv=30, show=False):
+def process_video_mixed(file, fv=30, show=False):
 
     t_ini = time.perf_counter()
-    print(f"Procesando vídeo{file.name}...")
+    print(f"Processing vídeo{file.name}...")
 
     cap = cv2.VideoCapture(file.as_posix())
     num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -1087,7 +1199,7 @@ def procesa_video_mixto(file, fv=30, show=False):
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img)
 
         # Procesa imagen
-        detection_result = procesa_imagen(file=None, image=img)  # img)
+        detection_result = process_image(file=None, image=img)  # img)
 
         # detection_result.pose_landmarks[0][0].x
         if detection_result.pose_landmarks:
@@ -1117,7 +1229,7 @@ def procesa_video_mixto(file, fv=30, show=False):
             annotated_image = draw_landmarks_on_image(img, detection_result)
             cv2.putText(
                 annotated_image,
-                "q para salir",
+                "q or Esc to exit",
                 (30, 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
@@ -1163,7 +1275,7 @@ def procesa_video_mixto(file, fv=30, show=False):
 
     # closing all open windows
     cv2.destroyAllWindows()
-    print(f"Terminado el procesado en {time.perf_counter() - t_ini:.2f} s")
+    print(f"Processing finished in {time.perf_counter() - t_ini:.2f} s")
 
     # Pasa los marcadores a xarary
     coords = {
@@ -1180,9 +1292,92 @@ def procesa_video_mixto(file, fv=30, show=False):
     return da
 
 
+def plot_pose_2D(
+    daData,
+    dim_col: str = "ID",
+    x: str = "x",
+    y: str = "y",
+    frames: int | List[int] = [None, None],
+):
+    """
+    Creates a 2D scatter plot of the given xr Dataaray, `daData`, for specified frames.
+    Probably not necessary function, but to remenber how to do it.
+
+    Parameters:
+    daData : xarray.DataArray
+        The data array containing pose data to be plotted.
+    dim_col : str
+        The dimension along which to create separate subplots.
+    x : str
+        The coordinate to use for the x-axis in the scatter plot.
+    y : str
+        The coordinate to use for the y-axis in the scatter plot.
+    frames : int or list of int
+        If a single integer, it specifies the frame index to be plotted.
+        If a tuple of two integers, it specifies the start and end frame indices to be plotted.
+
+    Returns:
+    None
+    """
+    if isinstance(frames, int):
+        frames = [frames, frames + 1]
+    if "time" in daData.dims:
+        daData.isel(time=slice(frames[0], frames[1])).to_dataset("axis").plot.scatter(
+            x=x, y=y, col=dim_col, col_wrap=3, linewidths=0.5
+        )
+    else:
+        daData.to_dataset("axis").plot.scatter(
+            x=x, y=y, col=dim_col, col_wrap=3, linewidths=0.5
+        )
+
+
 # =============================================================================
-# %% PRUEBAS
+# %% TESTS
 # =============================================================================
 if __name__ == "__main__":
 
-    ...
+    # import biomdp.image_pose as impo
+
+    work_path = Path(
+        r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\Videos\Cortados"
+    )
+    # Download model if not already downloaded
+    import urllib.request
+
+    urllib.request.urlretrieve(
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
+        work_path / "pose_landmarker_heavy.task",
+    )
+
+    file = work_path / "COD_S01_G1_A_90_I_1_FRONT.mov"
+
+    # Process the complete video
+    daMarkers = process_video(
+        file,
+        fv=240,
+        mpdc=0.9,
+        mppc=0.95,
+        mtc=0.95,
+        show=True,
+        # show_every_frames=20,
+        model_path=work_path / "pose_landmarker_heavy.task",
+    )
+    daMarkers = split_dim_side(daMarkers)
+    daMarkers.isel(ID=0).sel(
+        axis="x", marker=["hip", "knee", "ankle", "heel", "toe"]
+    ).plot.line(x="time", col="side")
+    plot_pose_2D(daMarkers, frames=[100, None])
+
+    # Process and saves one single frame
+    daMarkers_frame = process_video(
+        file,
+        fv=240,
+        mpdc=0.9,
+        mppc=0.95,
+        mtc=0.95,
+        num_frame=178,
+        show=False,
+        model_path=work_path / "pose_landmarker_heavy.task",
+    )
+    daMarkers_frame = split_dim_side(daMarkers_frame)
+    plot_pose_2D(daMarkers_frame)

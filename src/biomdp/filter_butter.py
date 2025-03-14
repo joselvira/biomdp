@@ -2,10 +2,7 @@
 #!/usr/bin/env python
 
 """
-Aplica filtro paso Butterworth. Se puede pasar array 1D, pandas DataFrame 2D
-o dataarray de xarray.
-Función de paso bajo o alto y función de bandpass.
-Applies Butterworth pass filter. You can pass 1D array, pandas 2D DataFrame
+Applies Butterworth filter. You can pass 1D array, pandas 2D DataFrame
 or xarray dataarray.
 Low or high pass function and bandpass function.
 """
@@ -15,22 +12,15 @@ Low or high pass function and bandpass function.
 # %% LOAD MODULES
 # =============================================================================
 
-from typing import Optional, Union, Any
-import numpy as np
-import pandas as pd
-import xarray as xr
-import scipy.signal
-
-
 __author__ = "Jose L. L. Elvira"
 __version__ = "v.1.6.2"
 __date__ = "17/02/2025"
 
 
 """
-Modificaciones:
+Updates:
     05/03/2025, v1.6.2
-        - Name translations.
+        - Adapted to biomdp with translations.
     
     17/02/2025, v1.6.1
         - Si se pasa un dataarray con atributo freq y sin parámetro fr,
@@ -58,20 +48,26 @@ Modificaciones:
         - Cambiados nombres de argumentos a más pythonics.
 """
 
+from typing import Any
+import numpy as np
+import pandas as pd
+import xarray as xr
+import scipy.signal
+
 
 # =============================================================================
 # %% Functions
 # =============================================================================
 def filter_butter(
-    dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
-    fr: Optional[Union[float, int]] = None,
-    fc: Optional[Union[float, int]] = None,
-    order: Optional[Union[float, int]] = 2.0,
-    kind: Optional[str] = "low",
-    returnRMS: Optional[bool] = False,
-    show: Optional[bool] = False,
-    ax: Optional[Any] = None,
-) -> Union[np.ndarray, pd.DataFrame, xr.DataArray]:
+    dat_orig: np.ndarray | pd.DataFrame | xr.DataArray,
+    fr: float | int | None = None,
+    fc: float | int | None = None,
+    order: float | int = 2.0,
+    kind: str = "low",
+    returnRMS: bool = False,
+    show: bool = False,
+    ax: Any | None = None,
+) -> np.ndarray | pd.DataFrame | xr.DataArray:
     """
     Applies a Butterworth pass filter to data.
 
@@ -223,12 +219,12 @@ def filter_butter(
 # Shows plot
 # =============================================================================
 def _plot(
-    dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
-    dat_filt: Union[np.ndarray, pd.DataFrame, xr.DataArray],
-    RMS,
-    fc,
+    dat_orig: np.ndarray | pd.DataFrame | xr.DataArray,
+    dat_filt: np.ndarray | pd.DataFrame | xr.DataArray,
+    RMS: float,
+    fc: float,
     ax,
-):
+) -> None:
     import matplotlib.pyplot as plt
 
     if isinstance(dat_orig, xr.DataArray):
@@ -282,14 +278,14 @@ def _plot(
 
 
 def filter_butter_bandpass(
-    dat_orig: Union[np.ndarray, pd.DataFrame, xr.DataArray],
-    fr: Optional[Union[float, int]] = None,
-    fclow: Optional[Union[float, int]] = None,
-    fchigh: Optional[Union[float, int]] = None,
-    order: Optional[Union[float, int]] = 2.0,
-    show: Optional[bool] = False,
-    ax: Optional[Any] = None,
-) -> Union[np.ndarray, pd.DataFrame, xr.DataArray]:
+    dat_orig: np.ndarray | pd.DataFrame | xr.DataArray,
+    fr: float | int | None = None,
+    fclow: float | int | None = None,
+    fchigh: float | int | None = None,
+    order: float | int = 2.0,
+    show: bool = False,
+    ax: Any | None = None,
+) -> np.ndarray | pd.DataFrame | xr.DataArray:
     """
     Applies a Butterworth bandpass filter to data.
 

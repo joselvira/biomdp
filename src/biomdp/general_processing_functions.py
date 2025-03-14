@@ -2,14 +2,15 @@
 # %% LOAD LIBRARIES
 # =============================================================================
 
-__filename__ = "general_processing_functions"
-__version__ = "0.5.0"
-__company__ = "CIDUMH"
-__date__ = "05/03/2025"
 __author__ = "Jose L. L. Elvira"
+__version__ = "0.5.1"
+__date__ = "12/03/2025"
 
 """
 Updates:
+    12/03/2025, v0.5.1
+        - Adapted to biomdp with translations.
+
     05/03/2025, v0.5.0
         - Removed function create_time_series_xr
           (included in file create_time_series.py).
@@ -39,7 +40,7 @@ Updates:
 
 """
 
-from typing import Optional, Union
+from typing import Line
 
 import numpy as np
 import xarray as xr
@@ -49,9 +50,46 @@ import scipy.integrate as integrate
 import time
 
 
-def integrate_window(daData, daWindow=None, daOffset=None, result_return="continuous"):
+# =============================================================================
+# %% Functins
+# =============================================================================
+
+
+def integrate_window(
+    daData: xr.DataArray,
+    daWindow: xr.DataArray | None = None,
+    daOffset: xr.DataArray | None = None,
+    result_return: str = "continuous",
+) -> xr.DataArray:
     """
-    result_return: "continuous" or "discrete"
+    Integrates time series data within a specified window, with an optional offset.
+
+    Parameters
+    ----------
+    daData : xarray.DataArray
+        The data to be integrated. It should have a 'time' dimension.
+    daWindow : xarray.DataArray, optional
+        The window specifying the start ('ini') and end ('fin') events for integration.
+        If None, defaults to the full range of daData.
+    daOffset : xarray.DataArray, optional
+        Offset to be subtracted from daData before integration. If None, defaults to zero.
+    result_return : str, optional
+        Specifies the type of result to return.
+        "continuous" : returns a continuous time series with integrated signal
+        "discrete" : returns discrete integrated values at the end of the window.
+        Default is "continuous".
+
+    Returns
+    -------
+    xarray.DataArray
+        The integrated data, either as a continuous signal or discrete values depending on
+        the value of result_return.
+
+    Notes
+    -----
+    This function is useful for computing the integral of a time series data over a specified
+    window. It allows for offset correction before integration and supports both continuous
+    and discrete result types.
     """
 
     # If empty, fill daWindow with first and last data
@@ -155,17 +193,32 @@ def integrate_window(daData, daWindow=None, daOffset=None, result_return="contin
     return daInt
 
 
-def detrend_dim(da, dim, deg=1):
+def detrend_dim(da: xr.DataArray, dim: str, deg: int = 1) -> xr.DataArray:
     """
-    Detrend the signal along a single dimension
+    Detrend the signal along a single dimension.
+
+    Parameters
+    ----------
+    da: xr.DataArray
+        The data to be detrended.
+    dim: str
+        The dimension along which the detrending is performed.
+    deg: int, optional
+        The degree of the detrending polynomial. Default is 1 (linear).
+
+    Returns
+    -------
+    daDetrended: xr.DataArray
+        The detrended data.
     """
 
     p = da.polyfit(dim=dim, deg=deg)
     fit = xr.polyval(da[dim], p.polyfit_coefficients)
+
     return da - fit
 
 
-def RMS(daData, daWindow=None):
+def RMS(daData: xr.DataArray, daWindow: xr.DataArray | None = None) -> xr.DataArray:
     """
     Calculate RMS in dataarray with dataarray window
     """
@@ -202,10 +255,10 @@ def RMS(daData, daWindow=None):
     return daRMS
 
 
-def calculate_distance(point1, point2):
+def calculate_distance(point1: xr.DataArray, point2: xr.DataArray):
     """
-    Calcula la distancia entre dos puntos.
-    Requiere dimensión con coordenadas x, y, z con nombre 'axis'
+    Calculates the distance between two 3D points.
+    Requires dimension with x, y, z coordinates with name 'axis'.
     """
     return np.sqrt(((point1 - point2) ** 2).sum("axis"))
 
@@ -220,7 +273,7 @@ The Teager-Kaiser Energy (TKE) operator has been proposed to increase the accura
 """
 
 
-def tkeo(x):
+def tkeo(x: np.ndarray) -> np.ndarray:
     r"""Calculates the Teager-Kaiser Energy operator.
 
     Parameters
@@ -253,8 +306,12 @@ def tkeo(x):
     return y
 
 
-def procesaEMG(
-    daEMG: xr.DataArray, fr=None, fc_band=[10, 400], fclow=8, btkeo=False
+def process_EMG(
+    daEMG: xr.DataArray,
+    fr: float | None = None,
+    fc_band: List[float] = [10, 400],
+    fclow: float = 8,
+    btkeo: bool = False,
 ) -> xr.DataArray:
     from biomdp.filter_butter import filter_butter, filter_butter_bandpass
 
@@ -264,7 +321,7 @@ def procesaEMG(
     daEMG_proces = filter_butter_bandpass(
         daEMG, fr=fr, fclow=fc_band[0], fchigh=fc_band[1]
     )
-    # Centra, ¿es necesario?
+    # Centers signal, necessary?
     daEMG_proces = daEMG_proces - daEMG_proces.mean(dim="time")
 
     if btkeo:
@@ -289,19 +346,19 @@ def procesaEMG(
     return daEMG_proces
 
 
-# TODO: GENERALIZAR LA FUNCIÓN DE NORMALIZAR
+# TODO: GENERALIZE THE NORMALIZING FUNCTION
 def NormalizaBiela360_xr(
-    daData, base_norm_horiz="time", graficas=False
+    daData, base_norm_horiz="time", graphs=False
 ):  # recibe da de daTodos. Versión con numpy
     if base_norm_horiz == "time":
         eje_x = daData.time
-    elif base_norm_horiz == "biela":
+    elif base_norm_horiz in ["biela", "crank"]:
         try:
             eje_x = daData.sel(n_var="AngBiela", axis="y")
         except:
             eje_x = daData.sel(n_var="AngBiela")
     else:
-        print("Base de normalización no reconocida")
+        print("Normalizing base unknown")
         return
 
     def _normaliza_t_aux(
@@ -313,7 +370,7 @@ def NormalizaBiela360_xr(
         else:  # elimina los nan del final y se ajusta
             data = data[~np.isnan(data)]
             x = x[: len(data)]
-            if base_norm_horiz == "biela":
+            if base_norm_horiz in ["biela", "crank"]:
                 x = np.unwrap(x)
                 x = x - x[0]
             xi = np.linspace(0, x[-1], 361)
@@ -348,9 +405,6 @@ def NormalizaBiela360_xr(
     return daNorm
 
 
-import polars as pl
-
-
 # from scipy import stats
 def _cross_correl_simple_aux(datos1, datos2, ID=None):
     """
@@ -380,6 +434,8 @@ def _cross_correl_simple_aux(datos1, datos2, ID=None):
         keep_attrs=False,
     ).dropna(dim="lag", how="all")
     """
+    import polars as pl
+
     if ID is not None:
         print(ID)
 
@@ -437,7 +493,7 @@ def _cross_correl_noisy_aux(datos1, datos2, ID=None):
     dat1 = (dat1 - np.mean(dat1)) / np.std(dat1)
     dat2 = (dat2 - np.mean(dat2)) / np.std(dat2)
 
-    # Rellena con ceros
+    # Path with zeros
     if len(dat1) != len(dat2):
         if len(dat1) < len(dat2):
             dat1 = np.append(dat1, np.zeros(len(dat2) - len(dat1)))
@@ -557,7 +613,7 @@ def cross_correl_xr(
     return daCrosscorr
 
 
-def round_to_nearest_even_2_decimal(number):
+def round_to_nearest_even_2_decimal(number: float) -> float:
     """Rounds a float to the nearest even number with 2 decimal places"""
     rounded = np.round(number * 50) / 50  # Round to the nearest 0.02
 
@@ -582,7 +638,8 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import matplotlib.pyplot as plt
-    import seaborn as sns
+
+    # import seaborn as sns
 
     from biomdp.create_time_series import create_time_series_xr
 

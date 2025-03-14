@@ -16,15 +16,13 @@ The maximum is used to normalize the EMG channels in the current file.
 # %% LOAD MODULES
 # =============================================================================
 
-
-__filename__ = "nexus_functions_utils"
-__version__ = "0.4.1"
-__company__ = "CIDUMH"
-__date__ = "05/03/2025"
 __author__ = "Jose L. L. Elvira"
+__version__ = "0.4.1"
+__date__ = "05/03/2025"
+
 
 """
-Modificaciones:
+Updates:
     05/03/2025, v0.4.1
         - Adapted to biomdp with translations.
     
@@ -57,7 +55,7 @@ Modificaciones:
     09/06/2022, v0.0.1
                 - 
 """
-
+from typing import List
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -186,9 +184,9 @@ def create_marker(
     vicon,
     num_fot: int,
     n_marker: str,
-    n_marker2: str = None,
-    offset: list = None,
-    fot_ref: int = None,
+    n_marker2: str | None = None,
+    offset: List[str] | None = None,
+    fot_ref: int | None = None,
 ) -> None:
     """
     Examples:
@@ -352,7 +350,7 @@ def calculate_euler_angles_aux(rot_matrix):
     return np.rad2deg(angles)
 
 
-def calculate_bases(daData, complete_model=False) -> xr.Dataset:
+def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Dataset:
     """
     Calcula las matrices de rotación de cada segmento a partir de sus marcadores.
     Recibe trayectorias marcadores ya separadas en lados o sin separar.
@@ -1713,7 +1711,7 @@ def write_variables_in_nexus_emg(da=None, vicon=None) -> None:
 # =============================================================================
 # %% Extract Nexus variables from csv or c3d
 # =============================================================================
-def from_df_to_da_EMG(data) -> xr.DataArray:
+def df_to_da_EMG(data) -> xr.DataArray:
     if isinstance(data, pd.DataFrame):
         da = (
             data.set_index(["ID", "time"])
@@ -1745,7 +1743,7 @@ def from_df_to_da_EMG(data) -> xr.DataArray:
 # =============================================================================
 # %% Load trajectories from c3d
 # =============================================================================
-def load_trayectorias_c3d(file_list, n_vars_load=None):
+def load_trayectories_c3d(file_list, n_vars_load=None):
     raise Exception(
         "Deprecation warning. Use load_c3d_generic_xr(data, section='Trajectories') instead"
     )
@@ -1889,7 +1887,11 @@ def split_trajectories_sides(daData) -> xr.DataArray:
 # =============================================================================
 # %%Load all csv files in the same dataframe. Knem and EMG version
 # =============================================================================
-def load_csv_generic_pl_xr(file_list, n_vars_load=None, section=None) -> xr.DataArray:
+def load_csv_generic_pl_xr(
+    file_list: List[str | Path],
+    n_vars_load: List[str] | None = None,
+    section: str | None = None,
+) -> xr.DataArray:
     """Load all csv files into the same dataframe. Cinem and EMG version."""
     # Polars version
     print("\nLoading files...")
@@ -2427,7 +2429,7 @@ def load_preprocess_c3d_cinem(file_list, n_vars_load=None) -> xr.DataArray:
             print(error_files[x])
     # *******************************************************
 
-    daAllFiles = from_df_to_da_EMG(daAllFiles)
+    daAllFiles = df_to_da_EMG(daAllFiles)
     # Añade coordenada con nombre del tipo de test. Diferencia entre MVC y dinámicos, por el criterio de nombrado
     if daAllFiles.ID[0].str.contains("MVC"):
         lista_coords = (

@@ -4,17 +4,20 @@ Created on Thu Feb 22 16:17:08 2024
 @author: josel
 """
 
-from typing import Optional, Union, Any
-import xarray as xr
-
+# =============================================================================
+# %% LOAD LIBRARIES
+# =============================================================================
 
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.0.3.0"
-__date__ = "07/03/2025"
+__version__ = "v.0.3.1"
+__date__ = "12/03/2025"
 
 
 """
-Modificaciones:
+Updates:
+    06/03/2025, v0.3.1
+        - Adapted to biomdp with translations. 
+
     07/03/2025, v.0.3.0
         - Modified fitrar_Butter to filter_butter.
     
@@ -31,6 +34,9 @@ Modificaciones:
     
 """
 
+from typing import Any
+import xarray as xr
+
 
 @xr.register_dataset_accessor("biomxr")
 @xr.register_dataarray_accessor("biomxr")
@@ -40,7 +46,7 @@ class DataArrayAccessor:
 
     def nanargmax_xr(self, dim: str = None) -> xr.DataArray:
         """
-        Necesario porque la versión argmax de xarray no funciona bien con nans intermedios
+        Necessary because argmax version of xarray does not work well with intermediate nans
         """
         from biomdp.general_processing_functions import nanargmax_xr
 
@@ -48,7 +54,7 @@ class DataArrayAccessor:
 
     def nanargmin_xr(self, dim: str = None) -> xr.DataArray:
         """
-        Necesario porque la versión argmax de xarray no funciona bien con nans intermedios
+        Necessary because argmin version of xarray does not work well with intermediate nans
         """
         from biomdp.general_processing_functions import nanargmin_xr
 
@@ -56,15 +62,15 @@ class DataArrayAccessor:
 
     def detect_events(
         self,
-        freq: Optional[float] = None,
-        n_dim_time: Optional[str] = "time",
-        reference_var: Optional[Union[str, dict]] = None,
+        freq: float | None = None,
+        n_dim_time: str = "time",
+        reference_var: str | dict | None = None,
         discard_phases_ini: int = 0,
-        n_phases: Optional[int] = None,
+        n_phases: int | None = None,
         discard_phases_end: int = 0,
         # include_first_next_last: Optional[bool] = False,
-        max_phases: Optional[int] = 100,
-        func_events: Optional[Any] = None,
+        max_phases: int = 100,
+        func_events: Any | None = None,
         **kwargs_func_events,
     ) -> xr.DataArray:
         import biomdp.slice_time_series_phases as stsp
@@ -85,17 +91,17 @@ class DataArrayAccessor:
 
     def slice_time_series(
         self,
-        events: Optional[xr.DataArray] = None,
-        freq: Optional[float] = None,
-        n_dim_time: Optional[str] = "time",
-        reference_var: Optional[Union[str, dict]] = None,
-        discard_phases_ini: Optional[int] = 0,
-        n_phases: Optional[int] = None,
-        discard_phases_end: Optional[int] = 0,
-        include_first_next_last: Optional[bool] = False,
-        max_phases: Optional[int] = 100,
-        func_events: Optional[Any] = None,
-        split_version_function: Optional[str] = "polars",  # "polars" or "numpy"
+        events: xr.DataArray | None = None,
+        freq: float | None = None,
+        n_dim_time: str = "time",
+        reference_var: str | dict | None = None,
+        discard_phases_ini: int = 0,
+        n_phases: int | None = None,
+        discard_phases_end: int = 0,
+        include_first_next_last: bool = False,
+        max_phases: int = 100,
+        func_events: Any | None = None,
+        split_version_function: str = "polars",  # "polars" or "numpy"
         **kwargs_func_events,
     ) -> xr.DataArray:
         import biomdp.slice_time_series_phases as stsp
@@ -118,8 +124,8 @@ class DataArrayAccessor:
 
     def trim_window(
         self,
-        daEvents: Optional[xr.DataArray] = None,
-        window=None,
+        daEvents: xr.DataArray | None = None,
+        window: xr.DataArray | None = None,
     ) -> xr.DataArray:
         from biomdp.slice_time_series_phases import trim_window
 
@@ -131,13 +137,13 @@ class DataArrayAccessor:
 
     def filter_butter(
         self,
-        fr: Optional[float] = None,
-        fc: Optional[float] = None,
-        order: Optional[float] = 2.0,
-        kind: Optional[str] = "low",
-        returnRMS: Optional[bool] = False,
-        show: Optional[bool] = False,
-        ax: Optional[object] = None,
+        fr: float | None = None,
+        fc: float | None = None,
+        order: float | None = 2.0,
+        kind: str = "low",
+        returnRMS: bool = False,
+        show: bool = False,
+        ax=None,
     ) -> xr.DataArray:
 
         import numpy as np
@@ -168,9 +174,9 @@ class DataArrayAccessor:
 
     def integrate_window(
         self,
-        daWindow: Optional[xr.DataArray] = None,
-        daOffset: Optional[xr.DataArray] = None,
-        result_return: Optional[str] = "continuous",
+        daWindow: xr.DataArray | None = None,
+        daOffset: xr.DataArray | None = None,
+        result_return: str = "continuous",
     ) -> xr.DataArray:
         from biomdp.general_processing_functions import integrate_window
 
@@ -178,7 +184,7 @@ class DataArrayAccessor:
             self._obj, daWindow=daWindow, daOffset=daOffset, result_return=result_return
         )
 
-    def RMS(self, daWindow: Optional[xr.DataArray] = None) -> xr.DataArray:
+    def RMS(self, daWindow: xr.DataArray | None = None) -> xr.DataArray:
         from biomdp.general_processing_functions import RMS
 
         return RMS(self._obj, daWindow=daWindow)

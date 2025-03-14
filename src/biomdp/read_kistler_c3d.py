@@ -4,37 +4,24 @@ Created on Mon Oct 02 16:36:37 2023
 
 @author: Jose L. L. Elvira
 
-Los .c3d del Bioware exportan solo los datos de los sensores por separado,
-8 por plataforma.
+Bioware's .c3d exports only sensor data separately,
+8 per platform.
 """
-from __future__ import division, print_function
 
-import numpy as np
-import pandas as pd
-import xarray as xr
 
-try:
-    import c3d
-except:
-    print("Module c3d not installed")
+# =============================================================================
+# %% LOAD LIBRARIES
+# =============================================================================
 
-try:
-    import ezc3d
-except:
-    print("Module ezc3d not installed")
-
-import time
-
-import warnings  # para quitar warnings de no encontrar points
-
-# warnings.filterwarnings("ignore")
-
-__author__ = "Jose Luis Lopez Elvira"
-__version__ = "0.1.0"
-__date__ = "10/12/2024"
+__author__ = "Jose L. L. Elvira"
+__version__ = "0.1.1"
+__date__ = "11/03/2025"
 
 """
-Modificaciones:
+Updates:
+    11/03/2025, v0.1.1
+            - Adapted to biomdp with translations.
+    
     10/12/2024, v0.1.0
             - Comprueba si está instalado c3d y ezc3d, si no, avisa con mensaje.
             - Incluida función con ezc3d, pero no carga la serie temporal completa.
@@ -47,11 +34,51 @@ Modificaciones:
             
 """
 
+from typing import List
+import numpy as np
+
+# import pandas as pd
+import xarray as xr
+
+
+import time
+from pathlib import Path
+
+
+# warnings.filterwarnings("ignore")
+
 
 # =============================================================================
-# %% Carga trayectorias desde c3d
+# %% Functions
 # =============================================================================
-def read_kistler_c3d_xr(file, n_vars_load=None, coincidence="similar"):
+
+
+def read_kistler_c3d_xr(
+    file: str | Path,
+    n_vars_load: List[str] = None,
+    coincidence: str = "similar",
+    engine: str = "ezc3d",
+) -> xr.DataArray:
+    if engine == "c3d":
+
+        return read_kistler_c3d_c3d_xr(file, n_vars_load, coincidence)
+
+    elif engine == "ezc3d":
+
+        return read_kistler_ezc3d_xr(file, n_vars_load, coincidence)
+
+    else:
+        print("Engine {engine} not implemented. Try 'c3d' or 'ezc3d'")
+
+
+def read_kistler_c3d_c3d_xr(
+    file: str | Path, n_vars_load: List[str] = None, coincidence: str = "similar"
+) -> xr.DataArray:
+    try:
+        import c3d
+    except:
+        raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
+    import warnings  # to remove 'no points found' warnings
 
     timer = time.perf_counter()  # inicia el contador de tiempo
 
@@ -76,11 +103,11 @@ def read_kistler_c3d_xr(file, n_vars_load=None, coincidence="similar"):
                     # points.append(p)
                     analog.append(a)
                     if not i % 10000 and i:
-                        print("Extracted %d point frames", len(points))
+                        print(f"Extracted {len(points)} point frames")
 
         labels_analog = [s.split(".")[0].replace(" ", "") for s in reader.analog_labels]
         data_analog = np.concatenate(analog, axis=1)
-        
+
         # data_analog.shape
         coords = {
             "n_var": labels_analog,
@@ -99,35 +126,45 @@ def read_kistler_c3d_xr(file, n_vars_load=None, coincidence="similar"):
         # print("Tiempo {0:.3f} s \n".format(time.perf_counter() - timerSub))
 
     except Exception as err:
-        print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
+        print(f"\nATTENTION. Unable to process {file.name}, {err}, \n")
 
     if n_vars_load:
         da_analog = da_analog.sel(n_var=n_vars_load)
 
     return da_analog
 
-def read_kistler_ezc3d_xr(file, n_vars_load=None, coincidence="similar"):
+
+def read_kistler_ezc3d_xr(
+    file: str | Path, n_vars_load: List[str] = None, coincidence: str = "similar"
+):
     """
-    PARECE QUE NO CARGA LA SERIE TEMPORAL COMPLETA
+    DOES NOT SEEM TO LOAD THE COMPLETE TIME SERIES
     """
-    timer = time.perf_counter()  # inicia el contador de tiempo
+    try:
+        import ezc3d
+    except:
+        raise ImportError(
+            "Module ezc3d not installed.\nInstall with pip install ezc3d or conda install -c conda-forge ezc3d"
+        )
+
+    timer = time.perf_counter()
 
     # se asegura de que la extensión es c3d
     file = file.with_suffix(".c3d")
 
     try:
-        timerSub = time.perf_counter()  # inicia el contador de tiempo
+        timerSub = time.perf_counter()
         # print(f'Loading file: {file.name}')
 
-        acq = ezc3d.c3d(file.as_posix()) #, extract_forceplat_data=True)
+        acq = ezc3d.c3d(file.as_posix())  # , extract_forceplat_data=True)
 
-        freq = acq['parameters']['ANALOG']['RATE']['value'][0]
-        
+        freq = acq["parameters"]["ANALOG"]["RATE"]["value"][0]
+
         labels = acq["parameters"]["ANALOG"]["LABELS"]["value"]
-        
-        data = acq["data"]['analogs'][0]
+
+        data = acq["data"]["analogs"][0]
         data.shape
-        
+
         coords = {
             "n_var": labels,
             "time": np.arange(data.shape[-1]) / freq,
@@ -137,15 +174,15 @@ def read_kistler_ezc3d_xr(file, n_vars_load=None, coincidence="similar"):
             dims=coords.keys(),
             coords=coords,
             attrs={"freq": freq},
-        )       
-       
+        )
+
         da.attrs["units"] = "N"
         da.time.attrs["units"] = "s"
 
-        print("Tiempo {0:.3f} s \n".format(time.perf_counter() - timerSub))
+        print(f"Time {time.perf_counter() - timerSub:.3f} s \n")
 
     except Exception as err:
-        print("\nATENCIÓN. No se ha podido procesar " + file.name, err, "\n")
+        print(f"\nATTENTION. Unable to process {file.name}, {err}\n")
 
     if n_vars_load:
         da = da.sel(n_var=n_vars_load)
@@ -153,8 +190,7 @@ def read_kistler_ezc3d_xr(file, n_vars_load=None, coincidence="similar"):
     return da
 
 
-
-def split_plataforms(da):
+def split_plataforms(da: xr.DataArray) -> xr.DataArray:
     plat1 = da.sel(n_var=da.n_var.str.startswith("F1"))
     plat1 = plat1.assign_coords(n_var=plat1.n_var.str.lstrip("F1"))
 
@@ -166,9 +202,9 @@ def split_plataforms(da):
     return da
 
 
-def separa_ejes(da):
-    # NO ES NECESARIO CON COMPUTE_FORCES_AXES???
-    # TODO: Falta quitarles la letra del eje en el nombre
+def split_dim_axis(da: xr.DataArray) -> xr.DataArray:
+    # NOT NECESSARY WITH COMPUTE_FORCES_AXES???
+    # TODO: The letter of the axis in the name must be removed.
     x = da.sel(n_var=da.n_var.str.contains("x"))
     y = da.sel(n_var=da.n_var.str.contains("y"))
     z = da.sel(n_var=da.n_var.str.contains("z"))
@@ -181,7 +217,7 @@ def separa_ejes(da):
     return da
 
 
-def compute_forces_axes(da):
+def compute_forces_axes(da: xr.DataArray) -> xr.DataArray:
     # da=daForce
 
     if "plat" not in da.coords:
@@ -197,9 +233,9 @@ def compute_forces_axes(da):
     return daReturn
 
 
-def compute_moments_axes(da):
+def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
     # da=daForce
-    raise Exception("Not implemented yet")
+    raise Exception("Not implemented yet.")
     """
     if 'plat' not in da.coords:
         da = split_plataforms(da)
@@ -217,40 +253,40 @@ def compute_moments_axes(da):
 
 
 # =============================================================================
-# %% MAIN
+# %% TESTS
 # =============================================================================
 if __name__ == "__main__":
-    from pathlib import Path
-    import sys
 
-    sys.path.append(r"F:\Programacion\Python\Mios\Functions")
-    from read_kistler_c3d import read_kistler_c3d_xr
+    # from biomdp.read_kistler_c3d import read_kistler_c3d_xr
 
     ruta_archivo = Path(
         r"F:\Investigacion\Proyectos\Saltos\2023PreactivacionSJ\DataCollection\S01\FeedbackFuerza"
     )
     file = ruta_archivo / "S01_CMJ_000.c3d"
-    daForce = read_kistler_c3d_xr(file)
+    daForce = read_kistler_c3d_xr(file, engine="c3d")
     daForce = split_plataforms(daForce)
-    daForce = separa_ejes(daForce)
-    daForce.sel(axis='z').plot.line(x="time", col="plat")
+    daForce = split_dim_axis(daForce)
+    daForce.sel(axis="z").plot.line(x="time", col="plat")
 
-    daForce2 = read_kistler_ezc3d_xr(file)
+    # With ezc3d does not read the entire file???
+    daForce2 = read_kistler_c3d_xr(file, engine="ezc3d")
+    daForce2 = split_plataforms(daForce2)
+    daForce2 = split_dim_axis(daForce2)
+    daForce2.sel(axis="z").plot.line(x="time", col="plat")
 
     ruta_archivo = Path(
         r"F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros\2023PotenciaDJ\S02"
     )
     file = ruta_archivo / "S02_DJ_30_002.c3d"
-    daForce = read_kistler_c3d_xr(file)
+    daForce = read_kistler_c3d_xr(file, engine="c3d")
     # daForce = split_plataforms(daForce)
     daForce = compute_forces_axes(daForce)
     daForce.plot.line(x="time", col="plat")
 
-    daForce2 = read_kistler_ezc3d_xr(file) # CARGA SÓLO UNA PARTE INICIAL
+    daForce2 = read_kistler_c3d_xr(file, engine="ezc3d")
     # daForce = split_plataforms(daForce)
     daForce2 = compute_forces_axes(daForce2)
     daForce2.plot.line(x="time", col="plat")
 
-    daForce2==daForce
+    daForce2.equals(daForce)
     daForce2.plot.line(x="time")
-

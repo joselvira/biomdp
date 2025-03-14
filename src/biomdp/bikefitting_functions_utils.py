@@ -11,18 +11,15 @@ at the Research Sports Centre of the University Miguel Hernandez de Elche, Spain
 """
 
 # =============================================================================
-# %% INICIA
+# %% LOAD MODULES
 # =============================================================================
 
-
-__filename__ = "bikefitting_functions_utils"
-__version__ = "0.4.6"
-__company__ = "CIDUMH"
-__date__ = "06/03/2025"
 __author__ = "Jose L. L. Elvira"
+__version__ = "0.4.6"
+__date__ = "06/03/2025"
 
 """
-Modificaciones:
+Updates:
     06/03/2025, v0.4.6
         - Adapted to biomdp with translations. 
     
@@ -88,7 +85,7 @@ Modificaciones:
 # DEFINE OPCIONES DE PROCESADO
 # =============================================================================
 bCrearGraficas = False  # crea las gráficas de ángulos y posiciones
-formato_imagen = ".pdf"  #'.svg' #'.png'
+image_format = ".pdf"  #'.svg' #'.png'
 bEnsembleAvg = (
     True  # puede ser True, False o 'completo' (la media con cada repe de fondo)
 )
@@ -103,13 +100,13 @@ filtro_MVC = "todos"  # Para determinar qué grupo de archivos de MVC se usan pa
 bSoloMVC = False  # para que procese solo las MVCs
 # bComparaLadosGraf = True #para que compare lados con SPM1D
 # =============================================================================
-from typing import Optional, Union, Any
+from typing import List
 
 import pandas as pd
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages  # para guardar gráficas en pdf
+from matplotlib.backends.backend_pdf import PdfPages  # to save graphs in pdf
 from matplotlib.lines import (
     Line2D,
 )  # necesario para controlar el formato de las líneas de la leyenda
@@ -154,7 +151,7 @@ from slice_time_series_phases import SliceTimeSeriesPhases as stsp
 # =============================================================================
 
 
-def load_variables_nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
+def load_variables_nexus(vicon, n_varsContinuas250) -> xr.DataArray:
 
     print("Loading data...")
     timer = time.time()  # inicia el contador de tiempo
@@ -182,8 +179,8 @@ def load_variables_nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
         # "vAngBiela_LR": "vAngBiela",
         #'PosPedal_L':'LPosPedal', 'PosPedal_R':'RPosPedal',
     }
-    nomVarsContinuas250_adaptado = (
-        pd.DataFrame(columns=nomVarsContinuas250)
+    n_varsContinuas250_adaptado = (
+        pd.DataFrame(columns=n_varsContinuas250)
         .rename(columns=nuevo_antiguo)
         .columns.to_list()
     )
@@ -200,14 +197,14 @@ def load_variables_nexus(vicon, nomVarsContinuas250) -> xr.DataArray:
         "AngBiela": "AngBiela_LR",
         "vAngBiela": "vAngBiela_LR",
     }
-    ejes = ["x", "y", "z"]
+    axis = ["x", "y", "z"]
 
     cols = pd.MultiIndex.from_product(
-        [nomVarsContinuas250_adaptado, ejes], names=["n_var", "axis"]
+        [n_varsContinuas250_adaptado, axis], names=["n_var", "axis"]
     )
     dfTodosArchivos = pd.DataFrame(index=np.arange(0, NumFramesParcial), columns=cols)
 
-    for nom in nomVarsContinuas250_adaptado:
+    for nom in n_varsContinuas250_adaptado:
         try:
             dfTodosArchivos[nom] = np.array(vicon.GetModelOutput(n_subject, nom)[0])[
                 :3, RegionOfInterest[0] : RegionOfInterest[1]
@@ -917,7 +914,7 @@ def calculate_variables_position(
 
 
 def find_crank_events(
-    daData: xr.DataArray, region_interest: list = None, show=False
+    daData: xr.DataArray, region_interest: List[int] | None = None, show: bool = False
 ) -> xr.DataArray:
     """Busca posiciones de biela discretas"""
 
@@ -1131,10 +1128,10 @@ def find_crank_events(
 
 def find_max_min_events(
     daData: xr.DataArray,
-    evt_pedal: Optional[Union[int, xr.DataArray]] = None,
-    mean_pedal_freq: int = None,
-    region_interest: list = None,
-    show=False,
+    evt_pedal: int | xr.DataArray | None = None,
+    mean_pedal_freq: int | None = None,
+    region_interest: list | None = None,
+    show: bool = False,
 ) -> xr.DataArray:
     # Si no viene una frecuencia media, la calcula
     if mean_pedal_freq is None:
@@ -1393,9 +1390,9 @@ def get_region_of_interest(spmi):
 
 def slice_model_bikefitting_xr_cinem(
     daData: xr.DataArray,
-    num_cortes: int = None,
-    add_to_ini: int = None,
-    add_to_end: int = None,
+    num_cortes: int | None = None,
+    add_to_ini: int | None = None,
+    add_to_end: int | None = None,
     verbose: bool = False,
     show: bool = False,
 ) -> xr.DataArray:
@@ -1531,20 +1528,20 @@ def slice_model_bikefitting_xr_cinem(
 #     from cortar_repes_ciclicas import detect_onset_aux
 
 #     #Se crean variables de apoyo con los nombres de cada ámbito
-#     nomVarsContinuas_coord = nomVarsContinuas250_coords
-#     nomVarsContinuas_L_coord = [i for i in nomVarsContinuas250_coords if '_L' in i and '_LR' not in i]
-#     nomVarsContinuas_R_coord = [i for i in nomVarsContinuas250_coords if '_R' in i]
-#     nomVarsContinuas_LR_coord = [i for i in nomVarsContinuas250_coords if '_LR' in i and 'AngBiela_LR_y' not in i] # en versiones modernas de Pandas no hace falta quitar AngBiela_LR_y, pero en la antigua sí
+#     n_varsContinuas_coord = n_varsContinuas250_coords
+#     n_varsContinuas_L_coord = [i for i in n_varsContinuas250_coords if '_L' in i and '_LR' not in i]
+#     n_varsContinuas_R_coord = [i for i in n_varsContinuas250_coords if '_R' in i]
+#     n_varsContinuas_LR_coord = [i for i in n_varsContinuas250_coords if '_LR' in i and 'AngBiela_LR_y' not in i] # en versiones modernas de Pandas no hace falta quitar AngBiela_LR_y, pero en la antigua sí
 
 
 #     #Es necesario separar lado L y R porque usan criterios distintos de corte
 #     #Corta izquierdo
 #     dfL = dfArchivo.drop(dfArchivo.filter(regex='|'.join(['_R_', '_LR_'])).columns, axis=1).assign(**{'AngBiela_LR_y' : dfArchivo['AngBiela_LR_y'], 'vAngBiela_LR_x' : dfArchivo['vAngBiela_LR_x']}) #añade las bielas al final
-#     dfL = corta_repes(dfL, func_cortes=detect_peaks, frec=Frec,  col_factores='ID', col_referencia='AngBiela_LR_y', col_variables=nomVarsContinuas_L_coord+['vAngBiela_LR_x'], descarta_rep_ini=1, descarta_rep_fin=0, incluye_primero_siguiente=True, **dict(valley=True, show=show))
+#     dfL = corta_repes(dfL, func_cortes=detect_peaks, frec=Frec,  col_factores='ID', col_referencia='AngBiela_LR_y', col_variables=n_varsContinuas_L_coord+['vAngBiela_LR_x'], descarta_rep_ini=1, descarta_rep_fin=0, incluye_primero_siguiente=True, **dict(valley=True, show=show))
 
 #     #Corta derecho y LR a la vez
 #     dfR = dfArchivo.drop(dfArchivo.filter(regex='|'.join(['_L_'])).columns, axis=1) #al derecho no hace falta añadir bielas
-#     dfR = corta_repes(dfArchivo, func_cortes=detect_onset_aux, frec=Frec,  col_factores='ID', col_referencia='AngBiela_LR_y', col_variables=nomVarsContinuas_R_coord+nomVarsContinuas_LR_coord+['vAngBiela_LR_x'], descarta_rep_ini=1, descarta_rep_fin=0, **dict(threshold=0.0, corte_ini=0, n_above=2, show=show))
+#     dfR = corta_repes(dfArchivo, func_cortes=detect_onset_aux, frec=Frec,  col_factores='ID', col_referencia='AngBiela_LR_y', col_variables=n_varsContinuas_R_coord+n_varsContinuas_LR_coord+['vAngBiela_LR_x'], descarta_rep_ini=1, descarta_rep_fin=0, **dict(threshold=0.0, corte_ini=0, n_above=2, show=show))
 #     dfR = dfR.loc[:,~dfR.columns.duplicated()] #quita un vAngBiela duplicado
 #     dfLR = dfR
 
@@ -1557,10 +1554,10 @@ def slice_model_bikefitting_xr_cinem(
 
 #     #Lo pone en formato long y añade columna con AngBiela en grados
 #     vars_factores=['ID', 'repe', 'AngBiela_LR_y', 'time', 'time_repe']
-#     dfFactor = pd.concat([pd.melt(dfL, id_vars=vars_factores, value_vars=nomVarsContinuas_L_coord, var_name='NomVarOrig', value_name='value'),
-#                           pd.melt(dfR, id_vars=vars_factores, value_vars=nomVarsContinuas_R_coord, var_name='NomVarOrig', value_name='value'),
+#     dfFactor = pd.concat([pd.melt(dfL, id_vars=vars_factores, value_vars=n_varsContinuas_L_coord, var_name='NomVarOrig', value_name='value'),
+#                           pd.melt(dfR, id_vars=vars_factores, value_vars=n_varsContinuas_R_coord, var_name='NomVarOrig', value_name='value'),
 #                           #pd.melt(dfLR, id_vars=dfLR.columns[:4], value_vars=dfLR.columns[-4:], var_name='NomVarOrig', value_name='value')
-#                           pd.melt(dfLR, id_vars=vars_factores, value_vars=nomVarsContinuas_LR_coord, var_name='NomVarOrig', value_name='value')
+#                           pd.melt(dfLR, id_vars=vars_factores, value_vars=n_varsContinuas_LR_coord, var_name='NomVarOrig', value_name='value')
 #                          ])
 #     dfFactor = dfFactor.assign(**{'AngBielaInRepe':np.rad2deg(dfFactor['AngBiela_LR_y']+np.pi),
 #                             'n_var':dfFactor['NomVarOrig'].str.split('_', expand=True)[0],
@@ -2105,33 +2102,33 @@ def _draw_error_band(ax, x, y, err, **kwargs):
 
 
 # Función genérica para guardar todas las gráficas creadas
-def _save_graph(nom="A", carpeta_guardar=None, fig=None):
-    if carpeta_guardar is None:
+def _save_graph(nom="A", save_path=None, fig=None):
+    if save_path is None:
         print("No se ha especificado la carpeta de guardado")
         return
 
-    # print(carpeta_guardar)
-    # print(formato_imagen)
-    ruta_fig = carpeta_guardar.joinpath(nom).with_suffix(formato_imagen)
-    # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfu.rename_variables(nomvar) + '_' + eje + formato_imagen
-    if formato_imagen == ".pdf":
+    # print(save_path)
+    # print(image_format)
+    ruta_fig = save_path.joinpath(nom).with_suffix(image_format)
+    # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfu.rename_variables(nomvar) + '_' + eje + image_format
+    if image_format == ".pdf":
         with PdfPages(ruta_fig) as pdf_pages:
             pdf_pages.savefig(fig)
     else:
         fig.savefig(ruta_fig, dpi=300)
 
 
-def make_plots_cinem(
+def make_graphs_cinem(
     daGraf,
     repes=[0, 10],
-    nomvars=["AngArtKnee", "AngArtHip", "AngArtAnkle"],
-    ejes=["x", "y"],
-    tipo_graf=["lados_lin", "lados_circ", "coordinacion", "planoXY"],
-    compara_lados_graf=False,
+    n_vars=["AngArtKnee", "AngArtHip", "AngArtAnkle"],
+    axis=["x", "y"],
+    kind_graph=["lados_lin", "lados_circ", "coordinacion", "planoXY"],
+    compare_sides=False,
     ensemble_avg=True,
-    formato_imagen=".pdf",
+    image_format=".pdf",
     show_in_console=False,
-    carpeta_guardar=False,
+    save_path=False,
 ) -> None:  # por mejorar: que se puedan descartar repeticiones intermedias
 
     import itertools
@@ -2147,14 +2144,14 @@ def make_plots_cinem(
         '_P_': Gráfica posición/posición (plano) eje articular
     """
 
-    if tipo_graf is None:
+    if kind_graph is None:
         raise ValueError(
-            "Debes indicar el tipo de gráfica (Ej: tipo_graf=['lados_lin'])"
+            "Debes indicar el tipo de gráfica (Ej: kind_graph=['lados_lin'])"
         )
 
     # dfLateral.loc[:, 'side'] = dfLateral.loc[:, 'side'].replace({'L':'I', 'R':'D'})
 
-    numreps = int(daGraf.phase.max())  # dfGraf["phase"].max()
+    numreps = int(daGraf.phase.max())  # dfGraph["phase"].max()
     if repes is not None:  # si no se indica nada, muestra todas las repeticiones
         if repes[-1] > numreps:
             raise ValueError("La repetición más alta no está incluida en los datos")
@@ -2172,15 +2169,15 @@ def make_plots_cinem(
     #     repes[0], repes[1]
     # ).tolist()  # rango de repeticiones para todas las gráficas
 
-    # dfGraf = dfGraf.query("phase==@rango")
+    # dfGraph = dfGraph.query("phase==@rango")
 
     # Lo pasa a dataframe
-    dfGraf = daGraf.to_dataframe(name="value").dropna().reset_index()
+    dfGraph = daGraf.to_dataframe(name="value").dropna().reset_index()
 
     # ---------------------------------------
     # Crea carpeta donde guardará las gráficas
-    if carpeta_guardar:
-        carpeta_output = Path(carpeta_guardar)  # / "Figs"
+    if save_path:
+        carpeta_output = Path(save_path)  # / "Figs"
         if not carpeta_output.exists():
             carpeta_output.mkdir()
 
@@ -2189,7 +2186,7 @@ def make_plots_cinem(
         ci = "sd"
         unit = None
         alpha = 1
-        # g = sns.lineplot(data=dfGraf.query('n_var == @nomvar & eje ==@eje & repe==@rango'), x='AngBielaInRepe', y='value', hue='side', errorbar='sd', lw=1, palette=['r', 'lime'], ax=ax)
+        # g = sns.lineplot(data=dfGraph.query('n_var == @nomvar & eje ==@eje & repe==@rango'), x='AngBielaInRepe', y='value', hue='side', errorbar='sd', lw=1, palette=['r', 'lime'], ax=ax)
     else:
         estim = None
         ci = ("ci", 95)
@@ -2203,11 +2200,11 @@ def make_plots_cinem(
         # "grid.zorder": 1 # se controla con el zorder de cada axis set_zorder
     }
     with sns.plotting_context(context="paper", rc=rc):  # context="paper",
-        if "knee_limits_obj" in tipo_graf:  # "lados_lin"
+        if "knee_limits_obj" in kind_graph:  # "lados_lin"
             """Pruebas con seaborn objects"""
             import seaborn.objects as so
 
-            for nomvar, eje in itertools.product(nomvars, ejes):
+            for nomvar, eje in itertools.product(n_vars, axis):
                 # print(nomvar,eje)
                 titulo = "{0:s} {1:s}".format(
                     nfu.rename_variables(nomvar), nfu.rename_variables(eje)
@@ -2218,7 +2215,7 @@ def make_plots_cinem(
 
                 g = (
                     so.Plot(
-                        data=dfGraf.query("n_var==@nomvar & axis==@eje"),
+                        data=dfGraph.query("n_var==@nomvar & axis==@eje"),
                         x="AngBielaInRepe",
                         y="value",
                         color="side",
@@ -2230,8 +2227,8 @@ def make_plots_cinem(
                     .plot()
                 )
         # Gráficas ÁNGULO / BIELA repetición a repetición con variables por separado
-        if "lados_lin" in tipo_graf:
-            for nomvar, eje in itertools.product(nomvars, ejes):
+        if "lados_lin" in kind_graph:
+            for nomvar, eje in itertools.product(n_vars, axis):
                 # print(nomvar,eje)
                 titulo = "{0:s} {1:s}".format(
                     nfu.rename_variables(nomvar), nfu.rename_variables(eje)
@@ -2241,14 +2238,14 @@ def make_plots_cinem(
                 fig, ax = plt.subplots(figsize=(4, 3), dpi=300)
 
                 # Compara lados con spm1d
-                if compara_lados_graf:
-                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar & axis==@eje"))
+                if compare_sides:
+                    ti = calculate_spm1d(dfGraph.query("n_var==@nomvar & axis==@eje"))
 
                     # Marca regiones con diferencia L y R
                     plot_clusters(ti, y=5, ax=ax, print_p=False)
                 if ensemble_avg == "completo":
                     sns.lineplot(
-                        data=dfGraf.query("n_var==@nomvar & axis==@eje"),
+                        data=dfGraph.query("n_var==@nomvar & axis==@eje"),
                         x="AngBielaInRepe",
                         y="value",
                         hue="side",
@@ -2262,7 +2259,7 @@ def make_plots_cinem(
                         ax=ax,
                     )  #'darkgrey', 'darkgrey'
                 g = sns.lineplot(
-                    data=dfGraf.query("n_var==@nomvar & axis==@eje"),
+                    data=dfGraph.query("n_var==@nomvar & axis==@eje"),
                     x="AngBielaInRepe",
                     y="value",
                     hue="side",
@@ -2316,12 +2313,13 @@ def make_plots_cinem(
                     )
 
                     # crea la gráfica pequeña
-                    dfGraf_sub = dfGraf[
-                        (dfGraf.AngBielaInRepe >= 170) & (dfGraf.AngBielaInRepe <= 190)
+                    dfGraph_sub = dfGraph[
+                        (dfGraph.AngBielaInRepe >= 170)
+                        & (dfGraph.AngBielaInRepe <= 190)
                     ].query("n_var==@nomvar & axis==@eje")
                     for est, uni in zip([None, "mean"], ["phase", None]):
                         sns.lineplot(
-                            data=dfGraf_sub,
+                            data=dfGraph_sub,
                             x="AngBielaInRepe",
                             y="value",
                             hue="side",
@@ -2335,26 +2333,26 @@ def make_plots_cinem(
                             ax=ax_zoom,
                             legend=None,
                         )
-                    # for n, dfph in dfGraf_sub.groupby('phase'): # queda mejor pintando las líneas de una en una
+                    # for n, dfph in dfGraph_sub.groupby('phase'): # queda mejor pintando las líneas de una en una
                     #     dfph[dfph.side=='L'].plot(ax=ax_zoom, x='AngBielaInRepe', y='value', c='r', lw=0.5, alpha=0.6, legend=False, zorder=1)
                     #     dfph[dfph.side=='R'].plot(ax=ax_zoom, x='AngBielaInRepe', y='value', c='lime', lw=0.5, alpha=0.6, legend=False, zorder=1)
                     # dfph[dfph.side=='L'].mean().plot(ax=ax_zoom, x='AngBielaInRepe', y='value', c='r', lw=0.5, alpha=0.6, legend=False, zorder=1)
 
-                    # ax_zoom.plot(dfGraf_sub[dfGraf_sub.side=='L']["AngBielaInRepe"],
-                    #              dfGraf_sub[dfGraf_sub.side=='L']["value"], c='r', lw=0.5, alpha=0.6
+                    # ax_zoom.plot(dfGraph_sub[dfGraph_sub.side=='L']["AngBielaInRepe"],
+                    #              dfGraph_sub[dfGraph_sub.side=='L']["value"], c='r', lw=0.5, alpha=0.6
                     # )
-                    # ax_zoom.plot(dfGraf_sub[dfGraf_sub.side=='R']["AngBielaInRepe"],
-                    #              dfGraf_sub[dfGraf_sub.side=='R']["value"], c='lime', lw=0.5, alpha=0.6
+                    # ax_zoom.plot(dfGraph_sub[dfGraph_sub.side=='R']["AngBielaInRepe"],
+                    #              dfGraph_sub[dfGraph_sub.side=='R']["value"], c='lime', lw=0.5, alpha=0.6
                     # )
                     # Añade puntos en biela 180º
                     ax_zoom.scatter(
-                        dfGraf_sub[
-                            (dfGraf_sub.side == "L")
-                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        dfGraph_sub[
+                            (dfGraph_sub.side == "L")
+                            & (dfGraph_sub.AngBielaInRepe == 180)
                         ]["AngBielaInRepe"],
-                        dfGraf_sub[
-                            (dfGraf_sub.side == "L")
-                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        dfGraph_sub[
+                            (dfGraph_sub.side == "L")
+                            & (dfGraph_sub.AngBielaInRepe == 180)
                         ]["value"],
                         s=2,
                         c="r",
@@ -2363,13 +2361,13 @@ def make_plots_cinem(
                         zorder=3,
                     )
                     ax_zoom.scatter(
-                        dfGraf_sub[
-                            (dfGraf_sub.side == "R")
-                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        dfGraph_sub[
+                            (dfGraph_sub.side == "R")
+                            & (dfGraph_sub.AngBielaInRepe == 180)
                         ]["AngBielaInRepe"],
-                        dfGraf_sub[
-                            (dfGraf_sub.side == "R")
-                            & (dfGraf_sub.AngBielaInRepe == 180)
+                        dfGraph_sub[
+                            (dfGraph_sub.side == "R")
+                            & (dfGraph_sub.AngBielaInRepe == 180)
                         ]["value"],
                         s=2,
                         c="lime",
@@ -2406,7 +2404,7 @@ def make_plots_cinem(
                         .sel(n_var=nomvar, axis=eje)
                         .mean(["phase", "AngBielaInRepe"])
                     )
-                    # dfGraf.query("n_var==@nomvar & axis==@eje"  # & side=="R"').groupby('side')["value"].mean()
+                    # dfGraph.query("n_var==@nomvar & axis==@eje"  # & side=="R"').groupby('side')["value"].mean()
                     for n, med in media_vAng.groupby(
                         "side", squeeze=False
                     ):  # .coords['side'].values:
@@ -2465,10 +2463,10 @@ def make_plots_cinem(
 
                 plt.tight_layout()
 
-                if carpeta_guardar:
+                if save_path:
                     _save_graph(
-                        nom=f"{dfGraf["ID"].iloc[0]}_A_{nfu.rename_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output,
+                        nom=f"{dfGraph["ID"].iloc[0]}_A_{nfu.rename_variables(nomvar)}_{eje}",
+                        save_path=carpeta_output,
                         fig=fig,
                     )
 
@@ -2478,8 +2476,8 @@ def make_plots_cinem(
         # ---------------------------------------
 
         # Gráfica ÁNGULO / BIELA Radial
-        if "lados_circ" in tipo_graf:
-            for nomvar, eje in itertools.product(nomvars, ejes):
+        if "lados_circ" in kind_graph:
+            for nomvar, eje in itertools.product(n_vars, axis):
                 # print(nomvar,eje)
                 titulo = "{0:s} {1:s}".format(
                     nfu.rename_variables(nomvar), nfu.rename_variables(eje)
@@ -2490,7 +2488,7 @@ def make_plots_cinem(
                 )
                 if ensemble_avg == "completo":
                     sns.lineplot(
-                        data=dfGraf.query("n_var == @nomvar & axis ==@eje"),
+                        data=dfGraph.query("n_var == @nomvar & axis ==@eje"),
                         x="AngBielaInRepe_rad",
                         y="value",
                         hue="side",
@@ -2503,7 +2501,7 @@ def make_plots_cinem(
                         ax=ax,
                     )  #'darkgrey', 'darkgrey'
                 g = sns.lineplot(
-                    data=dfGraf.query("n_var == @nomvar & axis ==@eje"),
+                    data=dfGraph.query("n_var == @nomvar & axis ==@eje"),
                     x="AngBielaInRepe_rad",
                     y="value",
                     hue="side",
@@ -2544,10 +2542,10 @@ def make_plots_cinem(
 
                 plt.tight_layout()
 
-                if carpeta_guardar:
+                if save_path:
                     _save_graph(
-                        nom=f"{dfGraf["ID"].iloc[0]}_AP_{nfu.rename_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output,
+                        nom=f"{dfGraph["ID"].iloc[0]}_AP_{nfu.rename_variables(nomvar)}_{eje}",
+                        save_path=carpeta_output,
                         fig=fig,
                     )
 
@@ -2557,20 +2555,20 @@ def make_plots_cinem(
         # ---------------------------------------
 
         # Gráfica ÁNGULO/ÁNGULO
-        if "coordinacion" in tipo_graf:
-            for eje in ejes:
-                for parnomvar in itertools.combinations(nomvars, 2):
+        if "coordinacion" in kind_graph:
+            for eje in axis:
+                for parnomvar in itertools.combinations(n_vars, 2):
                     # print(parnomvar[0])
                     # rango=np.arange(repes[0],repes[1]).tolist()
 
                     # Adapta el dataframe para que tenga las dos variables en columnas
-                    df = dfGraf.query("n_var==@parnomvar[0] & axis==@eje")[
+                    df = dfGraph.query("n_var==@parnomvar[0] & axis==@eje")[
                         ["ID", "repe", "side", "axis", "AngBielaInRepe"]
                     ].reset_index(drop=True)
-                    df[parnomvar[0]] = dfGraf.query(
+                    df[parnomvar[0]] = dfGraph.query(
                         "n_var==@parnomvar[0] & axis==@eje"
                     )["value"].reset_index(drop=True)
-                    df[parnomvar[1]] = dfGraf.query(
+                    df[parnomvar[1]] = dfGraph.query(
                         "n_var==@parnomvar[1] & axis==@eje"
                     )["value"].reset_index(drop=True)
 
@@ -2737,7 +2735,7 @@ def make_plots_cinem(
 
                         if ensemble_avg == "completo":
                             # print('dibuja repes sueltas en' + nomvar)
-                            for rep in range(dfGraf.phase.max()):
+                            for rep in range(dfGraph.phase.max()):
                                 ax.plot(
                                     df.query('side=="L"').loc[:, parnomvar[1]],
                                     df.query('side=="L"').loc[:, parnomvar[0]],
@@ -2799,10 +2797,10 @@ def make_plots_cinem(
 
                     plt.tight_layout()
 
-                    if carpeta_guardar:
+                    if save_path:
                         _save_graph(
-                            nom=f"{dfGraf["ID"].iloc[0]}_AA_{nfu.rename_variables(parnomvar[0])}-{nfu.rename_variables(parnomvar[1])}_{eje}",
-                            carpeta_guardar=carpeta_output,
+                            nom=f"{dfGraph["ID"].iloc[0]}_AA_{nfu.rename_variables(parnomvar[0])}-{nfu.rename_variables(parnomvar[1])}_{eje}",
+                            save_path=carpeta_output,
                             fig=fig,
                         )
 
@@ -2812,8 +2810,8 @@ def make_plots_cinem(
             # ---------------------------------------
 
         # Gráficas individuales de una en una
-        if "indiv_lin" in tipo_graf:
-            for nomvar, eje in itertools.product(nomvars, ejes):
+        if "indiv_lin" in kind_graph:
+            for nomvar, eje in itertools.product(n_vars, axis):
                 # print(nomvar, eje)
                 # nom=dfFactorTodosNorm.loc[dfFactorTodosNorm['side'].str.contains('LR'), 'n_var'].unique()#nombres de variables con LR
                 if nomvar == "AngSegPELVIS" and eje == "y":
@@ -2826,7 +2824,7 @@ def make_plots_cinem(
                 fig, ax = plt.subplots(figsize=(4, 3), dpi=300)
                 if ensemble_avg == "completo":
                     sns.lineplot(
-                        data=dfGraf.query("n_var == @nomvar & axis ==@eje"),
+                        data=dfGraph.query("n_var == @nomvar & axis ==@eje"),
                         x="AngBielaInRepe",
                         y="value",
                         estimator=None,
@@ -2839,7 +2837,7 @@ def make_plots_cinem(
                         ax=ax,
                     )  #'lightgrey'
                 g = sns.lineplot(
-                    data=dfGraf.query("n_var == @nomvar & axis ==@eje"),
+                    data=dfGraph.query("n_var == @nomvar & axis ==@eje"),
                     x="AngBielaInRepe",
                     y="value",
                     estimator=estim,
@@ -2878,7 +2876,7 @@ def make_plots_cinem(
                 #     zorder=1,
                 # )
 
-                media = dfGraf.query("n_var == @nomvar & axis ==@eje")["value"].mean()
+                media = dfGraph.query("n_var == @nomvar & axis ==@eje")["value"].mean()
                 ax.axhline(
                     y=media,
                     ls="-.",
@@ -2917,10 +2915,10 @@ def make_plots_cinem(
 
                 plt.tight_layout()
 
-                if carpeta_guardar:
+                if save_path:
                     _save_graph(
-                        nom=f"{dfGraf["ID"].iloc[0]}_I_{nfu.rename_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output,
+                        nom=f"{dfGraph["ID"].iloc[0]}_I_{nfu.rename_variables(nomvar)}_{eje}",
+                        save_path=carpeta_output,
                         fig=fig,
                     )
 
@@ -2930,8 +2928,8 @@ def make_plots_cinem(
         # ---------------------------------------
 
         # Gráficas individuales de una en una circular
-        if "indiv_circ" in tipo_graf:
-            for nomvar, eje in itertools.product(nomvars, ejes):
+        if "indiv_circ" in kind_graph:
+            for nomvar, eje in itertools.product(n_vars, axis):
                 # print(nomvar, eje)
                 # nom=dfFactorTodosNorm.loc[dfFactorTodosNorm['side'].str.contains('LR'), 'n_var'].unique()#nombres de variables con LR
 
@@ -2944,7 +2942,7 @@ def make_plots_cinem(
                 )
                 if ensemble_avg == "completo":
                     sns.lineplot(
-                        data=dfGraf.query("n_var == @nomvar & axis ==@eje"),
+                        data=dfGraph.query("n_var == @nomvar & axis ==@eje"),
                         x="AngBielaInRepe_rad",
                         y="value",
                         estimator=None,
@@ -2956,7 +2954,7 @@ def make_plots_cinem(
                         ax=ax,
                     )  #'lightgrey'
                 g = sns.lineplot(
-                    data=dfGraf.query("n_var == @nomvar & axis ==@eje"),
+                    data=dfGraph.query("n_var == @nomvar & axis ==@eje"),
                     x="AngBielaInRepe_rad",
                     y="value",
                     estimator=estim,
@@ -2981,10 +2979,10 @@ def make_plots_cinem(
 
                 plt.tight_layout()
 
-                if carpeta_guardar:
+                if save_path:
                     _save_graph(
-                        nom=f"{dfGraf["ID"].iloc[0]}_IP_{nfu.rename_variables(nomvar)}_{eje}",
-                        carpeta_guardar=carpeta_output,
+                        nom=f"{dfGraph["ID"].iloc[0]}_IP_{nfu.rename_variables(nomvar)}_{eje}",
+                        save_path=carpeta_output,
                         fig=fig,
                     )
 
@@ -2993,29 +2991,29 @@ def make_plots_cinem(
 
         # ---------------------------------------
 
-        # Gráfica POSICIÓN / POSICIÓN ejes articulares
-        if "planoXY" in tipo_graf:
-            for nomvar in nomvars:
-                for parejes in itertools.combinations(ejes, 2):
-                    # print(nomvar, parejes)
+        # Gráfica POSICIÓN / POSICIÓN axis articulares
+        if "planoXY" in kind_graph:
+            for nomvar in n_vars:
+                for axis_pair in itertools.combinations(axis, 2):
+                    # print(nomvar, axis_pair)
 
                     # Adapta el dataframe para que tenga las dos variables en columnas
                     # probar esta función de guardar_graficas_exploracion_globales
-                    # dfPares = crea_df_comparacion_pares(dfGraf, nomvar='KJC', parejes=['x','z'])
-                    df = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")[
+                    # dfPares = create_df_compararing_pairs(dfGraph, nomvar='KJC', axis_pair=['x','z'])
+                    df = dfGraph.query("n_var==@nomvar & axis==@axis_pair[0]")[
                         ["ID", "phase", "side", "axis", "AngBielaInRepe"]
                     ].reset_index(drop=True)
-                    var1 = nfu.rename_variables("Eje " + parejes[0])
-                    var2 = nfu.rename_variables("Eje " + parejes[1])
-                    df[var1] = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")[
+                    var1 = nfu.rename_variables("Eje " + axis_pair[0])
+                    var2 = nfu.rename_variables("Eje " + axis_pair[1])
+                    df[var1] = dfGraph.query("n_var==@nomvar & axis==@axis_pair[0]")[
                         "value"
                     ].reset_index(drop=True)
-                    df[var2] = dfGraf.query("n_var==@nomvar & axis==@parejes[1]")[
+                    df[var2] = dfGraph.query("n_var==@nomvar & axis==@axis_pair[1]")[
                         "value"
                     ].reset_index(drop=True)
 
                     offsetX = 0.0
-                    """if parejes[0] == "x": #al venir restado EjeBiela el offset no hace falta??
+                    """if axis_pair[0] == "x": #al venir restado EjeBiela el offset no hace falta??
                         try:  # solución provisional
                             offsetX = (
                                 (
@@ -3046,23 +3044,23 @@ def make_plots_cinem(
                         ] -= 0#offsetX  # var1.query('side=="Der"').min()['var1'] #solo para ajustar el cero del eje x
                     """
                     # En la visión frontal invierte el eje x para que se vea de frente
-                    if parejes == ("x", "z"):
+                    if axis_pair == ("x", "z"):
                         print("")
                         # offsetX = ((daGraf.isel(ID=0).sel(n_var='PosPedal', axis='x', side='L') + daGraf.isel(ID=0).sel(n_var='PosPedal', axis='x', side='R')) / 2).mean(dim=['AngBielaInRepe', 'repe']).data
                         df[var1] = -df[var1]
                         # var1['var1']+=offsetX #var1.query('side=="Der"').min()['var1'] #solo para ajustar el cero del eje x
                     # En la visión superior invierte el eje x para que las coordenadas sean positivas
-                    if parejes == ("x", "y"):
+                    if axis_pair == ("x", "y"):
                         print("")
                         # var1['var1']-=var1.iloc[0,var1.columns.get_loc('var1')] #solo para ajustar el cero del eje
 
                     r"""
                     #En la visión frontal invierte el eje x para que se vea de frente                
-                    if parejes==('x','z'):
+                    if axis_pair==('x','z'):
                         df[var1]=-df[var1]
                         df[var1]-=df.query('side=="R"').min()[var1] #solo para ajustar el cero del eje x
                     #En la visión superior invierte el eje x para que las coordenadas sean positivas
-                    if parejes==('x','y'):
+                    if axis_pair==('x','y'):
                         df[var1]-=df.iloc[0,df.columns.get_loc(var1)] #solo para ajustar el cero del eje 
                     """
 
@@ -3213,7 +3211,7 @@ def make_plots_cinem(
 
                         if ensemble_avg == "completo":
                             # print('dibuja repes sueltas en' + nomvar)
-                            for rep in range(dfGraf.phase.max()):
+                            for rep in range(dfGraph.phase.max()):
                                 ax.plot(
                                     df.query('side=="L" & phase==@rep').loc[:, var1],
                                     df.query('side=="L" & phase==@rep').loc[:, var2],
@@ -3232,7 +3230,7 @@ def make_plots_cinem(
                                 )
 
                     # En vista frontal rodilla coloca rango posición caderas-tobillos
-                    if nomvar == "KJC" and parejes == ("x", "z"):
+                    if nomvar == "KJC" and axis_pair == ("x", "z"):
                         try:  # solución provisional para cuando se llama individualmente desde Nexus o desde el tratamiento global
                             eje_medio = (
                                 -daGraf.isel(ID=0)
@@ -3316,7 +3314,7 @@ def make_plots_cinem(
                     # g.figure.suptitle('{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
                     g.set_title(
                         "Vista {0:s} {1:s}".format(
-                            nfu.rename_variables([parejes[0], parejes[1]]),
+                            nfu.rename_variables([axis_pair[0], axis_pair[1]]),
                             nfu.rename_variables(nomvar),
                         )
                     )  #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
@@ -3348,10 +3346,10 @@ def make_plots_cinem(
                     ax.axis("equal")  # hace los dos ejes proporcionales
                     plt.tight_layout()
 
-                    if carpeta_guardar:
+                    if save_path:
                         _save_graph(
-                            nom=f"{dfGraf["ID"].iloc[0]}_P_{nfu.rename_variables(nomvar)}_frontal",
-                            carpeta_guardar=carpeta_output,
+                            nom=f"{dfGraph["ID"].iloc[0]}_P_{nfu.rename_variables(nomvar)}_frontal",
+                            save_path=carpeta_output,
                             fig=fig,
                         )
 
@@ -3363,15 +3361,15 @@ def make_plots_cinem(
     # ---------------------------------------
 
 
-def make_plots_triples_cinem(
+def make_graphs_triples_cinem(
     daGraf,
     repes=[0, 10],
-    tipo_graf=None,
-    compara_lados_graf=False,
+    kind_graph=None,
+    compare_sides=False,
     ensemble_avg=False,
-    formato_imagen=".pdf",
+    image_format=".pdf",
     show_in_console=True,
-    carpeta_guardar=False,
+    save_path=False,
 ) -> None:  # por mejorar: que se puedan descartar repeticiones intermedias
     import itertools
 
@@ -3388,7 +3386,7 @@ def make_plots_triples_cinem(
         '_A3D_': Gráfica Ángulo de misma variable en 3 ejes
     """
     # TODO: FALTA QUE SELECCIONE REPES SUELTAS
-    numreps = int(daGraf.phase.max())  # dfGraf["phase"].max()
+    numreps = int(daGraf.phase.max())  # dfGraph["phase"].max()
     if repes is not None:  # si no se indica nada, muestra todas las repeticiones
         if repes[-1] > numreps:
             raise ValueError("La repetición más alta no está incluida en los datos")
@@ -3400,25 +3398,25 @@ def make_plots_triples_cinem(
     daGraf = daGraf.sel(phase=repes)
 
     # Lo pasa a dataframe
-    dfGraf = daGraf.to_dataframe(name="value").dropna().reset_index()
+    dfGraph = daGraf.to_dataframe(name="value").dropna().reset_index()
 
-    if tipo_graf is None:
+    if kind_graph is None:
         raise ValueError(
-            "Debes indicar el tipo de gráfica (Ej: tipo_graf=['lados_lin'])"
+            "Debes indicar el tipo de gráfica (Ej: kind_graph=['lados_lin'])"
         )
 
     # Cambia los nombres de las variables
-    dfGraf["n_var"] = dfGraf["n_var"].replace(
+    dfGraph["n_var"] = dfGraph["n_var"].replace(
         {
-            dfGraf.n_var.unique()[i]: nfu.rename_variables(dfGraf.n_var.unique()[i])
-            for i in range(len(dfGraf.n_var.unique()))
+            dfGraph.n_var.unique()[i]: nfu.rename_variables(dfGraph.n_var.unique()[i])
+            for i in range(len(dfGraph.n_var.unique()))
         }
     )
-    dfGraf["side"] = dfGraf["side"].replace({"L": "Izq", "R": "Der"})
+    dfGraph["side"] = dfGraph["side"].replace({"L": "Izq", "R": "Der"})
 
     # dfLateral.loc[:, 'side'] = dfLateral.loc[:, 'side'].replace({'L':'I', 'R':'D'})
 
-    # numreps = dfGraf["phase"].max()
+    # numreps = dfGraph["phase"].max()
     # if repes == None:  # si no se indica nada, muestra todas las repeticiones
     #     repes = [0, numreps]
     # else:  # comprueba si tiene tantas repeticiones como se le pide
@@ -3427,12 +3425,12 @@ def make_plots_triples_cinem(
     # rango = np.arange(
     #     repes[0], repes[1]
     # ).tolist()  # rango de repeticiones para todas las gráficas
-    # dfGraf = dfGraf.query("phase==@rango").copy()
+    # dfGraph = dfGraph.query("phase==@rango").copy()
 
     # ---------------------------------------
     # Crea carpeta donde guardará las gráficas
-    if carpeta_guardar:
-        carpeta_output = Path(carpeta_guardar)  # / "Figs"
+    if save_path:
+        carpeta_output = Path(save_path)  # / "Figs"
         if not carpeta_output.exists():
             carpeta_output.mkdir()
 
@@ -3448,15 +3446,15 @@ def make_plots_triples_cinem(
         alpha = 0.5
 
     # Función genérica para guardar todas las gráficas creadas
-    # def guarda_grafica(nom="A", carpeta_guardar=None):
-    #     if carpeta_guardar is None:
+    # def guarda_grafica(nom="A", save_path=None):
+    #     if save_path is None:
     #         print("No se ha especificado la carpeta de guardado")
     #         return
 
-    #     ruta_fig = carpeta_guardar.joinpath(dfGraf["ID"].iloc[0] + nom).with_suffix(
-    #         formato_imagen
+    #     ruta_fig = save_path.joinpath(dfGraph["ID"].iloc[0] + nom).with_suffix(
+    #         image_format
     #     )
-    #     if formato_imagen == ".pdf":
+    #     if image_format == ".pdf":
     #         with PdfPages(ruta_fig) as pdf_pages:
     #             pdf_pages.savefig(g.fig)
     #     else:
@@ -3465,9 +3463,9 @@ def make_plots_triples_cinem(
     rc = {"axes.labelsize": "x-large"}  # títulos de cada gráfica
     with sns.plotting_context(context="paper", rc=rc):
         # Gráficas ÁNGULO / BIELA repetición a repetición con variables por separado
-        if "lados_lin" in tipo_graf:
+        if "lados_lin" in kind_graph:
             g = sns.relplot(
-                data=dfGraf,
+                data=dfGraph,
                 x="AngBielaInRepe",
                 y="value",
                 col="n_var",
@@ -3537,17 +3535,17 @@ def make_plots_triples_cinem(
                 # )
                 # ax.set_xlabel('Ángulo de biela (grados)')
 
-                if compara_lados_graf:
-                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar"))
+                if compare_sides:
+                    ti = calculate_spm1d(dfGraph.query("n_var==@nomvar"))
                     # Marca regiones con diferencia L y R
                     plot_clusters(ti, y=5, ax=ax, print_p=False)
 
             # plt.tight_layout()
 
-            if carpeta_guardar:
+            if save_path:
                 _save_graph(
-                    nom=f"{dfGraf["ID"].iloc[0]}_A_Triple_{dfGraf.axis.unique()[0]}",
-                    carpeta_guardar=carpeta_output,
+                    nom=f"{dfGraph["ID"].iloc[0]}_A_Triple_{dfGraph.axis.unique()[0]}",
+                    save_path=carpeta_output,
                     fig=g.figure,
                 )
 
@@ -3559,10 +3557,10 @@ def make_plots_triples_cinem(
             # ---------------------------------------
 
         # Gráficas ÁNGULO / BIELA Radial
-        if "lados_circ" in tipo_graf:
+        if "lados_circ" in kind_graph:
 
             g = sns.FacetGrid(
-                dfGraf,
+                dfGraph,
                 col="n_var",
                 hue="side",
                 subplot_kws=dict(projection="polar"),
@@ -3630,10 +3628,10 @@ def make_plots_triples_cinem(
 
             # plt.tight_layout()
 
-            if carpeta_guardar:
+            if save_path:
                 _save_graph(
-                    nom=f"{dfGraf["ID"].iloc[0]}_AP_Triple_{dfGraf.axis.unique()[0]}",
-                    carpeta_guardar=carpeta_output,
+                    nom=f"{dfGraph["ID"].iloc[0]}_AP_Triple_{dfGraph.axis.unique()[0]}",
+                    save_path=carpeta_output,
                     fig=g.figure,
                 )
 
@@ -3645,21 +3643,21 @@ def make_plots_triples_cinem(
         # ---------------------------------------
 
         # Gráficas coordinación Ángulo/Ángulo
-        if "coordinacion" in tipo_graf:
+        if "coordinacion" in kind_graph:
 
             # Crea un dataframe con las comparaciones pareadas y con columna con nº comparación
             df = []
             for comp, parnomvar in enumerate(
-                itertools.combinations(dfGraf.n_var.unique(), 2)
+                itertools.combinations(dfGraph.n_var.unique(), 2)
             ):
                 # print(comp,parnomvar)
                 df.append(
                     pd.concat(
                         [
-                            dfGraf.rename(columns={"value": "var1"})
+                            dfGraph.rename(columns={"value": "var1"})
                             .query("n_var==@parnomvar[0]")
                             .reset_index(drop=True),
-                            dfGraf.rename(columns={"value": "var2"})
+                            dfGraph.rename(columns={"value": "var2"})
                             .query("n_var==@parnomvar[1]")["var2"]
                             .reset_index(drop=True),
                         ],
@@ -3893,7 +3891,7 @@ def make_plots_triples_cinem(
 
                     if ensemble_avg == "completo":
                         # print('dibuja repes sueltas en' + nomvar)
-                        for rep in range(dfGraf.phase.max()):
+                        for rep in range(dfGraph.phase.max()):
                             ax.plot(
                                 df.query(
                                     'side=="Izq" & comparacion==@nomvar & phase==@rep'
@@ -3924,10 +3922,10 @@ def make_plots_triples_cinem(
 
             plt.tight_layout()
 
-            if carpeta_guardar:
+            if save_path:
                 _save_graph(
-                    nom=f"{dfGraf["ID"].iloc[0]}_AA_Triple_{dfGraf.axis.unique()[0]}",
-                    carpeta_guardar=carpeta_output,
+                    nom=f"{dfGraph["ID"].iloc[0]}_AA_Triple_{dfGraph.axis.unique()[0]}",
+                    save_path=carpeta_output,
                     fig=g.figure,
                 )
 
@@ -3939,43 +3937,43 @@ def make_plots_triples_cinem(
         # ---------------------------------------
 
         # Gráfica POSICIÓN / POSICIÓN ejes articulares
-        if "planoXY" in tipo_graf:
+        if "planoXY" in kind_graph:
             # Crea un dataframe con las comparaciones pareadas y con columna con nº comparación
             df = []
-            for comp, parejes in enumerate(
-                itertools.combinations(dfGraf.axis.unique(), 2)
+            for comp, axis_pair in enumerate(
+                itertools.combinations(dfGraph.axis.unique(), 2)
             ):
-                # print(comp,parejes)
-                # var1 = dfGraf.rename(columns = {'value':'var1'}).query('axis==@parejes[0] & n_var != "desconocido"') #desconocido son los datos de pospedal
-                var1 = dfGraf.rename(columns={"value": "var1"}).query(
-                    "axis==@parejes[0]"
+                # print(comp,axis_pair)
+                # var1 = dfGraph.rename(columns = {'value':'var1'}).query('axis==@axis_pair[0] & n_var != "desconocido"') #desconocido son los datos de pospedal
+                var1 = dfGraph.rename(columns={"value": "var1"}).query(
+                    "axis==@axis_pair[0]"
                 )
 
-                # if parejes[0]=='x':
+                # if axis_pair[0]=='x':
                 #     offsetX = ((daGraf.isel(ID=0).sel(n_var='PosPedal', axis='x', side='L') + daGraf.isel(ID=0).sel(n_var='PosPedal', axis='x', side='R')) / 2).mean(dim=['AngBielaInRepe', 'phase']).data / 10 #lo pasa a cm
                 #     var1['var1']-=offsetX #var1.query('side=="Der"').min()['var1'] #solo para ajustar el cero del eje x
 
                 # En la visión frontal invierte el axis x para que se vea de frente
-                if parejes == ("x", "z"):
+                if axis_pair == ("x", "z"):
                     var1["var1"] = -var1["var1"]
                     var1["var1"] -= var1.query('side=="Der"').min()[
                         "var1"
                     ]  # solo para ajustar el cero del axis x
                 # En la visión superior invierte el axis x para que las coordenadas sean positivas
-                if parejes == ("x", "y"):
+                if axis_pair == ("x", "y"):
                     var1["var1"] -= var1.iloc[
                         0, var1.columns.get_loc("var1")
                     ]  # solo para ajustar el cero del axis
 
-                var2 = dfGraf.rename(columns={"value": "var2"}).query(
-                    "axis==@parejes[1]"
+                var2 = dfGraph.rename(columns={"value": "var2"}).query(
+                    "axis==@axis_pair[1]"
                 )["var2"]
 
                 df.append(
                     pd.concat(
                         [var1.reset_index(drop=True), var2.reset_index(drop=True)],
                         axis=1,
-                    ).assign(**{"comparacion": parejes[0] + "/" + parejes[1]})
+                    ).assign(**{"comparacion": axis_pair[0] + "/" + axis_pair[1]})
                 )
             df = pd.concat(df).sort_values(
                 by=["n_var", "side"]
@@ -4207,7 +4205,7 @@ def make_plots_triples_cinem(
 
                     if ensemble_avg == "completo":
                         # print('dibuja repes sueltas en' + nomvar)
-                        for rep in range(dfGraf.phase.max()):
+                        for rep in range(dfGraph.phase.max()):
                             ax.plot(
                                 df.query(
                                     'side=="Izq" & comparacion==@nomvar & phase==@rep'
@@ -4238,10 +4236,10 @@ def make_plots_triples_cinem(
 
             plt.tight_layout()
 
-            if carpeta_guardar:
+            if save_path:
                 _save_graph(
-                    nom=f"{dfGraf['ID'].iloc[0]}_PP_{dfGraf['n_var'][0]}_Triple",
-                    carpeta_guardar=carpeta_output,
+                    nom=f"{dfGraph['ID'].iloc[0]}_PP_{dfGraph['n_var'][0]}_Triple",
+                    save_path=carpeta_output,
                     fig=g.figure,
                 )
 
@@ -4253,18 +4251,18 @@ def make_plots_triples_cinem(
             # --------------------------------
 
         # Gráfica POSICIÓN / POSICIÓN con los tres ejes articulares simultáneamente
-        if "planoXYMultiple" in tipo_graf:
+        if "planoXYMultiple" in kind_graph:
             # Crea un dataframe con las comparaciones pareadas y con columna con nº comparación
             dfm = []
-            for comp, parejes in enumerate(
-                itertools.combinations(dfGraf.axis.unique(), 2)
+            for comp, axis_pair in enumerate(
+                itertools.combinations(dfGraph.axis.unique(), 2)
             ):
-                # print(comp,parejes)
-                var1 = dfGraf.rename(columns={"value": "var1"}).query(
-                    'axis==@parejes[0] & n_var != "desconocido"'
+                # print(comp,axis_pair)
+                var1 = dfGraph.rename(columns={"value": "var1"}).query(
+                    'axis==@axis_pair[0] & n_var != "desconocido"'
                 )  # desconocido son los datos de pospedal
 
-                if parejes[0] == "x":
+                if axis_pair[0] == "x":
                     offsetX = (
                         (
                             daGraf.isel(ID=0).sel(n_var="PosPedal", axis="x", side="L")
@@ -4281,25 +4279,25 @@ def make_plots_triples_cinem(
                     ] -= offsetX  # var1.query('side=="Der"').min()['var1'] #solo para ajustar el cero del eje x
 
                 # En la visión frontal invierte el eje x para que se vea de frente
-                if parejes == ("x", "z"):
+                if axis_pair == ("x", "z"):
                     print("")
                     # offsetX = ((daGraf.isel(ID=0).sel(n_var='PosPedal', axis='x', side='L') + daGraf.isel(ID=0).sel(n_var='PosPedal', axis='x', side='R')) / 2).mean(dim=['AngBielaInRepe', 'repe']).data
                     var1["var1"] = -var1["var1"]
                     # var1['var1']+=offsetX #var1.query('side=="Der"').min()['var1'] #solo para ajustar el cero del eje x
                 # En la visión superior invierte el eje x para que las coordenadas sean positivas
-                if parejes == ("x", "y"):
+                if axis_pair == ("x", "y"):
                     print("")
                     # var1['var1']-=var1.iloc[0,var1.columns.get_loc('var1')] #solo para ajustar el cero del eje
 
-                var2 = dfGraf.rename(columns={"value": "var2"}).query(
-                    "axis==@parejes[1]"
+                var2 = dfGraph.rename(columns={"value": "var2"}).query(
+                    "axis==@axis_pair[1]"
                 )["var2"]
 
                 dfm.append(
                     pd.concat(
                         [var1.reset_index(drop=True), var2.reset_index(drop=True)],
                         axis=1,
-                    ).assign(**{"comparacion": parejes[0] + "/" + parejes[1]})
+                    ).assign(**{"comparacion": axis_pair[0] + "/" + axis_pair[1]})
                 )
             dfm = pd.concat(dfm).sort_values(
                 by=["n_var", "side"]
@@ -4387,10 +4385,10 @@ def make_plots_triples_cinem(
 
                 # plt.tight_layout()
 
-            if carpeta_guardar:
+            if save_path:
                 _save_graph(
-                    nom=f"{dfGraf['ID'].iloc[0]}_PPM_Multiple_Triple",
-                    carpeta_guardar=carpeta_output,
+                    nom=f"{dfGraph['ID'].iloc[0]}_PPM_Multiple_Triple",
+                    save_path=carpeta_output,
                     fig=g.figure,
                 )
 
@@ -4402,8 +4400,8 @@ def make_plots_triples_cinem(
             # --------------------------------
 
         # Gráficas ÁNGULO SEGMENTOS / BIELA repetición a repetición con variables por separado
-        if "3D_lin" in tipo_graf:
-            dfGraf["axis"].replace(
+        if "3D_lin" in kind_graph:
+            dfGraph["axis"].replace(
                 {
                     "x": "Vista " + nfu.rename_variables("x"),
                     "y": "Vista " + nfu.rename_variables("y"),
@@ -4413,7 +4411,7 @@ def make_plots_triples_cinem(
             )  # {'x':u'Basculación ant./post.', 'y':u'Basculación lat.', 'z':u'Rotación'}, inplace=True)
 
             g = sns.relplot(
-                data=dfGraf,
+                data=dfGraph,
                 x="AngBielaInRepe",
                 y="value",
                 col="axis",
@@ -4463,10 +4461,10 @@ def make_plots_triples_cinem(
             if ensemble_avg == "completo":
                 # Dibuja todas las repeticiones porque con relplot no puede superponer
                 for eje, ax in g.axes_dict.items():
-                    for rep in range(dfGraf.phase.max()):
+                    for rep in range(dfGraph.phase.max()):
                         ax.plot(
                             range(361),
-                            dfGraf.query("axis==@eje & phase==@rep")["value"],
+                            dfGraph.query("axis==@eje & phase==@rep")["value"],
                             c="orange",
                             lw=0.25,
                             alpha=0.3,
@@ -4475,10 +4473,10 @@ def make_plots_triples_cinem(
 
             # plt.tight_layout()
 
-            if carpeta_guardar:
+            if save_path:
                 _save_graph(
-                    nom=f"{dfGraf['ID'].iloc[0]}_A3D_{dfGraf["n_var"][0]}_Triple",
-                    carpeta_guardar=carpeta_output,
+                    nom=f"{dfGraph['ID'].iloc[0]}_A3D_{dfGraph["n_var"][0]}_Triple",
+                    save_path=carpeta_output,
                     fig=g.figure,
                 )
 
@@ -4492,17 +4490,17 @@ def make_plots_triples_cinem(
         # ---------------------------------------
 
 
-def make_plots_EMG(
+def make_graphs_EMG(
     daGraf,
     repes=[0, 10],
-    nomvars=["REC", "BIC"],
-    tipo_graf=["lados_lin"],
+    n_vars=["REC", "BIC"],
+    kind_graph=["lados_lin"],
     otros_datos=None,
     extra_nom_archivo="",
-    compara_lados_graf=False,
+    compare_sides=False,
     ensemble_avg=False,
-    formato_imagen=".pdf",
-    carpeta_guardar=False,
+    image_format=".pdf",
+    save_path=False,
 ) -> None:  # por mejorar: que se puedan descartar repeticiones intermedias
     # import itertools
     """
@@ -4520,13 +4518,13 @@ def make_plots_EMG(
 
     # Si viene como xarray lo pasa a dataframe
     if isinstance(daGraf, xr.DataArray):
-        dfGraf = daGraf.to_dataframe(name="value").dropna().reset_index()
+        dfGraph = daGraf.to_dataframe(name="value").dropna().reset_index()
 
     # Cambia los nombres de las variables
-    # dfGraf['n_var'] = dfGraf['n_var'].replace({dfGraf.n_var.unique()[i]:nfu.rename_variables(dfGraf.n_var.unique()[i]) for i in range(len(dfGraf.n_var.unique()))})
-    dfGraf["side"] = dfGraf["side"].replace({"L": "Izq", "R": "Der"})
+    # dfGraph['n_var'] = dfGraph['n_var'].replace({dfGraph.n_var.unique()[i]:nfu.rename_variables(dfGraph.n_var.unique()[i]) for i in range(len(dfGraph.n_var.unique()))})
+    dfGraph["side"] = dfGraph["side"].replace({"L": "Izq", "R": "Der"})
 
-    numreps = dfGraf["phase"].max()
+    numreps = dfGraph["phase"].max()
     if repes == None:  # si no se indica nada, muestra todas las repeticiones
         repes = [0, numreps]
     else:  # comprueba si tiene tantas repeticiones como se le pide
@@ -4535,12 +4533,12 @@ def make_plots_EMG(
     rango = np.arange(
         repes[0], repes[1]
     ).tolist()  # rango de repeticiones para todas las gráficas
-    dfGraf = dfGraf.query("phase==@rango").copy()
+    dfGraph = dfGraph.query("phase==@rango").copy()
 
     # ---------------------------------------
     # Crea carpeta donde guardará las gráficas
-    if carpeta_guardar:
-        carpeta_output = Path(carpeta_guardar)  # / "Figs"
+    if save_path:
+        carpeta_output = Path(save_path)  # / "Figs"
         if not carpeta_output.exists():
             carpeta_output.mkdir()
 
@@ -4549,7 +4547,7 @@ def make_plots_EMG(
         ci = "sd"
         unit = None
         alpha = 1
-        # g = sns.lineplot(data=dfGraf.query('n_var == @nomvar & axis ==@eje & repe==@rango'), x='AngBielaInRepe', y='value', hue='side', errorbar='sd', lw=1, palette=['r', 'lime'], ax=ax)
+        # g = sns.lineplot(data=dfGraph.query('n_var == @nomvar & axis ==@eje & repe==@rango'), x='AngBielaInRepe', y='value', hue='side', errorbar='sd', lw=1, palette=['r', 'lime'], ax=ax)
     else:
         estim = None
         ci = 95
@@ -4557,16 +4555,16 @@ def make_plots_EMG(
         alpha = 0.5
 
     # Función genérica para guardar todas las gráficas creadas
-    def guarda_grafica(nom="A", carpeta_guardar=None):
-        if carpeta_guardar is None:
+    def guarda_grafica(nom="A", save_path=None):
+        if save_path is None:
             print("No se ha especificado la carpeta de guardado")
             return
 
-        ruta_fig = carpeta_guardar.joinpath(dfGraf["ID"].iloc[0] + nom).with_suffix(
-            formato_imagen
+        ruta_fig = save_path.joinpath(dfGraph["ID"].iloc[0] + nom).with_suffix(
+            image_format
         )
-        # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfu.rename_variables(nomvar) + '_' + eje + formato_imagen
-        if formato_imagen == ".pdf":
+        # ruta_fig = CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_A_' + nfu.rename_variables(nomvar) + '_' + eje + image_format
+        if image_format == ".pdf":
             with PdfPages(ruta_fig) as pdf_pages:
                 pdf_pages.savefig(fig)
         else:
@@ -4575,8 +4573,8 @@ def make_plots_EMG(
     rc = {"axes.titlesize": "large"}  # títulos de cada gráfica
     with sns.plotting_context(context="paper", rc=rc):
         # Gráficas ÁNGULO / BIELA repetición a repetición con variables por separado
-        if "lados_lin" in tipo_graf:
-            for nomvar in nomvars:
+        if "lados_lin" in kind_graph:
+            for nomvar in n_vars:
                 # print(nomvar)
                 titulo = nfu.rename_variables(nomvar)
 
@@ -4584,8 +4582,8 @@ def make_plots_EMG(
                 fig, ax = plt.subplots(figsize=(4, 3), dpi=300)
 
                 # Compara lados con spm1d
-                if compara_lados_graf:
-                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar"))
+                if compare_sides:
+                    ti = calculate_spm1d(dfGraph.query("n_var==@nomvar"))
 
                     # Marca regiones con diferencia L y R
                     if ti != None:
@@ -4593,7 +4591,7 @@ def make_plots_EMG(
 
                 if ensemble_avg == "completo":
                     sns.lineplot(
-                        data=dfGraf.query("n_var==@nomvar"),
+                        data=dfGraph.query("n_var==@nomvar"),
                         x="AngBielaInRepe",
                         y="value",
                         hue="side",
@@ -4606,7 +4604,7 @@ def make_plots_EMG(
                         ax=ax,
                     )  #'darkgrey', 'darkgrey'
                 g = sns.lineplot(
-                    data=dfGraf.query("n_var==@nomvar"),
+                    data=dfGraph.query("n_var==@nomvar"),
                     x="AngBielaInRepe",
                     y="value",
                     hue="side",
@@ -4652,14 +4650,14 @@ def make_plots_EMG(
 
                 plt.tight_layout()
 
-                if carpeta_guardar:
+                if save_path:
                     guarda_grafica(nom=f"_E_{nfu.rename_variables(nomvar)}")
 
                 # plt.show()
 
         # Gráfica ÁNGULO / BIELA Radial
-        if "lados_circ" in tipo_graf:
-            for nomvar in nomvars:
+        if "lados_circ" in kind_graph:
+            for nomvar in n_vars:
                 # print(nomvar,eje)
                 titulo = nfu.rename_variables(nomvar)
 
@@ -4668,7 +4666,7 @@ def make_plots_EMG(
                 )
                 if ensemble_avg == "completo":
                     sns.lineplot(
-                        data=dfGraf.query("n_var==@nomvar"),
+                        data=dfGraph.query("n_var==@nomvar"),
                         x="AngBielaInRepe_rad",
                         y="value",
                         hue="side",
@@ -4681,7 +4679,7 @@ def make_plots_EMG(
                         ax=ax,
                     )  #'darkgrey', 'darkgrey'
                 g = sns.lineplot(
-                    data=dfGraf.query("n_var==@nomvar"),
+                    data=dfGraph.query("n_var==@nomvar"),
                     x="AngBielaInRepe_rad",
                     y="value",
                     hue="side",
@@ -4721,12 +4719,12 @@ def make_plots_EMG(
 
                 plt.tight_layout()
 
-                if carpeta_guardar:
+                if save_path:
                     guarda_grafica(nom=f"_EP_{nfu.rename_variables(nomvar)}")
 
-                # ruta_fig = carpeta_output.joinpath(dfGraf['ID'].iloc[0] + '_AP_' + nfu.rename_variables(nomvar) + '_' + eje).with_suffix(formato_imagen)
-                # #CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_AP_' + nfu.rename_variables(nomvar) + '_' + eje + formato_imagen
-                # if formato_imagen=='.pdf':
+                # ruta_fig = carpeta_output.joinpath(dfGraph['ID'].iloc[0] + '_AP_' + nfu.rename_variables(nomvar) + '_' + eje).with_suffix(image_format)
+                # #CarpetaSesion + 'Figs\\' + ArchivoActivo+ '_AP_' + nfu.rename_variables(nomvar) + '_' + eje + image_format
+                # if image_format=='.pdf':
                 #     with PdfPages(ruta_fig) as pdf_pages:
                 #         pdf_pages.savefig(fig)
                 # else:
@@ -4736,19 +4734,19 @@ def make_plots_EMG(
         # ---------------------------------------
 
         # Gráficas coordinación entre pares de músculos
-        if "coordinacion" in tipo_graf:
-            for parnomvar in nomvars:
+        if "coordinacion" in kind_graph:
+            for parnomvar in n_vars:
                 # print(parnomvar)
                 # rango=np.arange(repes[0],repes[1]).tolist()
 
                 # Adapta el dataframe para que tenga las dos variables en columnas
-                df = dfGraf.query("n_var==@parnomvar[0]")[
+                df = dfGraph.query("n_var==@parnomvar[0]")[
                     ["ID", "phase", "side", "AngBielaInRepe"]
                 ].reset_index(drop=True)
-                df[parnomvar[0]] = dfGraf.query("n_var==@parnomvar[0]")[
+                df[parnomvar[0]] = dfGraph.query("n_var==@parnomvar[0]")[
                     "value"
                 ].reset_index(drop=True)
-                df[parnomvar[1]] = dfGraf.query("n_var==@parnomvar[1]")[
+                df[parnomvar[1]] = dfGraph.query("n_var==@parnomvar[1]")[
                     "value"
                 ].reset_index(drop=True)
 
@@ -4854,7 +4852,7 @@ def make_plots_EMG(
 
                     if ensemble_avg == "completo":
                         # print('dibuja repes sueltas en' + nomvar)
-                        for rep in range(dfGraf.phase.max()):
+                        for rep in range(dfGraph.phase.max()):
                             ax.plot(
                                 df.query('side=="Izq" & phase==@rep').loc[
                                     :, parnomvar[1]
@@ -4913,7 +4911,7 @@ def make_plots_EMG(
 
                 plt.tight_layout()
 
-                if carpeta_guardar:
+                if save_path:
                     guarda_grafica(
                         nom=f"_EE_{nfu.rename_variables(parnomvar[0])}_{nfu.rename_variables(parnomvar[1])}"
                     )
@@ -4923,7 +4921,7 @@ def make_plots_EMG(
         # ---------------------------------------
 
         # Gráficas onset músculos (por separado lados)
-        if "onset_circ" in tipo_graf:
+        if "onset_circ" in kind_graph:
             orden_musculos = [
                 "GAS",
                 "TIB",
@@ -4933,24 +4931,24 @@ def make_plots_EMG(
                 "GLU",
             ]  # ['GLU', 'BIC', 'VME', 'REC', 'TIB', 'GAS']
             titulo = "Activación muscular"
-            # dfGraf = daGraf.to_dataframe(name='value').dropna().reset_index()
-            # dfGraf['side'] = dfGraf['side'].replace({'L':'Izq', 'R':'Der'})
+            # dfGraph = daGraf.to_dataframe(name='value').dropna().reset_index()
+            # dfGraph['side'] = dfGraph['side'].replace({'L':'Izq', 'R':'Der'})
 
             """
-            dfGraf['id_var'] = dfGraf['n_var'].astype('category').cat.codes
+            dfGraph['id_var'] = dfGraph['n_var'].astype('category').cat.codes
             
-            plt.plot(np.where(dfGraf['value']>=umbral_onset, dfGraf['n_var'].astype('category').cat.codes, np.nan))
+            plt.plot(np.where(dfGraph['value']>=umbral_onset, dfGraph['n_var'].astype('category').cat.codes, np.nan))
             
-            dfGraf['value_cat'] = np.where(dfGraf['value']>=umbral_onset, dfGraf['n_var'].astype('category').cat.codes, np.nan)
-            dfGraf.plot(x='AngBielaInRepe', y='value_cat')
+            dfGraph['value_cat'] = np.where(dfGraph['value']>=umbral_onset, dfGraph['n_var'].astype('category').cat.codes, np.nan)
+            dfGraph.plot(x='AngBielaInRepe', y='value_cat')
             
-            dfGraf['id_var2'] = dfGraf['n_var'].astype('category').sort_values().cat.codes #rename_categories([1,2,3,4,5,6]).codes
-            dfGraf['value_cat'] = np.where(dfGraf['value']>=20.0, dfGraf['n_var'].astype('category').sort_values().cat.codes, np.nan)
-            dfGraf.query('n_var=="TIB" & side=="L"').plot(x='AngBielaInRepe', y='value_cat')
+            dfGraph['id_var2'] = dfGraph['n_var'].astype('category').sort_values().cat.codes #rename_categories([1,2,3,4,5,6]).codes
+            dfGraph['value_cat'] = np.where(dfGraph['value']>=20.0, dfGraph['n_var'].astype('category').sort_values().cat.codes, np.nan)
+            dfGraph.query('n_var=="TIB" & side=="L"').plot(x='AngBielaInRepe', y='value_cat')
             """
 
             # reprocesa EMG dinámica
-            # _, dadinamic, _ = carga_preprocesa_csv_EMG([(carpeta_guardar / daGraf.ID.data[0].split('_')[-1]).with_suffix('.csv')], nomBloque='Devices')
+            # _, dadinamic, _ = carga_preprocesa_csv_EMG([(save_path / daGraf.ID.data[0].split('_')[-1]).with_suffix('.csv')], nomBloque='Devices')
             daDinamic = otros_datos[0]
 
             from biomdp.general_processing_functions import procesaEMG
@@ -4958,7 +4956,7 @@ def make_plots_EMG(
             da_tkeo = procesaEMG(daDinamic, fc_band=[30, 300], fclow=10, btkeo=True)
             # da_tkeo.plot.line(x='time', row='n_var', col='side')
 
-            # dakinem = carga_preprocesa_csv_EMG([(carpeta_guardar / daGraf.ID.data[0].split('_')[-1]).with_suffix('.csv')], nomBloque='Model Outputs')
+            # dakinem = carga_preprocesa_csv_EMG([(save_path / daGraf.ID.data[0].split('_')[-1]).with_suffix('.csv')], nomBloque='Model Outputs')
             dakinem = otros_datos[1]
             """
             from filtrar_Butter import filtrar_Butter, filtrar_Butter_bandpass
@@ -4973,11 +4971,11 @@ def make_plots_EMG(
             """
             # TODO: AQUÍ AJUSTAR LA CARPETA PARTICULAR CUANDO TIENE QUE GUARDAR EN CARPETA GLOBAL
             # Carga MVC sin procesar. OJO, anteriormente guardaba el archivo .nc ya procesado
-            ruta = list(carpeta_guardar.parent.glob("**/*.nc"))
+            ruta = list(save_path.parent.glob("**/*.nc"))
             ruta = [
                 x
                 for x in ruta
-                if "PreprocesadoMVC_" + dfGraf["ID"].unique()[0].split("_")[1] + ".nc"
+                if "PreprocesadoMVC_" + dfGraph["ID"].unique()[0].split("_")[1] + ".nc"
                 in x.name
             ][
                 0
@@ -5042,7 +5040,7 @@ def make_plots_EMG(
             """
 
             # Calcula la media de las repes
-            # df = dfGraf.groupby(['ID', 'n_var', 'side', 'AngBielaInRepe']).mean().reset_index()
+            # df = dfGraph.groupby(['ID', 'n_var', 'side', 'AngBielaInRepe']).mean().reset_index()
             df = (
                 da_tkeo.assign_coords(side=["Izq", "Der"])
                 .to_dataframe(name="value")
@@ -5107,7 +5105,7 @@ def make_plots_EMG(
                     col_template="{col_name}"
                 )  # , fontweight='bold') #títulos de cada gráfica
                 .set(yticks=[])
-                .set(ylim=(-3, len(dfGraf["n_var"].unique())))
+                .set(ylim=(-3, len(dfGraph["n_var"].unique())))
                 .tight_layout(w_pad=0)  # separación entre gráficas
             )
 
@@ -5140,12 +5138,12 @@ def make_plots_EMG(
             # plt.tight_layout()
             fig = g.fig
 
-            if carpeta_guardar:
+            if save_path:
                 guarda_grafica(nom="_EON_OnsetMusculatura")
         # ------------------------------------------------
 
         # Gráficas juntando músculos (por separado lados)
-        if "musc_circ" in tipo_graf:
+        if "musc_circ" in kind_graph:
             titulo = ""
             # TODO SEGUIR CON ESTO
 
@@ -5158,12 +5156,12 @@ def make_plots_EMG(
                 "GLU",
             ]  # ['GLU', 'BIC', 'VME', 'REC', 'TIB', 'GAS']
             titulo = "Activación muscular"
-            # dfGraf = daGraf.to_dataframe(name='value').dropna().reset_index()
-            # dfGraf['side'] = dfGraf['side'].replace({'L':'Izq', 'R':'Der'})
+            # dfGraph = daGraf.to_dataframe(name='value').dropna().reset_index()
+            # dfGraph['side'] = dfGraph['side'].replace({'L':'Izq', 'R':'Der'})
 
             # Calcula la media de las repes
-            # df = dfGraf.query('repe==@rango').groupby(['ID', 'n_var', 'side', 'AngBielaInRepe']).mean().reset_index()
-            df = dfGraf.query("phase==@rango")
+            # df = dfGraph.query('repe==@rango').groupby(['ID', 'n_var', 'side', 'AngBielaInRepe']).mean().reset_index()
+            df = dfGraph.query("phase==@rango")
 
             g = sns.FacetGrid(
                 df,
@@ -5197,7 +5195,7 @@ def make_plots_EMG(
                     col_template="{col_name}"
                 )  # , fontweight='bold') #títulos de cada gráfica
                 .set(yticks=[])
-                # .set(ylim=(-3, len(dfGraf['n_var'].unique())))
+                # .set(ylim=(-3, len(dfGraph['n_var'].unique())))
                 .tight_layout(w_pad=0)  # separación entre gráficas
             )
 
@@ -5231,7 +5229,7 @@ def make_plots_EMG(
             # plt.tight_layout()
             fig = g.fig
 
-            if carpeta_guardar:
+            if save_path:
                 guarda_grafica(nom="_EMP_OnsetMusculatura")
 
             # plt.show()
@@ -5239,7 +5237,7 @@ def make_plots_EMG(
             # -------------------------------------------------
 
         # Gráficas onset músculos todos agrupados (por separado lados)
-        if "lados_lin_grupal" in tipo_graf:
+        if "lados_lin_grupal" in kind_graph:
             orden_musculos = [
                 "GLU",
                 "REC",
@@ -5249,11 +5247,11 @@ def make_plots_EMG(
                 "TIB",
             ]  # ['GLU', 'BIC', 'VME', 'REC', 'TIB', 'GAS']
             titulo = "Activación muscular"
-            # dfGraf = daGraf.to_dataframe(name='value').dropna().reset_index()
-            # dfGraf['side'] = dfGraf['side'].replace({'L':'Izq', 'R':'Der'})
+            # dfGraph = daGraf.to_dataframe(name='value').dropna().reset_index()
+            # dfGraph['side'] = dfGraph['side'].replace({'L':'Izq', 'R':'Der'})
 
             g = sns.relplot(
-                data=dfGraf,
+                data=dfGraph,
                 x="AngBielaInRepe",
                 y="value",
                 col="n_var",
@@ -5316,20 +5314,20 @@ def make_plots_EMG(
                 # ax.xaxis.grid(
                 #     True, linestyle="dashed", dash_capstyle="round", alpha=0.8, zorder=1
                 # )
-                if compara_lados_graf:
-                    ti = calculate_spm1d(dfGraf.query("n_var==@nomvar"))
+                if compare_sides:
+                    ti = calculate_spm1d(dfGraph.query("n_var==@nomvar"))
                     # Marca regiones con diferencia L y R
                     plot_clusters(ti, y=5, ax=ax, print_p=False)
 
             # plt.tight_layout()
             fig = g.fig
 
-            if carpeta_guardar:
+            if save_path:
                 guarda_grafica(nom=f"_EG_Grupo{extra_nom_archivo}")
         # ------------------------------------------------
 
         # Gráficas onset músculos todos agrupados (por separado lados)
-        if "lados_circ_grupal" in tipo_graf:
+        if "lados_circ_grupal" in kind_graph:
             orden_musculos = [
                 "GLU",
                 "REC",
@@ -5339,11 +5337,11 @@ def make_plots_EMG(
                 "TIB",
             ]  # ['GLU', 'BIC', 'VME', 'REC', 'TIB', 'GAS']
             titulo = "Activación muscular"
-            # dfGraf = daGraf.to_dataframe(name='value').dropna().reset_index()
-            # dfGraf['side'] = dfGraf['side'].replace({'L':'Izq', 'R':'Der'})
+            # dfGraph = daGraf.to_dataframe(name='value').dropna().reset_index()
+            # dfGraph['side'] = dfGraph['side'].replace({'L':'Izq', 'R':'Der'})
 
             g = sns.FacetGrid(
-                dfGraf,
+                dfGraph,
                 col="n_var",
                 col_wrap=3,
                 col_order=orden_musculos,
@@ -5412,7 +5410,7 @@ def make_plots_EMG(
             plt.tight_layout()
             fig = g.fig
 
-            if carpeta_guardar:
+            if save_path:
                 guarda_grafica(nom=f"_EPG_Grupo{extra_nom_archivo}")
         # ------------------------------------------------
 
@@ -5433,43 +5431,43 @@ def make_plots_EMG(
             plt.tight_layout()
 
 
-def make_plots_cinem_complete(daGraf) -> None:
+def make_graphs_cinem_complete(daGraf) -> None:
     da = daGraf.isel(ID=0)
     make_plots_triples_cinem(
-        da, tipo_graf=["lados_lin"], repes=None, ensemble_avg="completo"
-    )  # , carpeta_guardar=carpeta_graficas)
+        da, kind_graph=["lados_lin"], repes=None, ensemble_avg="completo"
+    )  # , save_path=carpeta_graficas)
 
 
-def crea_df_comparacion_pares(dfGraf, nomvar, parejes):
+def create_df_compararing_pairs(dfGraph, nomvar, axis_pair):
     """De apoyo a función guardar_graficas_exploracion_globales_cinem"""
     import itertools
 
     # nomvar='KJC'
-    # parejes=['x','z']
+    # axis_pair=['x','z']
 
     # Adapta el dataframe para que tenga las dos variables en columnas
-    df = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")[
+    df = dfGraph.query("n_var==@nomvar & axis==@axis_pair[0]")[
         ["ID", "phase", "side", "axis", "AngBielaInRepe"]
     ].reset_index(drop=True)
-    var1 = nfu.rename_variables("Eje " + parejes[0])
-    var2 = nfu.rename_variables("Eje " + parejes[1])
-    df[var1] = dfGraf.query("n_var==@nomvar & axis==@parejes[0]")["value"].reset_index(
-        drop=True
-    )
-    df[var2] = dfGraf.query("n_var==@nomvar & axis==@parejes[1]")["value"].reset_index(
-        drop=True
-    )
+    var1 = nfu.rename_variables("Eje " + axis_pair[0])
+    var2 = nfu.rename_variables("Eje " + axis_pair[1])
+    df[var1] = dfGraph.query("n_var==@nomvar & axis==@axis_pair[0]")[
+        "value"
+    ].reset_index(drop=True)
+    df[var2] = dfGraph.query("n_var==@nomvar & axis==@axis_pair[1]")[
+        "value"
+    ].reset_index(drop=True)
 
     # En la visión frontal invierte el axis x para que se vea de frente
-    if "x" in parejes:
+    if "x" in axis_pair:
         df[var1] = -df[var1]
 
     return df
 
 
-def guardar_graficas_exploracion_globales_cinem(
+def save_global_exploration_graphs(
     daGraf,
-    tipo_graf=[
+    kind_graph=[
         "lim_rodillas",
         "eje_rodillas_frontal",
         "ang_pelvis",
@@ -5481,9 +5479,9 @@ def guardar_graficas_exploracion_globales_cinem(
     show_in_console=False,
 ) -> None:
     """Gráficas para informes en vistas masivas"""
-    if tipo_graf == None:
+    if kind_graph == None:
         raise ValueError(
-            "Debes indicar el tipo de gráfica (Ej: tipo_graf=['lim_rodillas', 'eje_rodillas_frontal', 'ang_pelvis', 'vAngBiela', 'sagital_triple'])"
+            "The kind of graphs must be specified (i.e.: kind_graph=['lim_rodillas', 'eje_rodillas_frontal', 'ang_pelvis', 'vAngBiela', 'sagital_triple'])"
         )
 
     prefijo_archivo = "GrafsInformeGlobales"
@@ -5492,10 +5490,10 @@ def guardar_graficas_exploracion_globales_cinem(
         n_generico_archivos = f"_{n_generico_archivos}"
 
     daGraf.name = "value"  # cambia el nombre para homogeneizar la columna de df
-    dfGraf = daGraf.to_dataframe().dropna().reset_index()
+    dfGraph = daGraf.to_dataframe().dropna().reset_index()
 
     # Ángulo rodilla con límites
-    if "lim_rodillas" in tipo_graf:
+    if "lim_rodillas" in kind_graph:
         with PdfPages(
             (
                 ruta / (f"{prefijo_archivo}_AngRodillaLimMax{n_generico_archivos}")
@@ -5509,7 +5507,7 @@ def guardar_graficas_exploracion_globales_cinem(
 
             # g = sns.relplot(data=dfdaNormal01_cinem_norm.query('n_var=="AngArtKnee" & axis=="x"'), x='AngBielaInRepe', y='Cinem', col='side', row='ID', hue='phase', estimator=None, errorbar=None, units='phase', lw=0.25, kind='line')
             g = sns.relplot(
-                data=dfGraf.query('n_var=="AngArtKnee" & axis=="x"'),
+                data=dfGraph.query('n_var=="AngArtKnee" & axis=="x"'),
                 x="AngBielaInRepe",
                 y="value",
                 col="ID",
@@ -5550,7 +5548,7 @@ def guardar_graficas_exploracion_globales_cinem(
 
             pdf_pages.savefig(g.fig)
 
-    if "eje_rodillas_frontal" in tipo_graf:
+    if "eje_rodillas_frontal" in kind_graph:
         with PdfPages(
             (
                 ruta / (f"{prefijo_archivo}_EjeRodillaFrontal{n_generico_archivos}")
@@ -5710,8 +5708,8 @@ def guardar_graficas_exploracion_globales_cinem(
                         zorder=3,
                     )
 
-            dfPares = crea_df_comparacion_pares(
-                dfGraf, nomvar="KJC", parejes=["x", "z"]
+            dfPares = create_df_compararing_pairs(
+                dfGraph, nomvar="KJC", axis_pair=["x", "z"]
             )
             # Ajusta eje mediolateral
             ejeBiela = daGraf.sel(n_var="EjeBiela", axis="x")
@@ -5759,7 +5757,7 @@ def guardar_graficas_exploracion_globales_cinem(
             pdf_pages.savefig(g.fig)
 
     # ---- Ángulo báscula pelvis
-    if "ang_pelvis" in tipo_graf:
+    if "ang_pelvis" in kind_graph:
         # Inicia con lado R
         with PdfPages(
             (
@@ -5799,7 +5797,7 @@ def guardar_graficas_exploracion_globales_cinem(
 
             # g=daNormal01_cinem_norm.isel(ID=slice(0,4)).sel(n_var='AngSegPELVIS', axis='y', side='LR').plot.line(x='AngBielaInRepe', col='ID', col_wrap=4)
             g = sns.relplot(
-                data=dfGraf.query('n_var=="AngSegPELVIS" & axis=="y"'),
+                data=dfGraph.query('n_var=="AngSegPELVIS" & axis=="y"'),
                 x="AngBielaInRepe",
                 y="value",
                 hue="side",
@@ -5841,7 +5839,7 @@ def guardar_graficas_exploracion_globales_cinem(
             pdf_pages.savefig(g.fig)
 
     # ---- Vel angular Biela
-    if "vAngBiela" in tipo_graf:
+    if "vAngBiela" in kind_graph:
         with PdfPages(
             (ruta / (f"{prefijo_archivo}_vAngBiela{n_generico_archivos}")).with_suffix(
                 ".pdf"
@@ -5872,9 +5870,9 @@ def guardar_graficas_exploracion_globales_cinem(
                 )
 
             # Se queda con 0-180º, para hacer la media de cada lado
-            dfGraf = dfGraf[(dfGraf.AngBielaInRepe < 181)]
+            dfGraph = dfGraph[(dfGraph.AngBielaInRepe < 181)]
             g = sns.relplot(
-                data=dfGraf.query('n_var=="vAngBiela" & axis=="x" & side==["L","R"]'),
+                data=dfGraph.query('n_var=="vAngBiela" & axis=="x" & side==["L","R"]'),
                 x="AngBielaInRepe",
                 y="value",
                 size="phase",
@@ -5913,7 +5911,7 @@ def guardar_graficas_exploracion_globales_cinem(
             pdf_pages.savefig(g.fig)
 
     # ---- Sagital triples
-    if "sagital_triple" in tipo_graf:
+    if "sagital_triple" in kind_graph:
         with PdfPages(
             (ruta / (f"{prefijo_archivo}_AngTripleX{n_generico_archivos}")).with_suffix(
                 ".pdf"
@@ -5932,7 +5930,7 @@ def guardar_graficas_exploracion_globales_cinem(
                 pdf_pages.savefig(g.fig)
 
     # para comprobar la alineación del sistema de referencias con la bici
-    if "alin_pedales_sagital" in tipo_graf:
+    if "alin_pedales_sagital" in kind_graph:
         with PdfPages(
             (
                 ruta / (f"{prefijo_archivo}_AlinPedalesSAgital{n_generico_archivos}")
@@ -6154,8 +6152,8 @@ def guardar_graficas_exploracion_globales_cinem(
                         zorder=3,
                     )
 
-            dfPares = crea_df_comparacion_pares(
-                dfGraf, nomvar="PosPedal", parejes=["y", "z"]
+            dfPares = create_df_compararing_pairs(
+                dfGraph, nomvar="PosPedal", axis_pair=["y", "z"]
             )
             # dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
             g = sns.relplot(
@@ -6195,8 +6193,8 @@ def guardar_graficas_exploracion_globales_cinem(
             pdf_pages.savefig(g.fig)
 
             # lo mismo en vista frontal
-            dfPares = crea_df_comparacion_pares(
-                dfGraf, nomvar="PosPedal", parejes=["x", "z"]
+            dfPares = create_df_compararing_pairs(
+                dfGraph, nomvar="PosPedal", axis_pair=["x", "z"]
             )
             # dfPares2 = dfPares.query('ID==["20_Manuel_Normal-01", "19_Oscar_Normal-01"]')
             g = sns.relplot(
@@ -6294,7 +6292,7 @@ detect_peaks(daMVC_proces.isel(ID=16).sel(n_var='GLU', side='L'),  mpd=500, show
 # daMVC_proces_copia = daMVC_proces.copy(deep=True)
 
 
-def limpia_MVC(daData) -> xr.DataArray:
+def clear_MVC(daData) -> xr.DataArray:
     from detecta import detect_onset
 
     # daData.sel(n_var=['GAS']).plot.line(x='time', col='side', row='ID')
@@ -6401,31 +6399,31 @@ if __name__ == "__main__":
     file = Path(
         r"F:\Investigacion\Proyectos\BikeFitting\Bikefitting\RatioMusloPierna\data-science-template-main-ratio-muslo-pierna\data\processed\2_Processed_BikeRatioMusloPna_Cinem_Cortado_Norm360.h5"
     )
-    carpeta_guardar = Path(
+    save_path = Path(
         r"F:\Investigacion\Proyectos\BikeFitting\PrestacionServicio\FigsInforme"
     )
 
     daCinem = xr.load_dataarray(file)
 
     daS = daCinem.sel(tipo="optimo", ID="S05")
-    RealizaGraficas_cinem(
+    make_graphs_cinem(
         daGraf=daS.sel(
             n_var=["AngArtKnee", "AngArtAnkle"],
             # side=["L", "R"],
             axis="x",
         ),
-        nomvars=["AngArtKnee", "AngArtAnkle"],
-        ejes=["x"],
+        n_vars=["AngArtKnee", "AngArtAnkle"],
+        axis=["x"],
         repes=None,
-        tipo_graf=["coordinacion"],
+        kind_graph=["coordinacion"],
         ensemble_avg=bEnsembleAvg,
-        compara_lados_graf=False,
+        compare_sides=False,
         show_in_console=True,
-        # carpeta_guardar=carpeta_guardar,
+        # save_path=save_path,
     )
 
     daS = daCinem.sel(tipo="optimo", ID="S19")
-    RealizaGraficas_cinem(
+    make_graphs_cinem(
         daGraf=(
             daS.sel(n_var=["HJC", "KJC", "AJC", "PosPedal"]) - daS.sel(n_var="EjeBiela")
         )
@@ -6435,24 +6433,24 @@ if __name__ == "__main__":
         # * 10
         # / 2,  # .sel(side=["L", "R"]),
         repes=None,
-        nomvars=["KJC"],
-        ejes=list("xz"),
-        tipo_graf=["planoXY"],
+        n_vars=["KJC"],
+        axis=list("xz"),
+        kind_graph=["planoXY"],
         ensemble_avg=bEnsembleAvg,
         show_in_console=True,
-        carpeta_guardar=carpeta_guardar,
+        save_path=save_path,
     )
 
     # PROBAR GRÁFICO KOPS, PLANO SAGITAL Y EN VERTICAL POSICIÓN PEDAL O META
-    RealizaGraficas_cinem(
+    make_graphs_cinem(
         daGraf=daCinem.isel(ID=0),
-        tipo_graf=["planoXY"],
+        kind_graph=["planoXY"],
         repes=None,
-        nomvars=["KJC"],
-        ejes=list("yz"),
+        n_vars=["KJC"],
+        axis=list("yz"),
         ensemble_avg=bEnsembleAvg,
         show_in_console=True,
-        # carpeta_guardar=ruta_trabajo / "FigurasGenericas",
+        # save_path=ruta_trabajo / "FigurasGenericas",
     )
 
     ############### PRUEBAS ANTIGUAS
@@ -6474,13 +6472,13 @@ if __name__ == "__main__":
     ]
     lista_archivos.sort()
 
-    daDatos = nfu.carga_c3d_generico_xr(
+    daDatos = nfu.load_c3d_generic_xr(
         lista_archivos[:10], section="Trajectories"
     )  # , nom_vars_cargar=['HJC', 'KJC', 'AJC'])
-    daDatos = nfu.ajusta_etiquetas_lado_final(daDatos)
-    daDatos = nfu.separa_trayectorias_lados(daDatos)
-    daAngles = calcula_angulos_desde_trajec(daDatos)
-    daPos = calcula_variables_posicion(daDatos)
+    daDatos = nfu.adjust_labels_side_end(daDatos)
+    daDatos = nfu.split_trajectories_sides(daDatos)
+    daAngles = calculate_angles_from_trajec(daDatos)
+    daPos = calculate_variables_position(daDatos)
     daCinem = xr.concat([daAngles, daPos], dim="n_var")
 
     # Cargando preprocesados
@@ -6508,16 +6506,16 @@ if __name__ == "__main__":
         daDin_global_cinem, num_cortes=num_cortes
     )
 
-    daData_trat = normaliza_biela_360_xr(daData_trat, base_norm_horiz=base_normaliz)
+    daData_trat = normalize_crank_360_xr(daData_trat, base_norm_horiz=base_normaliz)
     # daData_trat .sel(n_var='AngArtKnee', axis='x', side=['L','R']).plot.line(x='AngBielaInRepe', col='side', row='ID', hue='repe')
 
     # PROBAR GRÁFICO KOPS, PLANO SAGITAL Y EN VERTICAL POSICIÓN PEDAL O META
-    RealizaGraficas_cinem(
+    make_graphs_cinem(
         daGraf=daData_trat.isel(ID=0).sel(side=["L", "R"]),
-        tipo_graf=["planoXY"],
+        kind_graph=["planoXY"],
         repes=None,
-        nomvars=["KJC"],
-        ejes=list("yz"),
+        n_vars=["KJC"],
+        axis=list("yz"),
         ensemble_avg=bEnsembleAvg,
-        carpeta_guardar=ruta_trabajo / "FigurasGenericas",
+        save_path=ruta_trabajo / "FigurasGenericas",
     )

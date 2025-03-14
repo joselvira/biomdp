@@ -1,41 +1,37 @@
 # %% -*- coding: utf-8 -*-
 """
 Created on Tue Oct 01 13:42:08 2024
-Funciones para interpolar frecuencias mayores basado en la
-reconstrucción de Shannon.
-Basado en xarray.
+Functions to interpolate higher frequencies based on
+Shannon reconstruction.
 
 @author: Jose L. L. Elvira
 """
 
 
 # =============================================================================
-# %% Carga librerías
+# %% LOAD LIBRARIES
 # =============================================================================
 
-from typing import Optional, Union, Any
+__author__ = "Jose L. L. Elvira"
+__version__ = "v0.1.1"
+__date__ = "11/03/2025"
+
+"""
+Updates:
+    11/03/2025, v0.1.1
+        - Adapted to biomdp with translations.
+
+    01/10/2024, v0.1.0
+        - Versión inicial basada en la versión C++.
+
+"""
 
 import numpy as np
 import xarray as xr
 
-import itertools
-
 import matplotlib.pyplot as plt
 
-from biomdp.general_processing_functions import detrend_dim
-
-__author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.1.0.0"
-__date__ = "01/10/2024"
-
-
-"""
-
-Modificaciones:
-    01/10/2024, v1.0.0
-        - Versión inicial basada en versión C++.
-
-"""
+# from biomdp.general_processing_functions import detrend_dim
 
 
 # =============================================================================
@@ -43,9 +39,9 @@ Modificaciones:
 # =============================================================================
 
 
-def _circularity(data: np.ndarray, solapar=False) -> np.array:
+def _circularity(data: np.ndarray, solapar: bool = False) -> np.array:
     """
-    Create circularity in a single dimension
+    Create circularity in a single dimension array
     """
     if np.count_nonzero(~np.isnan(data)) == 0:
         return data
@@ -153,7 +149,7 @@ def _circularity(data: np.ndarray, solapar=False) -> np.array:
 
 
 def create_circularity_xr(
-    daData: xr.DataArray, freq=None, overlap=False
+    daData: xr.DataArray, freq: float = None, overlap: bool = False
 ) -> xr.DataArray:
     """
     Create circularity in signal
@@ -192,7 +188,9 @@ def _detrend(data: np.array) -> np.array:
     return data - trend_line
 
 
-def detrend_xr(daData: xr.DataArray, freq=None, overlap=False) -> xr.DataArray:
+def detrend_xr(
+    daData: xr.DataArray, freq: float | None = None, overlap: bool | None = False
+) -> xr.DataArray:
     """
     Create circularity in signal
     """
@@ -216,8 +214,8 @@ def detrend_xr(daData: xr.DataArray, freq=None, overlap=False) -> xr.DataArray:
 
 def _shannon_reconstruction(
     data: np.array,
-    old_freq: Union[int, float] = None,
-    new_freq: Union[int, float] = None,
+    old_freq: int | float | None = None,
+    new_freq: int | float | None = None,
 ) -> np.array:
     """
     Reconstruct signal with Shannon reconstruction
@@ -314,8 +312,8 @@ def _shannon_reconstruction(
 
 def shannon_reconstruction_xr(
     daData: xr.DataArray,
-    old_freq: Union[int, float] = None,
-    new_freq: Union[int, float] = None,
+    old_freq: int | float | None = None,
+    new_freq: int | float | None = None,
 ) -> xr.DataArray:
     """
     Reconstruct with Shannon
@@ -349,7 +347,7 @@ def shannon_reconstruction_xr(
 
 if __name__ == "__main__":
     # =============================================================================
-    # ---- Create a sample
+    # %%---- Create a sample
     # =============================================================================
 
     import numpy as np
@@ -361,206 +359,140 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import matplotlib.pyplot as plt
-    import seaborn as sns
 
-    def create_time_series_xr(
-        rnd_seed=None,
-        num_subj=10,
-        Fs=100.0,
-        IDini=0,
-        rango_offset=[-2.0, -0.5],
-        rango_amp=[1.0, 2.2],
-        rango_frec=[1.8, 2.4],
-        rango_af=[0.0, 1.0],
-        rango_duracion=[5.0, 5.1],
-        amplific_ruido=[0.4, 0.7],
-        fc_ruido=[7.0, 12.0],
-    ):
-        if rnd_seed is not None:
-            np.random.seed(
-                rnd_seed
-            )  # para mantener la consistencia al crear los datos aleatorios
-        subjects = []
-        for subj in range(num_subj):
-            # print(subj)
-            a = np.random.uniform(rango_amp[0], rango_amp[1])
-            of = np.random.uniform(rango_offset[0], rango_offset[1])
-            f = np.random.uniform(rango_frec[0], rango_frec[1])
-            af = np.deg2rad(
-                np.random.uniform(rango_af[0], rango_af[1])
-            )  # lo pasa a radianes
-            err = a * np.random.uniform(amplific_ruido[0], amplific_ruido[1])
-            fc_err = np.random.uniform(fc_ruido[0], fc_ruido[1])
-            duracion = np.random.uniform(rango_duracion[0], rango_duracion[1])
+    # import seaborn as sns
+    from biomdp.create_time_series import create_time_series_xr
 
-            Ts = 1.0 / Fs  # intervalo de tiempo entre datos en segundos
-            t = np.arange(0, duracion, Ts)
-
-            senal = np.array(of + a * np.sin(2 * np.pi * f * t + af))
-
-            # Crea un ruido aleatorio controlado
-            pasadas = 2.0  # nº de pasadas del filtro adelante y atrás
-            orden = 2
-            Cf = (2 ** (1 / pasadas) - 1) ** (
-                1 / (2 * orden)
-            )  # correction factor. Para 2nd order = 0.802
-            Wn = 2 * fc_err / Fs / Cf
-            b1, a1 = butter(orden, Wn, btype="low")
-            ruido = filtfilt(b1, a1, np.random.uniform(a - err, a + err, len(t)))
-
-            #################################
-            subjects.append(senal + ruido)
-            # subjects.append(np.expand_dims(senal + ruido, axis=0))
-            # sujeto.append(pd.DataFrame(senal + ruido, columns=['value']).assign(**{'ID':'{0:02d}'.format(subj+IDini), 'time':np.arange(0, len(senal)/Fs, 1/Fs)}))
-
-        # Pad data to last the same
-        import itertools
-
-        data = np.array(list(itertools.zip_longest(*subjects, fillvalue=np.nan)))
-
-        data = xr.DataArray(
-            data=data,
-            coords={
-                "time": np.arange(data.shape[0]) / Fs,
-                "ID": [
-                    f"{i:0>2}" for i in range(num_subj)
-                ],  # rellena ceros a la izq. f'{i:0>2}' vale para int y str, f'{i:02}' vale solo para int
-            },
-        )
-        return data
-
-    rnd_seed = np.random.seed(
-        12340
-    )  # fija la aleatoriedad para asegurarse la reproducibilidad
+    rnd_seed = np.random.seed(12340)
     n = 5
-    duracion = 5
+    duration = 5
 
     freq = 200.0
     Pre_a = (
         create_time_series_xr(
             rnd_seed=rnd_seed,
             num_subj=n,
-            Fs=freq,
+            fs=freq,
             IDini=0,
-            rango_offset=[25, 29],
-            rango_amp=[40, 45],
-            rango_frec=[1.48, 1.52],
-            rango_af=[0, 30],
-            amplific_ruido=[0.4, 0.7],
-            fc_ruido=[3.0, 3.5],
-            rango_duracion=[duracion, duracion],
+            range_offset=[25, 29],
+            range_amp=[40, 45],
+            range_freq=[1.48, 1.52],
+            range_af=[0, 30],
+            amplific_noise=[0.4, 0.7],
+            fc_noise=[3.0, 3.5],
+            range_duration=[duration, duration],
         )
-        .expand_dims({"n_var": ["a"], "momento": ["pre"]})
-        .transpose("ID", "momento", "n_var", "time")
+        .expand_dims({"n_var": ["a"], "moment": ["pre"]})
+        .transpose("ID", "moment", "n_var", "time")
     )
     Post_a = (
         create_time_series_xr(
             rnd_seed=rnd_seed,
             num_subj=n,
-            Fs=freq,
+            fs=freq,
             IDini=0,
-            rango_offset=[22, 26],
-            rango_amp=[36, 40],
-            rango_frec=[1.48, 1.52],
-            rango_af=[0, 30],
-            amplific_ruido=[0.4, 0.7],
-            fc_ruido=[3.0, 3.5],
-            rango_duracion=[duracion, duracion],
+            range_offset=[22, 26],
+            range_amp=[36, 40],
+            range_freq=[1.48, 1.52],
+            range_af=[0, 30],
+            amplific_noise=[0.4, 0.7],
+            fc_noise=[3.0, 3.5],
+            range_duration=[duration, duration],
         )
-        .expand_dims({"n_var": ["a"], "momento": ["post"]})
-        .transpose("ID", "momento", "n_var", "time")
+        .expand_dims({"n_var": ["a"], "moment": ["post"]})
+        .transpose("ID", "moment", "n_var", "time")
     )
-    var_a = xr.concat([Pre_a, Post_a], dim="momento")
+    var_a = xr.concat([Pre_a, Post_a], dim="moment")
 
     Pre_b = (
         create_time_series_xr(
             rnd_seed=rnd_seed,
             num_subj=n,
-            Fs=freq,
+            fs=freq,
             IDini=0,
-            rango_offset=[35, 39],
-            rango_amp=[50, 55],
-            rango_frec=[1.48, 1.52],
-            rango_af=[0, 30],
-            amplific_ruido=[0.4, 0.7],
-            fc_ruido=[3.0, 3.5],
-            rango_duracion=[duracion, duracion],
+            range_offset=[35, 39],
+            range_amp=[50, 55],
+            range_freq=[1.48, 1.52],
+            range_af=[0, 30],
+            amplific_noise=[0.4, 0.7],
+            fc_noise=[3.0, 3.5],
+            range_duration=[duration, duration],
         )
-        .expand_dims({"n_var": ["b"], "momento": ["pre"]})
-        .transpose("ID", "momento", "n_var", "time")
+        .expand_dims({"n_var": ["b"], "moment": ["pre"]})
+        .transpose("ID", "moment", "n_var", "time")
     )
     Post_b = (
         create_time_series_xr(
             rnd_seed=rnd_seed,
             num_subj=n,
-            Fs=freq,
+            fs=freq,
             IDini=0,
-            rango_offset=[32, 36],
-            rango_amp=[32, 45],
-            rango_frec=[1.48, 1.52],
-            rango_af=[0, 30],
-            amplific_ruido=[0.4, 0.7],
-            fc_ruido=[3.0, 3.5],
-            rango_duracion=[duracion, duracion],
+            range_offset=[32, 36],
+            range_amp=[32, 45],
+            range_freq=[1.48, 1.52],
+            range_af=[0, 30],
+            amplific_noise=[0.4, 0.7],
+            fc_noise=[3.0, 3.5],
+            range_duration=[duration, duration],
         )
-        .expand_dims({"n_var": ["b"], "momento": ["post"]})
-        .transpose("ID", "momento", "n_var", "time")
+        .expand_dims({"n_var": ["b"], "moment": ["post"]})
+        .transpose("ID", "moment", "n_var", "time")
     )
-    var_b = xr.concat([Pre_b, Post_b], dim="momento")
+    var_b = xr.concat([Pre_b, Post_b], dim="moment")
 
     Pre_c = (
         create_time_series_xr(
             rnd_seed=rnd_seed,
             num_subj=n,
-            Fs=freq,
+            fs=freq,
             IDini=0,
-            rango_offset=[35, 39],
-            rango_amp=[10, 15],
-            rango_frec=[1.48, 1.52],
-            rango_af=[0, 30],
-            amplific_ruido=[0.4, 0.7],
-            fc_ruido=[3.0, 3.5],
-            rango_duracion=[duracion, duracion],
+            range_offset=[35, 39],
+            range_amp=[10, 15],
+            range_freq=[1.48, 1.52],
+            range_af=[0, 30],
+            amplific_noise=[0.4, 0.7],
+            fc_noise=[3.0, 3.5],
+            range_duration=[duration, duration],
         )
-        .expand_dims({"n_var": ["c"], "momento": ["pre"]})
-        .transpose("ID", "momento", "n_var", "time")
+        .expand_dims({"n_var": ["c"], "moment": ["pre"]})
+        .transpose("ID", "moment", "n_var", "time")
     )
     Post_c = (
         create_time_series_xr(
             rnd_seed=rnd_seed,
             num_subj=n,
-            Fs=freq,
+            fs=freq,
             IDini=0,
-            rango_offset=[32, 36],
-            rango_amp=[12, 16],
-            rango_frec=[1.48, 1.52],
-            rango_af=[0, 30],
-            amplific_ruido=[0.4, 0.7],
-            fc_ruido=[3.0, 3.5],
-            rango_duracion=[duracion, duracion],
+            range_offset=[32, 36],
+            range_amp=[12, 16],
+            range_freq=[1.48, 1.52],
+            range_af=[0, 30],
+            amplific_noise=[0.4, 0.7],
+            fc_noise=[3.0, 3.5],
+            range_duration=[duration, duration],
         )
-        .expand_dims({"n_var": ["c"], "momento": ["post"]})
-        .transpose("ID", "momento", "n_var", "time")
+        .expand_dims({"n_var": ["c"], "moment": ["post"]})
+        .transpose("ID", "moment", "n_var", "time")
     )
-    var_c = xr.concat([Pre_c, Post_c], dim="momento")
+    var_c = xr.concat([Pre_c, Post_c], dim="moment")
 
     # concatena todos los sujetos
-    daTodos = xr.concat([var_a, var_b, var_c], dim="n_var")
-    daTodos.name = "Angle"
-    daTodos.attrs["freq"] = 1 / (
-        daTodos.time[1].values - daTodos.time[0].values
+    daAll = xr.concat([var_a, var_b, var_c], dim="n_var")
+    daAll.name = "Angle"
+    daAll.attrs["freq"] = 1 / (
+        daAll.time[1].values - daAll.time[0].values
     )  # incluimos la frecuencia como atributo
-    daTodos.attrs["units"] = "deg"
-    daTodos.time.attrs["units"] = "s"
+    daAll.attrs["units"] = "deg"
+    daAll.time.attrs["units"] = "s"
 
-    # Gráficas
-    daTodos.plot.line(x="time", col="momento", hue="ID", row="n_var")
+    # Graphs
+    daAll.plot.line(x="time", col="moment", hue="ID", row="n_var")
 
     # =============================================================================
     # %% Test the functions
     # =============================================================================
     """
-    data = daTodos[0, 0, 0, 120:201].data
+    data = daAll[0, 0, 0, 120:201].data
     data2 = _circularity(data)
 
     data2 = _detrend(data2)
@@ -568,29 +500,29 @@ if __name__ == "__main__":
     data2[0]
     data2[-1]
     """
-    daTodosTrozo = daTodos.isel(time=slice(100, 201))
-    daTodosTrozo.plot.line(x="time", col="momento", hue="ID", row="n_var")
+    daAllSlice = daAll.isel(time=slice(100, 201))
+    daAllSlice.plot.line(x="time", col="moment", hue="ID", row="n_var")
 
-    daTodosTrozoCirc = create_circularity_xr(daTodosTrozo)
-    daTodosTrozoCirc.plot.line(x="time", col="momento", hue="ID", row="n_var")
+    daAllSliceCirc = create_circularity_xr(daAllSlice)
+    daAllSliceCirc.plot.line(x="time", col="moment", hue="ID", row="n_var")
 
-    daTodosTrozoCircDetrend = _detrend(daTodosTrozoCirc[0, 0, 0, :].data)
-    plt.plot(daTodosTrozoCircDetrend)
+    daAllSliceCircDetrend = _detrend(daAllSliceCirc[0, 0, 0, :].data)
+    plt.plot(daAllSliceCircDetrend)
 
-    daTodosTrozoCircDetrend = detrend_xr(daTodosTrozoCirc)
-    daTodosTrozoCircDetrend.plot.line(x="time", col="momento", hue="ID", row="n_var")
+    daAllSliceCircDetrend = detrend_xr(daAllSliceCirc)
+    daAllSliceCircDetrend.plot.line(x="time", col="moment", hue="ID", row="n_var")
 
-    data = daTodosTrozoCircDetrend[0, 0, 0, :].data
+    data = daAllSliceCircDetrend[0, 0, 0, :].data
     plt.plot(data)
 
-    # Misma forma original y reconstruido
-    dataShannon = _shannon_reconstruction(data, old_freq=daTodos.freq, new_freq=400.0)
+    # Misma forma original y reconstnoise
+    dataShannon = _shannon_reconstruction(data, old_freq=daAll.freq, new_freq=400.0)
     plt.plot(np.arange(len(dataShannon)) / 400, dataShannon, label="Shannon rec")
-    plt.plot(np.arange(len(data)) / daTodos.freq, data, label="Original", ls="--")
+    plt.plot(np.arange(len(data)) / daAll.freq, data, label="Original", ls="--")
     plt.legend()
     plt.show()
 
-    dataShannon = _shannon_reconstruction(data, old_freq=daTodos.freq, new_freq=800.0)
+    dataShannon = _shannon_reconstruction(data, old_freq=daAll.freq, new_freq=800.0)
     plt.plot(
         np.arange(len(dataShannon[-100:])) / 400,
         dataShannon[-100:],
@@ -598,7 +530,7 @@ if __name__ == "__main__":
         marker="*",
     )
     plt.plot(
-        np.arange(len(data[-25:])) / daTodos.freq,
+        np.arange(len(data[-25:])) / daAll.freq,
         data[-25:],
         label="Original",
         ls="--",

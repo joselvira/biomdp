@@ -12,22 +12,19 @@ Mainly based on xarray.
 # %% LOAD LIBRARIES
 # =============================================================================
 
-__filename__ = "create_time_series"
-__version__ = "0.0.1"
-__company__ = "CIDUMH"
-__date__ = "05/03/2025"
 __author__ = "Jose L. L. Elvira"
+__version__ = "0.1.0"
+__date__ = "05/03/2025"
 
 """
 Updates:
-    05/03/2025, v0.0.1
+    05/03/2025, v0.1.0
         - Initial version with create_time_series_xr function.
 
 """
 
-
+from typing import List
 import numpy as np
-import time
 
 # import pandas as pd
 import xarray as xr
@@ -41,16 +38,16 @@ import matplotlib.pyplot as plt
 
 def create_time_series_xr(
     rnd_seed: int | None = None,
-    num_subj: int | None = 10,
-    fs: float | None = 100.0,
-    IDini: int | None = 0,
-    range_offset: list[float, float] | None = [-2.0, -0.5],
-    range_amp: list[float, float] = [1.0, 2.2],
-    range_freq: list[float, float] = [1.8, 2.4],
-    range_af: list[float, float] = [0.0, 1.0],
-    range_duration: list[float, float] = [5.0, 5.1],
-    amplific_noise: list[float, float] = [0.4, 0.7],
-    fc_noise: list[float, float] = [7.0, 12.0],
+    num_subj: int = 10,
+    fs: float = 100.0,
+    IDini: int = 0,
+    range_offset: List[float] = [-2.0, -0.5],
+    range_amp: List[float] = [1.0, 2.2],
+    range_freq: List[float] = [1.8, 2.4],
+    range_af: List[float] = [0.0, 1.0],
+    range_duration: List[float] = [5.0, 5.1],
+    amplific_noise: List[float] = [0.4, 0.7],
+    fc_noise: List[float] = [7.0, 12.0],
 ) -> xr.DataArray:
     """
     Create a dummy data sample based on sine waves with noise
