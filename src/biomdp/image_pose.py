@@ -279,6 +279,7 @@ def add_shoulder_hip_centers(daData):
 
 
 def calculate_angle(points):
+    # TODO: INCLUDE IMAGE DIMENSIONS TO SCALE?
     if len(points) == 3:
         a = np.array([points[0].x, points[0].y])
         b = np.array([points[1].x, points[1].y])
@@ -300,6 +301,7 @@ def calculate_angle(points):
 
 
 def calculate_angle_np(points):
+    # TODO: INCLUDE IMAGE DIMENSIONS TO SCALE?
     if len(points) == 3:
         a = points[0]  # np.array([points[0].x, points[0].y])
         b = points[1]  # np.array([points[1].x, points[1].y])
@@ -321,6 +323,7 @@ def calculate_angle_np(points):
 
 
 def calculate_angle_xr(daPoints: xr.DataArray) -> np.ndarray:
+    # TODO: INCLUDE IMAGE DIMENSIONS TO SCALE?
     if len(daPoints.marker) == 3:
         a = (
             daPoints.isel(marker=0).sel(axis=["x", "y"]).data
