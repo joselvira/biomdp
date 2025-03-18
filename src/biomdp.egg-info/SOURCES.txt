@@ -25,3 +25,4 @@ src/biomdp.egg-info/PKG-INFO
 src/biomdp.egg-info/SOURCES.txt
 src/biomdp.egg-info/dependency_links.txt
 src/biomdp.egg-info/top_level.txt
+tests/test_slice_time_series_phases.py

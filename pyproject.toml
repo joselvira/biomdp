@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "biomdp"
-version = "0.7.8"
+dynamic = ["version"]
 authors = [
   { name="Jose L. L. Elvira", email="jose.lopeze@umh.es" },
 ]
@@ -21,3 +21,6 @@ keywords = ["biomechanics", "biomecánica", "data processing", "time series", "x
 [project.urls]
 Homepage = "https://github.com/joselvira/biomdp"
 Issues = "https://github.com/joselvira/biomdp/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "biomdp._version.__version__"}
