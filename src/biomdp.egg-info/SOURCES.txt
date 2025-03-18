@@ -1,11 +1,11 @@
 LICENSE
 README.md
 pyproject.toml
-src/biomdp/Bland_AltmanPlot.py
 src/biomdp/__init__.py
 src/biomdp/_version.py
 src/biomdp/bikefitting_functions_utils.py
 src/biomdp/biomec_xarray_accessor.py
+src/biomdp/bland_altman_plot.py
 src/biomdp/create_time_series.py
 src/biomdp/filter_butter.py
 src/biomdp/general_processing_functions.py

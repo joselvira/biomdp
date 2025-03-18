@@ -840,16 +840,13 @@ def load_merge_vicon_c3d_logsheet(
     n_vars_load=None,
     data_type=None,
     n_project=None,
-    read_c3d_function=None,
+    engine="ezc3d",
     show=False,
 ) -> xr.DataArray:
     from biomdp.read_vicon_c3d import (
         read_vicon_c3d_xr,
         read_vicon_ezc3d_xr,
     )  # , read_vicon_c3d_xr_global
-
-    if read_c3d_function is None:
-        read_c3d_function = read_vicon_c3d_xr
 
     if log_sheet is None:
         print("You must specify the Dataframe with the log sheet")
@@ -876,8 +873,11 @@ def load_merge_vicon_c3d_logsheet(
                     print(f"Loading section {section}, file: {file.name}")
                     # print(f'{S}_{t}_{r}', f'{S}_{t}_{r}' in [x.stem for x in file_list])
                     try:
-                        daProvis = read_c3d_function(
-                            file, section=section, n_vars_load=n_vars_load
+                        daProvis = read_vicon_c3d_xr(  # read_c3d_function(
+                            file,
+                            section=section,
+                            n_vars_load=n_vars_load,
+                            engine=engine,
                         ).expand_dims(
                             {"ID": ["_".join(file.stem.split("_"))]}, axis=0
                         )  # Añade dimensión ID
@@ -1367,7 +1367,7 @@ def load_merge_bioware_c3d(
     show: bool = False,
 ) -> xr.DataArray:
     # from read_kistler_c3d import read_kistler_c3d_xr
-    import read_kistler_c3d as rkc3d
+    import biomdp.read_kistler_c3d as rkc3d
 
     # path = Path(r'F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros\2023PotenciaDJ\S01')
     if data_type is None:
@@ -1623,13 +1623,13 @@ def check_similar_ini_end(
                 x="ID", marker="o"
             )
         else:
-            no_cumplen = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
-            if len(no_cumplen.ID) > 0:
-                no_cumplen.plot.line(x="time", alpha=0.5, add_legend=False)
+            do_not_comply = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
+            if len(do_not_comply.ID) > 0:
+                do_not_comply.plot.line(x="time", alpha=0.5, add_legend=False)
                 plt.title(
-                    f"Gráfica con los {len(no_cumplen)} que no cumplen el criterio"
+                    f"Gráfica con los {len(do_not_comply)} que no cumplen el criterio"
                 )
-                # graficas_events(no_cumplen)
+                # graficas_events(do_not_comply)
             else:
                 print(r"\nTodos los registros cumplen el criterio")
 
@@ -1661,7 +1661,7 @@ def check_flat_window(
              'continuous'. Returns time series only of those that meet the threshold criteria.
     """
     if kind not in ["std", "delta"]:
-        raise ValueError(r"kind must be std o delta")
+        raise ValueError(r"kind must be 'std' or 'delta'")
     if returns not in ["discrete", "continuous"]:
         raise ValueError(r"returns must be 'discrete' or 'continuous'")
 
@@ -1709,14 +1709,14 @@ def check_flat_window(
                 )
 
             elif returns == "continuous":
-                no_cumplen = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
-                if len(no_cumplen.ID) > 0:
-                    no_cumplen.plot.line(x="time", alpha=0.5, add_legend=False)
+                do_not_comply = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
+                if len(do_not_comply.ID) > 0:
+                    do_not_comply.plot.line(x="time", alpha=0.5, add_legend=False)
                     plt.title(
-                        f"Graph with the {len(no_cumplen)} that do not meet the criterion {kind} < {threshold}",
+                        f"Graph with the {len(do_not_comply)} that do not meet the criterion '{kind}' < {threshold}",
                         fontsize=10,
                     )
-                    graphs_events(daRecortes.sel(ID=no_cumplen.ID), sharey=True)
+                    graphs_events(daRecortes.sel(ID=do_not_comply.ID), sharey=True)
                 else:
                     print(r"\nAll records meet the criterion")
 
@@ -1767,14 +1767,14 @@ def check_flat_window(
                     x="ID", marker="o"
                 )
             elif returns == "continuous":
-                no_cumplen = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
-                if len(no_cumplen.ID) > 0:
-                    no_cumplen.plot.line(x="time", alpha=0.5, add_legend=False)
+                do_not_comply = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
+                if len(do_not_comply.ID) > 0:
+                    do_not_comply.plot.line(x="time", alpha=0.5, add_legend=False)
                     plt.title(
-                        f"Graph with the {len(no_cumplen)} that not meet the criterion {kind} < {threshold}",
+                        f"Graph with the {len(do_not_comply)} that not meet the criterion '{kind}' < {threshold}",
                         fontsize=10,
                     )
-                    graphs_events(daRecortes.sel(ID=no_cumplen.ID), sharey=True)
+                    graphs_events(daRecortes.sel(ID=do_not_comply.ID), sharey=True)
                 else:
                     print(r"\nAll records meet the criterion")
 
@@ -1979,8 +1979,10 @@ def finetune_end(
     show: bool = False,
 ) -> xr.DataArray:
     """
-    kind puede ser 'opt', 'iter', 'iter_gradiente' o 'iter_final'
+    kind can be 'opt', 'iter', 'iter_gradiente' o 'iter_final'
     """
+    if kind not in ["opt", "iter", "iter_gradiente", "iter_final"]:
+        raise ValueError("kind must be 'opt', 'iter', 'iter_gradiente' or 'iter_final'")
 
     if "axis" in daData.dims:
         daData = daData.sel(axis="z")
@@ -2146,7 +2148,7 @@ def finetune_end(
         evIni = "despegue"
         evFin = "finAnalisis"
     else:
-        raise (f"Calculation method {kind} not implemented")
+        raise (f"Calculation method '{kind}' not implemented")
 
     daPesoReturn = xr.apply_ufunc(
         f_calculo,
@@ -2181,6 +2183,18 @@ def finetune_weight(
     """
     kind: can be 'opt', 'iter', 'iter_gradiente', 'iter_final', 'peso_media_salto'
     """
+
+    if kind not in [
+        "opt",
+        "iter",
+        "iter_gradiente",
+        "iter_final",
+        "peso_media_salto",
+        "'peso_media_salto'",
+    ]:
+        raise ValueError(
+            "kind must be 'opt', 'iter', 'iter_gradiente', 'iter_final' or 'peso_media_salto'"
+        )
 
     if "axis" in daData.dims:
         daData = daData.sel(axis="z")
@@ -2587,7 +2601,7 @@ def finetune_weight(
         evIni = "iniAnalisis"
         evFin = "finAnalisis"
     else:
-        raise Exception(f"Calculation method {kind} not implemented")
+        raise Exception(f"Calculation method '{kind}' not implemented")
 
     daPesoReturn = xr.apply_ufunc(
         f_calculo,
@@ -3170,6 +3184,8 @@ def detect_end_mov(
     """
     kind can be 'velocity', 'force' or 'flat_window'
     """
+    if kind not in ["velocity", "force", "flat_window"]:
+        raise ValueError(r"kind must be 'velocity', 'force' or 'flat_window'")
 
     # #Con umbral velocidad cero. No funciona bien cuando la velocidad se queda al final por encima de cero
     # def detect_onset_aux(data, threshold, iaterrizaje, ID):
@@ -3236,7 +3252,7 @@ def detect_end_mov(
         f_calculo = _detect_onset_fuerza
         datos = daData
     else:
-        raise Exception(f"Calculation method {kind} not implemented")
+        raise Exception(f"Calculation method '{kind}' not implemented")
 
     # datos.plot.line(x='time', col='ID', col_wrap=3)
 
@@ -4276,7 +4292,7 @@ def graphs_weight_check(
     dsWeights: xr.Dataset = None,
     daWeight: xr.DataArray = None,
     threshold_weight_diff: float = 20,
-    daPeso_med: xr.DataArray = None,
+    daWeight_mean: xr.DataArray = None,
     allowed_window: float = 0.3,
     num_per_block: int = 4,
     show_in_console: bool = True,
@@ -4316,9 +4332,9 @@ def graphs_weight_check(
     ):  # por si se envía un da filtrado por eje
         daWeight = daWeight.sel(axis="z")
     if (
-        daPeso_med is not None and "axis" in daPeso_med.dims
+        daWeight_mean is not None and "axis" in daWeight_mean.dims
     ):  # por si se envía un da filtrado por eje
-        daPeso_med = daPeso_med.sel(axis="z")
+        daWeight_mean = daWeight_mean.sel(axis="z")
 
     # Por si no hay dimensión 'repe'
     if "repe" in daData.dims:  # dfDatos.columns:
@@ -4332,12 +4348,12 @@ def graphs_weight_check(
         distribuidor = num_per_block**2
 
     """
-    def completa_peso(g, daEvents, daWeight, daPeso_med):
+    def completa_peso(g, daEvents, daWeight, daWeight_mean):
         for h, ax in enumerate(g.axs):#.axes): #extrae cada fila
             for i in range(len(ax)): #extrae cada axis (gráfica)                    
                 dimensiones = g.name_dicts[h, i]
                 peso_afinado = daWeight.sel(dimensiones).sel(stat='media').data
-                peso_media = daPeso_med.sel(dimensiones).sel(stat='media').data
+                peso_media = daWeight_mean.sel(dimensiones).sel(stat='media').data
                 
                 #print(dimensiones)
                 if dimensiones is None: #para cuando quedan huecos al final de la cuadrícula
@@ -4360,7 +4376,7 @@ def graphs_weight_check(
                                 )
             
                 
-                if daPeso_med is not None: #isinstance(daWeight, xr.DataArray):
+                if daWeight_mean is not None: #isinstance(daWeight, xr.DataArray):
                     ax[i].axhline(peso_media, color='C1', lw=1, ls='--', dash_capstyle='round', alpha=0.7)
                     ax[i].text(0.3, peso_media, 'peso media', 
                                 ha='left', va='bottom', rotation='horizontal', c='C1', alpha=0.7, fontsize='x-small', 
@@ -4422,7 +4438,7 @@ def graphs_weight_check(
         dax = daDat.isel(ID=slice(n, n + distribuidor))
         
         g=dax.plot.line(x='time', alpha=0.8, aspect=1.5, color='lightgrey', sharey=False, **fils_cols) #, lw=1)
-        completa_peso(g, daEvents.sel(event=['iniPeso', 'finPeso']), daWeight, daPeso_med)
+        completa_peso(g, daEvents.sel(event=['iniPeso', 'finPeso']), daWeight, daWeight_mean)
                         
         if n_file_graph_global is not None:
             pdf_pages.savefig(g.fig)
@@ -4443,7 +4459,7 @@ def graphs_weight_check(
         # data = g.data.loc[coords_graph]
         # print(ID, repe, time)
         # peso_afinado = daWeight.sel(ID=ID).sel(stat='media').data
-        # peso_media = daPeso_med.sel(ID=ID).sel(stat='media').data
+        # peso_media = daWeight_mean.sel(ID=ID).sel(stat='media').data
 
         if "repe" not in g.data.dims:
             plt.title(ID)  # pone el nombre completo porque a veces lo recorta
@@ -4586,7 +4602,7 @@ def graphs_weight_check(
             **fils_cols,
         )  # , lw=1)
         g.map(_completa_graf_xr, "ID", "repe", "time", color=0)
-        # _completa_graf_xr(g, daEvents.sel(event=['iniPeso', 'finPeso']), daWeight, daPeso_med)
+        # _completa_graf_xr(g, daEvents.sel(event=['iniPeso', 'finPeso']), daWeight, daWeight_mean)
 
         if n_file_graph_global is not None:
             pdf_pages.savefig(g.fig)
@@ -4748,6 +4764,8 @@ def adjust_offsetFz(
 
     kind: one of "mean", "flight", "threshold"
     """
+    if kind not in ["mean", "flight", "threshold"]:
+        raise ValueError(r"kind must be one of 'mean', 'flight' or 'threshold'")
 
     daReturn = daData.copy()
     if "axis" in daData.dims:
@@ -5743,10 +5761,10 @@ de fuerzas.
 class jump_forces_utils:
     def __init__(
         self,
-        data: Optional[xr.DataArray] = xr.DataArray(),
-        jump_test: Optional[str] = "CMJ",
-        events: Optional[None] = None,
-    ):  # funciona Optional[None]???
+        data: xr.DataArray = xr.DataArray(),
+        jump_test: str = "CMJ",
+        events: xr.DataArray | None = None,
+    ):
         self.data = data
         self.jump_test = jump_test
         self.events = (
@@ -5946,7 +5964,7 @@ if __name__ == "__main__":
         # daEventsForces.loc[dict(ID='S04_CMJ_2', repe=[1,2], event=['iniPeso', 'finPeso'])] = np.array([0.1, 1.1]) * daCMJ.freq
 
         # Primero calcula el peso de la media de la zona estable seleccionada
-        daPeso_media = calculate_weight(
+        daWeight_meania = calculate_weight(
             daData=daCMJ,
             weight_window=daEventsForces.sel(event=["iniPeso", "finPeso"]),
         )  # , show=True)
@@ -5954,13 +5972,13 @@ if __name__ == "__main__":
         daEventsForces = detect_standard_events(
             daData=daCMJ,
             daEvents=daEventsForces,
-            daWeight=daPeso_media,
+            daWeight=daWeight_meania,
             jump_test="CMJ",
             threshold=30.0,
         )
         daPesoCMJ = finetune_weight(
             daData=daCMJ,
-            daWeight=daPeso_media,
+            daWeight=daWeight_meania,
             daEvents=daEventsForces,
             kind="iter",
         )  # , show=True)

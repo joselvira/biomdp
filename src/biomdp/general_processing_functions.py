@@ -40,7 +40,7 @@ Updates:
 
 """
 
-from typing import Line
+from typing import List
 
 import numpy as np
 import xarray as xr

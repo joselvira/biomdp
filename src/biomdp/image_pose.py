@@ -238,19 +238,19 @@ def assign_subcategories_xr(da, estudio=None) -> xr.DataArray:
     return da
 
 
-def split_dim_side(daDatos, n_bilat=None):
+def split_dim_side(daData, n_bilat=None):
     """n_bilat: list, numpy array, dataarray
     list with bilateral variables, to be included repeated in the two coordinates (L and R)
 
     """
     if n_bilat is not None:
-        bilat = daDatos.sel(marker=n_bilat)
-        daDatos = daDatos.sel(marker=~daDatos.marker.isin(n_bilat))
+        bilat = daData.sel(marker=n_bilat)
+        daData = daData.sel(marker=~daData.marker.isin(n_bilat))
 
     # Lo subdivide en side L y R
-    L = daDatos.sel(marker=daDatos.marker.str.endswith("_L"))
+    L = daData.sel(marker=daData.marker.str.endswith("_L"))
     L = L.assign_coords(marker=L.marker.str.rstrip(to_strip="_L"))
-    R = daDatos.sel(marker=daDatos.marker.str.endswith("_R"))
+    R = daData.sel(marker=daData.marker.str.endswith("_R"))
     R = R.assign_coords(marker=R.marker.str.rstrip(to_strip="_R"))
 
     # Si hay variables bilaterales, las añade al lado derecho e izquierdo
@@ -258,24 +258,24 @@ def split_dim_side(daDatos, n_bilat=None):
         L = xr.concat([L, bilat], dim="marker")
         R = xr.concat([R, bilat], dim="marker")
 
-    daDatos_side = xr.concat([L, R], dim="side").assign_coords(side=["L", "R"])
+    daData_side = xr.concat([L, R], dim="side").assign_coords(side=["L", "R"])
 
-    # daDatos_side = daDatos_side.transpose('marker', 'ID', 'qual', 'test', 'lap', 'side', 'time') #reordena las dimensiones
+    # daData_side = daData_side.transpose('marker', 'ID', 'qual', 'test', 'lap', 'side', 'time') #reordena las dimensiones
 
-    return daDatos_side
+    return daData_side
 
 
-def add_shoulder_hip_centers(daDatos):
-    if "cadera" not in daDatos.marker and "hombro" not in daDatos.marker:
+def add_shoulder_hip_centers(daData):
+    if "cadera" not in daData.marker and "hombro" not in daData.marker:
         raise ValueError("No hay marcadores caderas ni hombros")
 
     c_cad = (
-        daDatos.sel(marker="cadera").mean("side").assign_coords(marker="centro_caderas")
+        daData.sel(marker="cadera").mean("side").assign_coords(marker="centro_caderas")
     )
     c_hom = (
-        daDatos.sel(marker="hombro").mean("side").assign_coords(marker="centro_hombros")
+        daData.sel(marker="hombro").mean("side").assign_coords(marker="centro_hombros")
     )
-    return xr.concat([daDatos, c_cad, c_hom], dim="marker")
+    return xr.concat([daData, c_cad, c_hom], dim="marker")
 
 
 def calculate_angle(points):

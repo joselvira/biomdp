@@ -1231,8 +1231,8 @@ def trim_window(
             daFin = daEvents
 
     else:
-        daIni = daEvents.isel(n_event=0)
-        daFin = daEvents.isel(n_event=1)
+        daIni = daEvents.isel(event=0)
+        daFin = daEvents.isel(event=1)
 
     daSliced = (
         xr.apply_ufunc(
