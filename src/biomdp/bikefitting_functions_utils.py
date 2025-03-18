@@ -1554,15 +1554,15 @@ def slice_model_bikefitting_xr_cinem(
 
 #     #Lo pone en formato long y añade columna con AngBiela en grados
 #     vars_factores=['ID', 'repe', 'AngBiela_LR_y', 'time', 'time_repe']
-#     dfFactor = pd.concat([pd.melt(dfL, id_vars=vars_factores, value_vars=n_varsContinuas_L_coord, var_name='NomVarOrig', value_name='value'),
-#                           pd.melt(dfR, id_vars=vars_factores, value_vars=n_varsContinuas_R_coord, var_name='NomVarOrig', value_name='value'),
-#                           #pd.melt(dfLR, id_vars=dfLR.columns[:4], value_vars=dfLR.columns[-4:], var_name='NomVarOrig', value_name='value')
-#                           pd.melt(dfLR, id_vars=vars_factores, value_vars=n_varsContinuas_LR_coord, var_name='NomVarOrig', value_name='value')
+#     dfFactor = pd.concat([pd.melt(dfL, id_vars=vars_factores, value_vars=n_varsContinuas_L_coord, var_name='name_varOrig', value_name='value'),
+#                           pd.melt(dfR, id_vars=vars_factores, value_vars=n_varsContinuas_R_coord, var_name='name_varOrig', value_name='value'),
+#                           #pd.melt(dfLR, id_vars=dfLR.columns[:4], value_vars=dfLR.columns[-4:], var_name='name_varOrig', value_name='value')
+#                           pd.melt(dfLR, id_vars=vars_factores, value_vars=n_varsContinuas_LR_coord, var_name='name_varOrig', value_name='value')
 #                          ])
 #     dfFactor = dfFactor.assign(**{'AngBielaInRepe':np.rad2deg(dfFactor['AngBiela_LR_y']+np.pi),
-#                             'n_var':dfFactor['NomVarOrig'].str.split('_', expand=True)[0],
-#                             'side':dfFactor['NomVarOrig'].str.split('_', expand=True)[1],
-#                             'axis':dfFactor['NomVarOrig'].str.split('_', expand=True)[2]
+#                             'n_var':dfFactor['name_varOrig'].str.split('_', expand=True)[0],
+#                             'side':dfFactor['name_varOrig'].str.split('_', expand=True)[1],
+#                             'axis':dfFactor['name_varOrig'].str.split('_', expand=True)[2]
 #                             }).reindex(columns=['ID', 'n_var', 'side', 'axis', 'repe', 'AngBiela_LR_y', 'AngBielaInRepe', 'time', 'time_repe', 'value'])
 
 #     #dfFactor = dfFactor.reindex(columns=['ID', 'n_var', 'side', 'axis', 'repe', 'AngBiela_y', 'AngBielaInRepe', 'time', 'time_repe'])
@@ -1638,8 +1638,8 @@ def slice_model_bikefitting_xr_EMG(daDatos, num_cortes=12, show=False) -> xr.Dat
 # =============================================================================
 # %% Función para normalizar a 360 datos cada ciclo. Se pasa después de la función Segmenta
 # =============================================================================
-def normalize_t_aux(data, x, base_norm_horiz):
-    """Auxiliary function for normalizing with xarray"""
+def _normalize_t_aux(data, x, base_norm_horiz):
+    """Auxiliary function for normalizing with xarray.apply_ufunc"""
     # return tnorm(data, k=1, step=-361, show=False)[0]
     if np.isnan(data).all():
         data = np.full(361, np.nan)
@@ -1676,6 +1676,8 @@ def normalize_crank_360_xr(
     verbose: bool = False,
     show: bool = False,
 ) -> xr.DataArray:  # recibe da de daTodos. Versión con numpy
+    """Function to normalize to 360 data each cycle.
+    Use after the function slice_model_bikefitting_xr_"""
     if base_norm_horiz == "time":
         eje_x = daData.time
     elif base_norm_horiz == "crank":
@@ -1696,7 +1698,7 @@ def normalize_crank_360_xr(
     x=eje_x[0,0,0].values
     """
     daNorm = xr.apply_ufunc(
-        normalize_t_aux,
+        _normalize_t_aux,
         daData,
         eje_x,
         base_norm_horiz,
@@ -2557,35 +2559,35 @@ def make_graphs_cinem(
         # Gráfica ÁNGULO/ÁNGULO
         if "coordinacion" in kind_graph:
             for eje in axis:
-                for parnomvar in itertools.combinations(n_vars, 2):
-                    # print(parnomvar[0])
+                for par_nomvar in itertools.combinations(n_vars, 2):
+                    # print(par_nomvar[0])
                     # rango=np.arange(repes[0],repes[1]).tolist()
 
                     # Adapta el dataframe para que tenga las dos variables en columnas
-                    df = dfGraph.query("n_var==@parnomvar[0] & axis==@eje")[
+                    df = dfGraph.query("n_var==@par_nomvar[0] & axis==@eje")[
                         ["ID", "repe", "side", "axis", "AngBielaInRepe"]
                     ].reset_index(drop=True)
-                    df[parnomvar[0]] = dfGraph.query(
-                        "n_var==@parnomvar[0] & axis==@eje"
+                    df[par_nomvar[0]] = dfGraph.query(
+                        "n_var==@par_nomvar[0] & axis==@eje"
                     )["value"].reset_index(drop=True)
-                    df[parnomvar[1]] = dfGraph.query(
-                        "n_var==@parnomvar[1] & axis==@eje"
+                    df[par_nomvar[1]] = dfGraph.query(
+                        "n_var==@par_nomvar[1] & axis==@eje"
                     )["value"].reset_index(drop=True)
 
                     df_ = df
                     y = None
                     if ensemble_avg:
-                        y = parnomvar[1]
+                        y = par_nomvar[1]
                         df_ = df.groupby(["side", "AngBielaInRepe"])[
-                            [parnomvar[0], parnomvar[1]]
+                            [par_nomvar[0], par_nomvar[1]]
                         ].mean()
 
                     fig, ax = plt.subplots(figsize=(3, 3), dpi=300)
                     # Dibuja líneas (media o repe a repe según ensemble_avg)
                     g = sns.lineplot(
                         data=df_,
-                        x=parnomvar[1],
-                        y=parnomvar[0],
+                        x=par_nomvar[1],
+                        y=par_nomvar[0],
                         units=unit,
                         hue="side",
                         estimator=None,
@@ -2609,12 +2611,12 @@ def make_graphs_cinem(
                     for posbiela in [0, 90, 180, 270]:
                         posx = (
                             df.query('side=="L" & AngBielaInRepe==@posbiela')
-                            .loc[:, parnomvar[1]]
+                            .loc[:, par_nomvar[1]]
                             .mean()
                         )
                         posy = (
                             df.query('side=="L" & AngBielaInRepe==@posbiela')
-                            .loc[:, parnomvar[0]]
+                            .loc[:, par_nomvar[0]]
                             .mean()
                         )
                         ax.plot(
@@ -2642,12 +2644,12 @@ def make_graphs_cinem(
 
                         posx = (
                             df.query('side=="R" & AngBielaInRepe==@posbiela')
-                            .loc[:, parnomvar[1]]
+                            .loc[:, par_nomvar[1]]
                             .mean()
                         )
                         posy = (
                             df.query('side=="R" & AngBielaInRepe==@posbiela')
-                            .loc[:, parnomvar[0]]
+                            .loc[:, par_nomvar[0]]
                             .mean()
                         )
                         ax.plot(
@@ -2675,11 +2677,11 @@ def make_graphs_cinem(
 
                     """
                     #Dibuja inicios de cada ciclo            
-                    ax.plot(df.query('side=="L" & AngBielaInRepe==0').loc[:,parnomvar[1]].mean(), 
-                            df.query('side=="L" & AngBielaInRepe==0').loc[:,parnomvar[0]].mean(), 
+                    ax.plot(df.query('side=="L" & AngBielaInRepe==0').loc[:,par_nomvar[1]].mean(), 
+                            df.query('side=="L" & AngBielaInRepe==0').loc[:,par_nomvar[0]].mean(), 
                             c='firebrick', mfc='r', marker='o', ms=10, alpha=0.5, zorder=2)
-                    ax.plot(df.query('side=="R" & AngBielaInRepe==0').loc[:,parnomvar[1]].mean(), 
-                            df.query('side=="R" & AngBielaInRepe==0').loc[:,parnomvar[0]].mean(), 
+                    ax.plot(df.query('side=="R" & AngBielaInRepe==0').loc[:,par_nomvar[1]].mean(), 
+                            df.query('side=="R" & AngBielaInRepe==0').loc[:,par_nomvar[0]].mean(), 
                             c='limegreen', mfc='lime', marker='o', ms=10, alpha=0.5, zorder=2)
                     """
 
@@ -2688,23 +2690,23 @@ def make_graphs_cinem(
                         # for nomvar, ax in g.axes_dict.items():
                         # print(nomvar)
                         df.query('side=="L"').groupby("AngBielaInRepe")[
-                            parnomvar[1]
+                            par_nomvar[1]
                         ].std()
                         err = np.sqrt(
                             df.query('side=="L"')
-                            .groupby("AngBielaInRepe")[parnomvar[0]]
+                            .groupby("AngBielaInRepe")[par_nomvar[0]]
                             .std()
                             ** 2
                             + df.query('side=="L"')
-                            .groupby("AngBielaInRepe")[parnomvar[1]]
+                            .groupby("AngBielaInRepe")[par_nomvar[1]]
                             .std()
                             ** 2
                         )
                         # err = (df.query('comparacion==@nomvar & side=="Izq" & repe==@rango').groupby('AngBielaInRepe').std().var1 + df.query('comparacion==@nomvar & side=="Izq" & repe==@rango').groupby('AngBielaInRepe').std().var2)/2
                         _draw_error_band(
                             ax,
-                            df_.query('side=="L"')[parnomvar[1]],
-                            df_.query('side=="L"')[parnomvar[0]],
+                            df_.query('side=="L"')[par_nomvar[1]],
+                            df_.query('side=="L"')[par_nomvar[0]],
                             err=err,
                             facecolor="r",
                             edgecolor="none",
@@ -2713,19 +2715,19 @@ def make_graphs_cinem(
                         )
                         err = np.sqrt(
                             df.query('side=="R"')
-                            .groupby("AngBielaInRepe")[parnomvar[0]]
+                            .groupby("AngBielaInRepe")[par_nomvar[0]]
                             .std()
                             ** 2
                             + df.query('side=="R"')
-                            .groupby("AngBielaInRepe")[parnomvar[1]]
+                            .groupby("AngBielaInRepe")[par_nomvar[1]]
                             .std()
                             ** 2
                         )
                         # err = (df.query('comparacion==@nomvar & side=="Der" & repe==@rango').groupby('AngBielaInRepe').std().var1 + df.query('comparacion==@nomvar & side=="Der" & repe==@rango').groupby('AngBielaInRepe').std().var2)/2
                         _draw_error_band(
                             ax,
-                            df_.query('side=="R"')[parnomvar[1]],
-                            df_.query('side=="R"')[parnomvar[0]],
+                            df_.query('side=="R"')[par_nomvar[1]],
+                            df_.query('side=="R"')[par_nomvar[0]],
                             err=err,
                             facecolor="lime",
                             edgecolor="none",
@@ -2737,8 +2739,8 @@ def make_graphs_cinem(
                             # print('dibuja repes sueltas en' + nomvar)
                             for rep in range(dfGraph.phase.max()):
                                 ax.plot(
-                                    df.query('side=="L"').loc[:, parnomvar[1]],
-                                    df.query('side=="L"').loc[:, parnomvar[0]],
+                                    df.query('side=="L"').loc[:, par_nomvar[1]],
+                                    df.query('side=="L"').loc[:, par_nomvar[0]],
                                     c="r",
                                     lw=0.25,
                                     alpha=0.3,
@@ -2746,10 +2748,10 @@ def make_graphs_cinem(
                                 )
                                 ax.plot(
                                     df.query('side=="R" & phase==@rep').loc[
-                                        :, parnomvar[1]
+                                        :, par_nomvar[1]
                                     ],
                                     df.query('side=="R" & phase==@rep').loc[
-                                        :, parnomvar[0]
+                                        :, par_nomvar[0]
                                     ],
                                     c="limegreen",
                                     lw=0.25,
@@ -2763,11 +2765,11 @@ def make_graphs_cinem(
                         "Coordinación articular, vista {0:s}".format(
                             nfu.rename_variables(eje)
                         )
-                    )  #' {0:s}/{1:s} {2:s}'.format(nfu.rename_variables(parnomvar[0]), nfu.rename_variables(parnomvar[1]), nfu.rename_variables(eje))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
+                    )  #' {0:s}/{1:s} {2:s}'.format(nfu.rename_variables(par_nomvar[0]), nfu.rename_variables(par_nomvar[1]), nfu.rename_variables(eje))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
 
                     g.set(
-                        xlabel=f"{nfu.rename_variables(parnomvar[1])} (grados)",
-                        ylabel=f"{nfu.rename_variables(parnomvar[0])} (grados)",
+                        xlabel=f"{nfu.rename_variables(par_nomvar[1])} (grados)",
+                        ylabel=f"{nfu.rename_variables(par_nomvar[0])} (grados)",
                     )
 
                     # g.axis('equal') #hace los dos ejes proporcionales
@@ -2799,7 +2801,7 @@ def make_graphs_cinem(
 
                     if save_path:
                         _save_graph(
-                            nom=f"{dfGraph["ID"].iloc[0]}_AA_{nfu.rename_variables(parnomvar[0])}-{nfu.rename_variables(parnomvar[1])}_{eje}",
+                            nom=f"{dfGraph["ID"].iloc[0]}_AA_{nfu.rename_variables(par_nomvar[0])}-{nfu.rename_variables(par_nomvar[1])}_{eje}",
                             save_path=carpeta_output,
                             fig=fig,
                         )
@@ -3647,22 +3649,22 @@ def make_graphs_triples_cinem(
 
             # Crea un dataframe con las comparaciones pareadas y con columna con nº comparación
             df = []
-            for comp, parnomvar in enumerate(
+            for comp, par_nomvar in enumerate(
                 itertools.combinations(dfGraph.n_var.unique(), 2)
             ):
-                # print(comp,parnomvar)
+                # print(comp,par_nomvar)
                 df.append(
                     pd.concat(
                         [
                             dfGraph.rename(columns={"value": "var1"})
-                            .query("n_var==@parnomvar[0]")
+                            .query("n_var==@par_nomvar[0]")
                             .reset_index(drop=True),
                             dfGraph.rename(columns={"value": "var2"})
-                            .query("n_var==@parnomvar[1]")["var2"]
+                            .query("n_var==@par_nomvar[1]")["var2"]
                             .reset_index(drop=True),
                         ],
                         axis=1,
-                    ).assign(**{"comparacion": parnomvar[0] + "/" + parnomvar[1]})
+                    ).assign(**{"comparacion": par_nomvar[0] + "/" + par_nomvar[1]})
                 )
             df = pd.concat(df).sort_values(
                 by=["n_var", "side"]
@@ -4735,35 +4737,35 @@ def make_graphs_EMG(
 
         # Gráficas coordinación entre pares de músculos
         if "coordinacion" in kind_graph:
-            for parnomvar in n_vars:
-                # print(parnomvar)
+            for par_nomvar in n_vars:
+                # print(par_nomvar)
                 # rango=np.arange(repes[0],repes[1]).tolist()
 
                 # Adapta el dataframe para que tenga las dos variables en columnas
-                df = dfGraph.query("n_var==@parnomvar[0]")[
+                df = dfGraph.query("n_var==@par_nomvar[0]")[
                     ["ID", "phase", "side", "AngBielaInRepe"]
                 ].reset_index(drop=True)
-                df[parnomvar[0]] = dfGraph.query("n_var==@parnomvar[0]")[
+                df[par_nomvar[0]] = dfGraph.query("n_var==@par_nomvar[0]")[
                     "value"
                 ].reset_index(drop=True)
-                df[parnomvar[1]] = dfGraph.query("n_var==@parnomvar[1]")[
+                df[par_nomvar[1]] = dfGraph.query("n_var==@par_nomvar[1]")[
                     "value"
                 ].reset_index(drop=True)
 
                 df_ = df
                 y = None
                 if ensemble_avg:
-                    y = parnomvar[1]
+                    y = par_nomvar[1]
                     df_ = df.groupby(["side", "AngBielaInRepe"])[
-                        [parnomvar[0], parnomvar[1]]
+                        [par_nomvar[0], par_nomvar[1]]
                     ].mean()
 
                 fig, ax = plt.subplots(figsize=(3, 3), dpi=300)
                 # Dibuja líneas (media o repe a repe según ensemble_avg)
                 g = sns.lineplot(
                     data=df_,
-                    x=parnomvar[1],
-                    y=parnomvar[0],
+                    x=par_nomvar[1],
+                    y=par_nomvar[0],
                     units=unit,
                     hue="side",
                     estimator=None,
@@ -4776,10 +4778,10 @@ def make_graphs_EMG(
                 # Dibuja inicios de cada ciclo
                 ax.plot(
                     df.query('side=="Izq" & AngBielaInRepe==0')
-                    .loc[:, parnomvar[1]]
+                    .loc[:, par_nomvar[1]]
                     .mean(),
                     df.query('side=="Izq" & AngBielaInRepe==0')
-                    .loc[:, parnomvar[0]]
+                    .loc[:, par_nomvar[0]]
                     .mean(),
                     c="firebrick",
                     mfc="r",
@@ -4790,10 +4792,10 @@ def make_graphs_EMG(
                 )
                 ax.plot(
                     df.query('side=="Der" & AngBielaInRepe==0')
-                    .loc[:, parnomvar[1]]
+                    .loc[:, par_nomvar[1]]
                     .mean(),
                     df.query('side=="Der" & AngBielaInRepe==0')
-                    .loc[:, parnomvar[0]]
+                    .loc[:, par_nomvar[0]]
                     .mean(),
                     c="limegreen",
                     mfc="lime",
@@ -4810,18 +4812,18 @@ def make_graphs_EMG(
                     err = np.sqrt(
                         df.query('side=="Izq"')
                         .groupby("AngBielaInRepe")
-                        .std()[parnomvar[0]]
+                        .std()[par_nomvar[0]]
                         ** 2
                         + df.query('side=="Izq"')
                         .groupby("AngBielaInRepe")
-                        .std()[parnomvar[1]]
+                        .std()[par_nomvar[1]]
                         ** 2
                     )
                     # err = (df.query('comparacion==@nomvar & side=="Izq" & repe==@rango').groupby('AngBielaInRepe').std().var1 + df.query('comparacion==@nomvar & side=="Izq" & repe==@rango').groupby('AngBielaInRepe').std().var2)/2
                     _draw_error_band(
                         ax,
-                        df_.query('side=="Izq"')[parnomvar[1]],
-                        df_.query('side=="Izq"')[parnomvar[0]],
+                        df_.query('side=="Izq"')[par_nomvar[1]],
+                        df_.query('side=="Izq"')[par_nomvar[0]],
                         err=err,
                         facecolor="r",
                         edgecolor="none",
@@ -4831,18 +4833,18 @@ def make_graphs_EMG(
                     err = np.sqrt(
                         df.query('side=="Der"')
                         .groupby("AngBielaInRepe")
-                        .std()[parnomvar[0]]
+                        .std()[par_nomvar[0]]
                         ** 2
                         + df.query('side=="Der"')
                         .groupby("AngBielaInRepe")
-                        .std()[parnomvar[1]]
+                        .std()[par_nomvar[1]]
                         ** 2
                     )
                     # err = (df.query('comparacion==@nomvar & side=="Der" & repe==@rango').groupby('AngBielaInRepe').std().var1 + df.query('comparacion==@nomvar & side=="Der" & repe==@rango').groupby('AngBielaInRepe').std().var2)/2
                     _draw_error_band(
                         ax,
-                        df_.query('side=="Der"')[parnomvar[1]],
-                        df_.query('side=="Der"')[parnomvar[0]],
+                        df_.query('side=="Der"')[par_nomvar[1]],
+                        df_.query('side=="Der"')[par_nomvar[0]],
                         err=err,
                         facecolor="lime",
                         edgecolor="none",
@@ -4855,10 +4857,10 @@ def make_graphs_EMG(
                         for rep in range(dfGraph.phase.max()):
                             ax.plot(
                                 df.query('side=="Izq" & phase==@rep').loc[
-                                    :, parnomvar[1]
+                                    :, par_nomvar[1]
                                 ],
                                 df.query('side=="Izq" & phase==@rep').loc[
-                                    :, parnomvar[0]
+                                    :, par_nomvar[0]
                                 ],
                                 c="r",
                                 lw=0.25,
@@ -4867,10 +4869,10 @@ def make_graphs_EMG(
                             )
                             ax.plot(
                                 df.query('side=="Der" & phase==@rep').loc[
-                                    :, parnomvar[1]
+                                    :, par_nomvar[1]
                                 ],
                                 df.query('side=="Der" & phase==@rep').loc[
-                                    :, parnomvar[0]
+                                    :, par_nomvar[0]
                                 ],
                                 c="limegreen",
                                 lw=0.25,
@@ -4882,11 +4884,11 @@ def make_graphs_EMG(
                 # g.figure.suptitle('{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
                 g.set_title(
                     "Coordinación muscular"
-                )  # {0:s}/{1:s}'.format(nfu.rename_variables(parnomvar[0]), nfu.rename_variables(parnomvar[1]))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
+                )  # {0:s}/{1:s}'.format(nfu.rename_variables(par_nomvar[0]), nfu.rename_variables(par_nomvar[1]))) #'{0:s} ({1:s})'.format(dfLateral['ID'].iloc[0], nomvar))
 
                 g.set(
-                    xlabel=f"{nfu.rename_variables(parnomvar[1])} (%MVC)",
-                    ylabel=f"{nfu.rename_variables(parnomvar[0])} (%MVC)",
+                    xlabel=f"{nfu.rename_variables(par_nomvar[1])} (%MVC)",
+                    ylabel=f"{nfu.rename_variables(par_nomvar[0])} (%MVC)",
                 )
 
                 # g.axis('equal') #hace los dos ejes proporcionales
@@ -4913,7 +4915,7 @@ def make_graphs_EMG(
 
                 if save_path:
                     guarda_grafica(
-                        nom=f"_EE_{nfu.rename_variables(parnomvar[0])}_{nfu.rename_variables(parnomvar[1])}"
+                        nom=f"_EE_{nfu.rename_variables(par_nomvar[0])}_{nfu.rename_variables(par_nomvar[1])}"
                     )
 
                 # plt.show()

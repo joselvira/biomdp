@@ -716,7 +716,7 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             try:
                 origen = (daData.sel(n_var="PSI_L") + daData.sel(n_var="PSI_R")) * 0.5
                 x = daData.sel(n_var="PSI_R") - origen
-                vprovis = daData_completo.sel(n_var="L1") - origen
+                vprovis = daData.sel(n_var="L1") - origen
                 y = xr.cross(vprovis, x, dim="axis")
                 z = xr.cross(x, y, dim="axis")
                 x, y, z = normalize_vectors(x, y, z)
@@ -730,8 +730,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
 
             # ----TORAX_LR
             try:
-                origen = daData_completo.sel(n_var="C7")
-                z = daData_completo.sel(n_var="C7") - daData_completo.sel(n_var="T6")
+                origen = daData.sel(n_var="C7")
+                z = daData.sel(n_var="C7") - daData.sel(n_var="T6")
                 vprovis = daData.sel(n_var="Hombro", side="R") - daData.sel(
                     n_var="Hombro", side="L"
                 )
@@ -748,14 +748,12 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
 
             # ----CABEZA_LR
             try:
-                origen = daData_completo.sel(n_var="Post_Cabeza")
-                y = daData_completo.sel(n_var="Ant_Cabeza") - daData_completo.sel(
-                    n_var="Post_Cabeza"
-                )
+                origen = daData.sel(n_var="Post_Cabeza")
+                y = daData.sel(n_var="Ant_Cabeza") - daData.sel(n_var="Post_Cabeza")
                 # DÓNDE SE CARGA LADOS DE CABEZA????
-                vprovis = daData_completo.sel(
-                    n_var="Cabeza", side="R"
-                ) - daData_completo.sel(n_var="Cabeza", side="L")
+                vprovis = daData.sel(n_var="Cabeza", side="R") - daData.sel(
+                    n_var="Cabeza", side="L"
+                )
                 z = xr.cross(vprovis, y, dim="axis")
                 x = xr.cross(y, z, dim="axis")
                 x, y, z = normalize_vectors(x, y, z)
@@ -2550,7 +2548,7 @@ def load_preprocess_csv_EMG_pl_xr(
             print(error_files[x])
     # *******************************************************
     # ----------------
-    daTodos = from_df_to_da_EMG(dfAllFiles)
+    daTodos = df_to_da_EMG(dfAllFiles)
     # Añade coordenada con nombre del tipo de test
     daTodos = daTodos.assign_coords(
         test=("ID", daTodos.ID.to_series().str.split("_").str[-1].str.split("-").str[0])
@@ -2675,7 +2673,7 @@ def load_preprocess_csv_EMG(
             print(error_files[x])
     # *******************************************************
     # ----------------
-    daTodos = from_df_to_da_EMG(dfAllFiles)
+    daTodos = df_to_da_EMG(dfAllFiles)
     # Añade coordenada con nombre del tipo de test
     daTodos = daTodos.assign_coords(
         test=("ID", daTodos.ID.to_series().str.split("_").str[-1].str.split("-").str[0])
@@ -2817,7 +2815,7 @@ def load_preprocess_c3d_EMG(
             print(error_files[x])
     # *******************************************************
 
-    daAllFiles = from_df_to_da_EMG(daAllFiles)
+    daAllFiles = df_to_da_EMG(daAllFiles)
     # Añade coordenada con nombre del tipo de test. Diferencia entre MVC y dinámicos, por el criterio de nombrado
     if daAllFiles.ID[0].str.contains("MVC"):
         lista_coords = (
