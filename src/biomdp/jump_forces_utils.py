@@ -559,8 +559,8 @@ def split_dim_plats(da: xr.DataArray, merge_2_plats: int) -> xr.DataArray:
 
 def compute_forces_axes(da: xr.DataArray) -> xr.DataArray:
     """
-    Calcula las fuerzas en ejes a partir de las fuerzas raw de cada sensor.
-    Usar después de read_kistler_c3d_xr()
+    Calculate the axis forces from the raw forces of each sensor.
+    Use after read_kistler_c3d_xr()
     """
 
     def _split_plataforms(da):
@@ -631,7 +631,7 @@ def load_bioware_pl(
     to_dataarray: bool = False,
 ):  # -> pl.DataFrame | xr.DataArray:
     print("Redirecting to biomdp.read_kistler_txt function")
-    from biomdp.read_kistler_txt import read_bioware_pl
+    from biomdp.io.read_kistler_txt import read_bioware_pl
 
     """
     df = (
@@ -688,8 +688,8 @@ def load_bioware_pl(
 def read_bioware_c3d(
     file: str | Path, n_vars_load: List[str] | None = None, engine: str = "ezc3d"
 ) -> xr.DataArray:
-    print("Redirecting to biomdp.read_kistler_c3d function")
-    from biomdp.read_kistler_c3d import read_kistler_c3d_xr
+    print("Redirecting to biomdp.io.read_kistler_c3d function")
+    from biomdp.io.read_kistler_c3d import read_kistler_c3d_xr
 
     # from read_vicon_c3d import read_vicon_c3d_xr, read_vicon_c3d_xr_global
 
@@ -707,7 +707,7 @@ def load_merge_vicon_csv(
     assign_subcat: bool = True,
     show=False,
 ) -> xr.DataArray:
-    from biomdp.read_vicon_csv import read_vicon_csv_pl_xr
+    from biomdp.io.read_vicon_csv import read_vicon_csv_pl_xr
 
     file_list = sorted(list(path.glob("**/*.csv")))
     file_list = [x for x in file_list if "error" not in x.name]
@@ -770,7 +770,7 @@ def load_merge_vicon_csv_logsheet(
 ) -> xr.DataArray:
     """Load file listing based on log sheet data"""
 
-    from biomdp.read_vicon_csv import read_vicon_csv_pl_xr
+    from biomdp.io.read_vicon_csv import read_vicon_csv_pl_xr
 
     if log_sheet is None:
         print("You must specify the Dataframe with the log sheet")
@@ -843,10 +843,7 @@ def load_merge_vicon_c3d_logsheet(
     engine="ezc3d",
     show=False,
 ) -> xr.DataArray:
-    from biomdp.read_vicon_c3d import (
-        read_vicon_c3d_xr,
-        read_vicon_ezc3d_xr,
-    )  # , read_vicon_c3d_xr_global
+    from biomdp.io.read_vicon_c3d import read_vicon_c3d_xr
 
     if log_sheet is None:
         print("You must specify the Dataframe with the log sheet")
@@ -1186,7 +1183,7 @@ def load_merge_bioware_pd(
         DESCRIPTION.
 
     """
-    from biomdp.read_kistler_txt import load_bioware_pd
+    from biomdp.io.read_kistler_txt import load_bioware_pd
 
     if data_type is None:
         data_type = float
@@ -1367,7 +1364,7 @@ def load_merge_bioware_c3d(
     show: bool = False,
 ) -> xr.DataArray:
     # from read_kistler_c3d import read_kistler_c3d_xr
-    import biomdp.read_kistler_c3d as rkc3d
+    from biomdp.io import read_kistler_c3d as rkc3d
 
     # path = Path(r'F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros\2023PotenciaDJ\S01')
     if data_type is None:
@@ -5862,7 +5859,7 @@ if __name__ == "__main__":
         fuerzas_xr.isel(n_var=0).plot.line(x="time")
 
         # Con C3D
-        from biomdp import read_kistler_c3d as rkc3d
+        from biomdp.io import read_kistler_c3d as rkc3d
 
         da = rkc3d.read_kistler_c3d_xr(file)
         da = rkc3d.read_kistler_ezc3d_xr(file)  # does not read the entire file
