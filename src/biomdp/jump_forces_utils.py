@@ -630,7 +630,7 @@ def load_bioware_pl(
     n_vars_load: List[str] | None = None,
     to_dataarray: bool = False,
 ):  # -> pl.DataFrame | xr.DataArray:
-    print("Redirecting to biomdp.read_kistler_txt function")
+    print("Redirecting to biomdp.io.read_kistler_txt function")
     from biomdp.io.read_kistler_txt import read_bioware_pl
 
     """
