@@ -23,7 +23,7 @@ Updates:
 
 """
 
-from typing import List
+from typing import List, Any
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -38,62 +38,122 @@ from pathlib import Path
 # =============================================================================
 
 
-# Carga un archivo de Bioware como dataframe de Polars
-def read_bioware_pl(
+def read_kistler_txt(
     file: str | Path,
     lin_header: int = 17,
     n_vars_load: List[str] | None = None,
     to_dataarray: bool = False,
-) -> pl.DataFrame | xr.DataArray:
-    df = (
-        pl.read_csv(
+    engine="polars",
+    raw: bool = False,
+) -> Any:
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
+    if engine == "polars":
+        da = read_kistler_txt_pl(
             file,
-            has_header=True,
-            skip_rows=lin_header,
-            skip_rows_after_header=1,
-            columns=n_vars_load,
-            separator="\t",
-        )  # , columns=nom_vars_cargar)
-        # .slice(1, None) #quita la fila de unidades (N) #no hace falta con skip_rows_after_header=1
-        # .select(pl.col(n_vars_load))
-        # .rename({'abs time (s)':'time'}) #'Fx':'x', 'Fy':'y', 'Fz':'z',
-        #          #'Fx_duplicated_0':'x_duplicated_0', 'Fy_duplicated_0':'y_duplicated_0', 'Fz_duplicated_0':'z'
-        #          })
-    ).with_columns(pl.all().cast(pl.Float64()))
-
-    # ----Transform polars to xarray
-    if to_dataarray:
-        x = df.select(pl.col("^*Fx$")).to_numpy()
-        y = df.select(pl.col("^*Fy$")).to_numpy()
-        z = df.select(pl.col("^*Fz$")).to_numpy()
-        data = np.stack([x, y, z])
-        freq = 1 / (df[1, "abs time (s)"] - df[0, "abs time (s)"])
-        ending = -3
-        coords = {
-            "axis": ["x", "y", "z"],
-            "time": np.arange(data.shape[1]) / freq,
-            "n_var": ["Force"],  # [x[:ending] for x in df.columns if 'x' in x[-1]],
-        }
-        da = (
-            xr.DataArray(
-                data=data,
-                dims=coords.keys(),
-                coords=coords,
-            )
-            .astype(float)
-            .transpose("n_var", "axis", "time")
+            lin_header=lin_header,
+            n_vars_load=n_vars_load,
+            to_dataarray=to_dataarray,
+            raw=raw,
         )
-        da.name = "Forces"
-        da.attrs["freq"] = freq
-        da.time.attrs["units"] = "s"
-        da.attrs["units"] = "N"
 
-        return da
+    elif engine == "pandas":
+        da = read_kistler_txt_pd(
+            file,
+            lin_header=lin_header,
+            n_vars_load=n_vars_load,
+            to_dataarray=to_dataarray,
+        )
 
-    return df
+    elif engine == "arrow":
+        da = read_kistler_txt_arrow(
+            file,
+            lin_header=lin_header,
+            n_vars_load=n_vars_load,
+            to_dataarray=to_dataarray,
+        )
+    else:
+        raise ValueError(
+            f"Engine {engine} not valid\nTry with 'polars', 'pandas' or 'arrow'"
+        )
+
+    return da
 
 
-def load_bioware_arrow(
+# Carga un archivo de Bioware como dataframe de Polars
+def read_kistler_txt_pl(
+    file: str | Path,
+    lin_header: int = 17,
+    n_vars_load: List[str] | None = None,
+    to_dataarray: bool = False,
+    raw: bool = False,
+    magnitude: str = "force",
+) -> pl.DataFrame | xr.DataArray:
+    try:
+        df = (
+            pl.read_csv(
+                file,
+                has_header=True,
+                skip_rows=lin_header,
+                skip_rows_after_header=1,
+                columns=n_vars_load,
+                separator="\t",
+            )  # , columns=nom_vars_cargar)
+            # .slice(1, None) #quita la fila de unidades (N) #no hace falta con skip_rows_after_header=1
+            # .select(pl.col(n_vars_load))
+            # .rename({'abs time (s)':'time'}) #'Fx':'x', 'Fy':'y', 'Fz':'z',
+            #          #'Fx_duplicated_0':'x_duplicated_0', 'Fy_duplicated_0':'y_duplicated_0', 'Fz_duplicated_0':'z'
+            #          })
+        ).with_columns(pl.all().cast(pl.Float64()))
+
+        # ----Transform polars to xarray
+        if raw:
+            return df
+
+        else:
+            if magnitude == "force":
+                try:
+                    x = df.select(pl.col("^*Fx.*$")).to_numpy()
+                    y = df.select(pl.col("^*Fy.*$")).to_numpy()
+                    z = df.select(pl.col("^*Fz.*$")).to_numpy()
+                except:
+                    raise Exception("Expected header with abs time (s), Fx, Fy, Fz")
+                data = np.stack([x, y, z])
+                freq = 1 / (df[1, "abs time (s)"] - df[0, "abs time (s)"])
+                # ending = -3
+                coords = {
+                    "axis": ["x", "y", "z"],
+                    "time": np.arange(data.shape[1]) / freq,
+                    "plate": range(
+                        1, x.shape[1] + 1
+                    ),  # [x[:ending] for x in df.columns if 'x' in x[-1]],
+                }
+                da = (
+                    xr.DataArray(
+                        data=data,
+                        dims=coords.keys(),
+                        coords=coords,
+                    )
+                    .astype(float)
+                    .transpose("plate", "axis", "time")
+                )
+                da.name = "forces"
+                da.attrs["freq"] = freq
+                da.time.attrs["units"] = "s"
+                da.attrs["units"] = "N"
+
+            elif magnitude == "cop":
+                raise Exception("Not implemented yet")
+
+    except Exception as err:
+        print(f"\nATTENTION. Unable to process {file.name}, {err}, \n")
+
+    return da
+
+
+def read_kistler_txt_arrow(
     file: str | Path,
     lin_header: int = 17,
     n_vars_load: List[str] | None = None,
@@ -112,7 +172,7 @@ def load_bioware_arrow(
     return data.to_pandas()
 
 
-def load_bioware_pd(
+def read_kistler_txt_pd(
     file: str | Path,
     lin_header: int = 17,
     n_vars_load: List[str] | None = None,
@@ -233,38 +293,18 @@ def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
 
 
 # =============================================================================
-# %% MAIN
+# %% TESTS
 # =============================================================================
 if __name__ == "__main__":
 
-    from biomdp.read_kistler_c3d import read_kistler_c3d_xr, read_kistler_ezc3d_xr
+    # from biomdp.io.read_kistler_txt import read_kistler_c3d_xr, read_kistler_ezc3d_xr
 
-    ruta_archivo = Path(
-        r"F:\Investigacion\Proyectos\Saltos\2023PreactivacionSJ\DataCollection\S01\FeedbackFuerza"
-    )
-    file = ruta_archivo / "S01_CMJ_000.c3d"
-    daForce = read_kistler_c3d_xr(file)
-    daForce = split_plataforms(daForce)
-    daForce = split_axis(daForce)
-    daForce.sel(axis="z").plot.line(x="time", col="plat")
+    work_path = Path(r"src\biomdp\datasets")
+    file = work_path / "kistler_CMJ_1plate.txt"
+    daForce = read_kistler_txt(file)
+    daForce.isel(plate=0).plot.line(x="time")  # , col="plat")
 
-    daForce2 = read_kistler_c3d_xr(file)  # read_kistler_ezc3d_xr(file)
-
-    ruta_archivo = Path(
-        r"F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros\2023PotenciaDJ\S02"
-    )
-    file = ruta_archivo / "S02_DJ_30_002.c3d"
-    daForce = read_kistler_c3d_xr(file)  # read_kistler_c3d_xr(file)
-    # daForce = split_plataforms(daForce)
-    daForce = compute_forces_axes(daForce)
-    daForce.plot.line(x="time", col="plat")
-
-    daForce2 = read_kistler_c3d_xr(
-        file
-    )  # read_kistler_ezc3d_xr(file)  # ezc3d CARGA SÓLO UNA PARTE INICIAL
-    # daForce = split_plataforms(daForce)
-    daForce2 = compute_forces_axes(daForce2)
-    daForce2.plot.line(x="time", col="plat")
-
-    daForce2 == daForce
-    daForce2.plot.line(x="time")
+    file = work_path / "kistler_DJ_2plates.txt"
+    daForce = read_kistler_txt(file)
+    daForce.plot.line(x="time", col="plate")
+    daForce.sum(dim="plate").plot.line(x="time")

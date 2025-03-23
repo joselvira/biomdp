@@ -46,24 +46,33 @@ from pathlib import Path
 # =============================================================================
 # %% Functions
 # =============================================================================
-def read_vicon_c3d_xr(
+def read_vicon_c3d(
     file: str | Path,
     section: str | None = None,
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
     engine: str = "ezc3d",
 ) -> xr.DataArray:
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
+    # Ensures that file is a c3D file
+    file = file.with_suffix(".c3d")
+
     if engine == "c3d":
-        return read_vicon_c3d_c3d_xr(file, section, n_vars_load, coincidence)
+        da = read_vicon_c3d_c3d(file, section, n_vars_load, coincidence)
 
     elif engine == "ezc3d":
-        return read_vicon_ezc3d_xr(file, section, n_vars_load, coincidence)
+        da = read_vicon_ezc3d(file, section, n_vars_load, coincidence)
 
     else:
-        print("Engine {engine} not implemented. Try 'c3d' or 'ezc3d'")
+        raise Exception(f"Engine {engine} not implemented.\nTry 'c3d' or 'ezc3d'")
+
+    return da
 
 
-def read_vicon_c3d_c3d_xr(
+def read_vicon_c3d_c3d(
     file: str | Path,
     section: str | None = None,
     n_vars_load: List[str] | None = None,
@@ -82,14 +91,11 @@ def read_vicon_c3d_c3d_xr(
         "EMG",
     ]:
         raise Exception(
-            'Section header not found, try "Trajectories", "Model outputs", "Forces" or "EMG"'
+            'Section header not found, try "Trajectories", "Model Outputs", "Forces" or "EMG"'
         )
         return
 
     timer = time.perf_counter()  # inicia el contador de tiempo
-
-    # se asegura de que la extensión es c3d
-    file = file.with_suffix(".c3d")
 
     try:
         timerSub = time.perf_counter()  # inicia el contador de tiempo
@@ -164,9 +170,11 @@ def read_vicon_c3d_c3d_xr(
             # Sometimes contains 'Force' and others 'Fx', Fy', 'Fz'
             # Get only force variables
             if section == "Forces":
-                if "Force" in da_analog.n_var:  # new versions of Nexus?
+                if "Force" in da_analog.n_var:  # newer versions of Nexus?
                     da = da_analog.sel(n_var=da_analog.n_var.str.contains("Force"))
-                elif da_analog.n_var.str.contains("Fz").any():  # old versions of Nexus?
+                elif da_analog.n_var.str.contains(
+                    "Fz"
+                ).any():  # older versions of Nexus?
                     da = da_analog.sel(n_var=da_analog.n_var.str.startswith("F"))
                 else:
                     da = xr.DataArray()
@@ -234,7 +242,7 @@ def read_vicon_c3d_c3d_xr(
     return da  # daTrajec, daModels, daForce, daEMG
 
 
-def read_vicon_ezc3d_xr(
+def read_vicon_ezc3d(
     file: str | Path,
     section: str | None = None,
     n_vars_load: List[str] | None = None,
@@ -255,14 +263,11 @@ def read_vicon_ezc3d_xr(
         "EMG",
     ]:
         raise Exception(
-            'Section header not found, try "Trajectories", "Model outputs", "Forces" or "EMG"'
+            'Section header not found, try "Trajectories", "Model Outputs", "Forces" or "EMG"'
         )
         return
 
     timer = time.perf_counter()  # inicia el contador de tiempo
-
-    # se asegura de que la extensión es c3d
-    file = file.with_suffix(".c3d")
 
     try:
         timerSub = time.perf_counter()  # inicia el contador de tiempo
@@ -414,7 +419,7 @@ def read_vicon_c3d_xr_global(
 
     if section not in ["Trajectories", "Model Outputs", "Forces", "EMG"]:
         raise Exception(
-            'Section header not found. try "Trajectories", "Model outputs", "Forces" or "EMG"'
+            'Section header not found. try "Trajectories", "Model Outputs", "Forces" or "EMG"'
         )
         return
 
@@ -699,12 +704,46 @@ def read_vicon_c3d_xr_global_ds(
 # =============================================================================
 if __name__ == "__main__":
 
+    # from biomdp.io.read_vicon_c3d import read_vicon_c3d
+
+    work_path = Path(r"src\datasets")
+    file = work_path / "vicon_CMJ_kinem_kinet_emg.c3d"
+    daData = read_vicon_c3d(file, section="Trajectories")
+    daData.plot.line(x="time", col="n_var", col_wrap=3)
+
+    daData = read_vicon_c3d(file, section="Model Outputs")
+    daData.plot.line(x="time", col="n_var", col_wrap=3, sharey=False)
+
+    daData = read_vicon_c3d(file, section="Forces")
+    daData.plot.line(x="time", col="n_var", col_wrap=3)
+
+    daData = read_vicon_c3d(file, section="EMG")
+    daData.plot.line(x="time", col="n_var", col_wrap=3)
+
+    import timeit
+
+    def test_performance():
+        result = read_vicon_c3d(file, section="Model Outputs", engine="c3d")
+        return result
+
+    print(
+        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=10):.4f} s'
+    )
+
+    def test_performance():
+        result = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
+        return result
+
+    print(
+        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=10):.4f} s'
+    )
+
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "SaltosS13_SJ_100S_03.c3d"
-    daTrajec = read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
+    daTrajec = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
     daTrajec.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
 
-    daTrajec = read_vicon_c3d_xr(
+    daTrajec = read_vicon_c3d(
         file,
         section="Trajectories",
         n_vars_load=["LPSI", "LASIMID", "RASIMID", "RPSI"],
@@ -712,7 +751,7 @@ if __name__ == "__main__":
     )
     daTrajec.plot.line(x="time", col="n_var")
 
-    daModels = read_vicon_c3d_xr(file, section="Model Outputs", engine="ezc3d")
+    daModels = read_vicon_c3d(file, section="Model Outputs", engine="ezc3d")
     # Mezcla variables modeladas de ángulo con EMG (3 canales por variable)
     daModels.isel(n_var=slice(None)).plot.line(
         x="time", col="n_var", col_wrap=3, sharey=False
@@ -736,16 +775,16 @@ if __name__ == "__main__":
     )
     daModel_EMG.plot.line(x="time", col="n_var", col_wrap=3)
 
-    daForce = read_vicon_c3d_xr(file, section="Forces", engine="ezc3d")
+    daForce = read_vicon_c3d(file, section="Forces", engine="ezc3d")
     daForce.plot.line(x="time", col="n_var", col_wrap=3)
 
-    daEMG = read_vicon_c3d_xr(
+    daEMG = read_vicon_c3d(
         file,
         section="EMG",
         n_vars_load=["EMG1", "EMG2", "EMG3", "EMG4", "EMG5", "EMG6"],
         engine="c3d",
     )
-    daEMG = read_vicon_c3d_xr(
+    daEMG = read_vicon_c3d(
         file,
         section="EMG",
         n_vars_load=["EMG1.v", "EMG2.v", "EMG3.v", "EMG4.v", "EMG5.v", "EMG6.v"],
@@ -775,10 +814,10 @@ if __name__ == "__main__":
 
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "SillaRuedas-s1905.c3d"
-    daForce = read_vicon_c3d_xr(file, section="Forces")
+    daForce = read_vicon_c3d(file, section="Forces")
     daForce.plot.line(x="time", col="n_var", col_wrap=3)
 
-    daEMG = read_vicon_c3d_xr(
+    daEMG = read_vicon_c3d(
         file,
         section="EMG",
         n_vars_load=["EMG1", "EMG2", "EMG3", "EMG4", "EMG5", "EMG6"],
@@ -786,12 +825,12 @@ if __name__ == "__main__":
 
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "Pablo_FIN.c3d"
-    daModels = read_vicon_c3d_xr(file, section="Model Outputs")
+    daModels = read_vicon_c3d(file, section="Model Outputs")
     daModels.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
-    daForce = read_vicon_c3d_xr(file, section="Forces")
+    daForce = read_vicon_c3d(file, section="Forces")
     daForce.plot.line(x="time", col="n_var", col_wrap=3)
 
-    daEMG = read_vicon_c3d_xr(
+    daEMG = read_vicon_c3d(
         file,
         section="EMG",
         n_vars_load=["EMG1", "EMG2", "EMG3", "EMG4", "EMG5", "EMG6"],
@@ -805,7 +844,7 @@ if __name__ == "__main__":
     import timeit
 
     def test_perf():
-        result = read_vicon_c3d_xr(file, section="Trajectories", engine="c3d")
+        result = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
         return result
 
     print(
@@ -813,60 +852,9 @@ if __name__ == "__main__":
     )
 
     def test_perf():
-        result = read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
+        result = read_vicon_c3d(file, section="Trajectories", engine="c3d")
         return result
 
     print(
         f'{timeit.timeit("test_perf()", setup="from __main__ import test_perf", number=50):.4f} s'
     )
-
-    da = test_perf()
-    da.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
-
-    ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
-    file = ruta_archivo / "SaltosS13_SJ_100S_03.c3d"
-    read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Model Outputs", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Forces", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="EMG", engine="ezc3d")
-
-    ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
-    file = ruta_archivo / "SaltosS13_SJ_100L_02.c3d"
-    read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Model Outputs", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Forces", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="EMG", engine="ezc3d")
-
-    ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
-    file = ruta_archivo / "Bioware-12CMJAB2.c3d"
-    read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Model Outputs", engine="ezc3d")
-    read_vicon_c3d_xr(
-        file, section="Forces", engine="ezc3d"
-    )  # canales de fuerza en crudo
-    read_vicon_c3d_xr(file, section="EMG", engine="ezc3d")
-
-    ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
-    file = ruta_archivo / "ManuBen_INI.c3d"
-    read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Model Outputs", engine="ezc3d")
-    read_vicon_c3d_xr(
-        file, section="Forces", engine="ezc3d"
-    )  # canales de fuerza en crudo
-    read_vicon_c3d_xr(file, section="EMG", engine="ezc3d")
-
-    ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
-    file = ruta_archivo / "SillaRuedas-s1406.c3d"
-    read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Model Outputs", engine="ezc3d")
-    f = read_vicon_c3d_xr(file, section="Forces", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="EMG", engine="ezc3d")
-    f.plot.line(x="time", col="n_var", col_wrap=3)
-
-    ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
-    file = ruta_archivo / "PCFutbol-1poa.c3d"
-    read_vicon_c3d_xr(file, section="Trajectories", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="Model Outputs", engine="ezc3d")
-    f = read_vicon_c3d_xr(file, section="Forces", engine="ezc3d")
-    read_vicon_c3d_xr(file, section="EMG", engine="ezc3d")
-    f.plot.line(x="time", col="n_var", col_wrap=3)

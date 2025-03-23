@@ -50,23 +50,27 @@ from pathlib import Path
 # =============================================================================
 
 
-def read_kistler_c3d_xr(
+def read_kistler_c3d(
     file: str | Path,
-    n_vars_load: List[str] = None,
-    coincidence: str = "similar",
+    n_vars_load: List[str] | None = None,
+    # coincidence: str = "similar",
     engine: str = "ezc3d",
     raw: bool = False,
 ) -> xr.DataArray:
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
     if engine == "c3d":
 
-        da = read_kistler_c3d_c3d_xr(file, n_vars_load, coincidence, raw=raw)
+        da = read_kistler_c3d_c3d(file)
 
     elif engine == "ezc3d":
 
-        da = read_kistler_ezc3d_xr(file, n_vars_load, coincidence, raw=raw)
+        da = read_kistler_ezc3d(file)
 
     else:
-        print("Engine {engine} not implemented. Try 'c3d' or 'ezc3d'")
+        print(f"Engine {engine} not implemented. Try 'c3d' or 'ezc3d'")
 
     if raw:
         if n_vars_load:
@@ -82,11 +86,8 @@ def read_kistler_c3d_xr(
     return da
 
 
-def read_kistler_c3d_c3d_xr(
+def read_kistler_c3d_c3d(
     file: str | Path,
-    n_vars_load: List[str] = None,
-    coincidence: str = "similar",
-    raw: bool = False,
 ) -> xr.DataArray:
     try:
         import c3d
@@ -94,13 +95,13 @@ def read_kistler_c3d_c3d_xr(
         raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
     import warnings  # to remove 'no points found' warnings
 
-    timer = time.perf_counter()  # inicia el contador de tiempo
+    timer = time.perf_counter()
 
     # se asegura de que la extensión es c3d
     file = file.with_suffix(".c3d")
 
     try:
-        timerSub = time.perf_counter()  # inicia el contador de tiempo
+        timerSub = time.perf_counter()
         # print(f'Loading file: {file.name}')
 
         with warnings.catch_warnings():
@@ -121,7 +122,8 @@ def read_kistler_c3d_c3d_xr(
 
         labels_analog = [s.split(".")[0].replace(" ", "") for s in reader.analog_labels]
         data_analog = np.concatenate(analog, axis=1)
-
+        # import matplotlib.pyplot as plt
+        # plt.plot(data_analog.T)
         # data_analog.shape
         coords = {
             "n_var": labels_analog,
@@ -145,11 +147,8 @@ def read_kistler_c3d_c3d_xr(
     return da_analog
 
 
-def read_kistler_ezc3d_xr(
+def read_kistler_ezc3d(
     file: str | Path,
-    n_vars_load: List[str] = None,
-    coincidence: str = "similar",
-    raw=False,
 ):
     """
     DOES NOT SEEM TO LOAD THE COMPLETE TIME SERIES
@@ -226,19 +225,23 @@ def read_kistler_ezc3d_xr(
 
 
 def split_plataforms(da: xr.DataArray) -> xr.DataArray:
-    plat1 = da.sel(n_var=da.n_var.str.startswith("F1"))
-    plat1 = plat1.assign_coords(n_var=plat1.n_var.str.lstrip("F1"))
+    if len(da.n_var) == 8:  # 1 plate
+        da = da.expand_dims("plate").assign_coords(plate=[1])
 
-    plat2 = da.sel(n_var=da.n_var.str.startswith("F2"))
-    plat2 = plat2.assign_coords(n_var=plat2.n_var.str.lstrip("F2"))
+    elif len(da.n_var) == 16:
+        plat1 = da.sel(n_var=da.n_var.str.startswith("F1"))
+        plat1 = plat1.assign_coords(n_var=plat1.n_var.str.lstrip("F1"))
 
-    da = xr.concat([plat1, plat2], dim="plat").assign_coords(plat=[1, 2])
+        plat2 = da.sel(n_var=da.n_var.str.startswith("F2"))
+        plat2 = plat2.assign_coords(n_var=plat2.n_var.str.lstrip("F2"))
 
-    if plat2.n_var.size == 0:
-        print("There is only one platform.")
-        return da.sel(plat=[1])
-    else:
-        return da
+        da = xr.concat([plat1, plat2], dim="plate").assign_coords(plate=[1, 2])
+
+    # if plat2.n_var.size == 0:
+    #     print("There is only one platform.")
+    #     return da.sel(plate=[1])
+    # else:
+    return da
 
 
 def split_dim_axis(da: xr.DataArray) -> xr.DataArray:
@@ -259,7 +262,7 @@ def split_dim_axis(da: xr.DataArray) -> xr.DataArray:
 def compute_forces_axes(da: xr.DataArray) -> xr.DataArray:
     # da=daForce
 
-    if "plat" not in da.coords:
+    if "plate" not in da.coords:
         da = split_plataforms(da)
 
     Fx = da.sel(n_var=da.n_var.str.contains("x")).sum(dim="n_var")
@@ -267,7 +270,7 @@ def compute_forces_axes(da: xr.DataArray) -> xr.DataArray:
     Fz = da.sel(n_var=da.n_var.str.contains("z")).sum(dim="n_var")
 
     daReturn = xr.concat([Fx, Fy, Fz], dim="axis").assign_coords(axis=["x", "y", "z"])
-    # daReturn.plot.line(x='time', col='plat')
+    # daReturn.plot.line(x='time', col='plate')
 
     return daReturn
 
@@ -276,7 +279,7 @@ def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
     # da=daForce
     raise Exception("Not implemented yet.")
     """
-    if 'plat' not in da.coords:
+    if 'plate' not in da.coords:
         da = split_plataforms(da)
 
     Fx = da.sel(n_var=da.n_var.str.contains('x')).sum(dim='n_var')
@@ -286,7 +289,7 @@ def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
     daReturn = (xr.concat([Fx, Fy, Fz], dim='axis')
                 .assign_coords(axis=['x', 'y', 'z'])
                 )
-    #daReturn.plot.line(x='time', col='plat')
+    #daReturn.plot.line(x='time', col='plate')
     """
     return daReturn
 
@@ -296,32 +299,35 @@ def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
 # =============================================================================
 if __name__ == "__main__":
 
-    # from biomdp.read_kistler_c3d import read_kistler_c3d_xr
+    # from biomdp.io.read_kistler_c3d import read_kistler_c3d_xr
 
-    ruta_archivo = Path(
-        r"F:\Investigacion\Proyectos\Saltos\2023PreactivacionSJ\DataCollection\S01\FeedbackFuerza"
-    )
-    file = ruta_archivo / "S01_CMJ_000.c3d"
-    daForce = read_kistler_c3d_xr(file, engine="c3d")
-    daForce.sel(axis="z").plot.line(x="time", col="plat")
+    work_path = Path(r"src\datasets")
+    file = work_path / "kistler_CMJ_1plate.c3d"
+    daForce = read_kistler_c3d(file, engine="c3d")
+    daForce.isel(plate=0).plot.line(x="time")  # , col="plate")
 
-    daForce = read_kistler_c3d_xr(file, engine="c3d", raw=True)
+    work_path = Path(r"src\biomdp\datasets")
+    file = work_path / "kistler_DJ_2plates.c3d"
+    daForce = read_kistler_c3d(file, engine="c3d")
+    daForce.plot.line(x="time", col="plate")
+
+    daForce = read_kistler_c3d(file, engine="c3d", raw=True)
+    daForce.plot.line(x="time")
     daForce = split_plataforms(daForce)
     daForce = compute_forces_axes(daForce)
-    daForce.sel(axis="z").plot.line(x="time", col="plat")
+    daForce.plot.line(x="time", col="plate")
 
     # With ezc3d does not read the entire file???
-    daForce2 = read_kistler_c3d_xr(file, engine="ezc3d")
-    daForce2.sel(axis="z").plot.line(x="time", col="plat")
+    daForce2 = read_kistler_c3d(file, engine="ezc3d", raw=True)
+    daForce2.plot.line(x="time")
 
-    ruta_archivo = Path(
-        r"F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros\2023PotenciaDJ\S02"
-    )
-    file = ruta_archivo / "S02_DJ_30_002.c3d"
-    daForce = read_kistler_c3d_xr(file, engine="c3d")
-    daForce.plot.line(x="time", col="plat")
+    # Compare with c3d and ezc3d
+    work_path = Path(r"src\biomdp\datasets")
+    file = work_path / "kistler_DJ_2plates.c3d"
+    daForce = read_kistler_c3d(file, engine="c3d")
+    daForce.plot.line(x="time", col="plate")
 
-    daForce2 = read_kistler_c3d_xr(file, engine="ezc3d")
-    daForce2.plot.line(x="time", col="plat")
+    daForce2 = read_kistler_c3d(file, engine="ezc3d")
+    daForce2.plot.line(x="time", col="plate")
 
     daForce2.equals(daForce.isel(time=slice(None, daForce2.time.size)))
