@@ -37,7 +37,7 @@ Updates:
     
     15/12/2024, v.1.5.0
         - En función load_merge_vicon_c3d_selectivo incluido parámetro read_c3d_function
-          para elegir la función de lectura (read_vicon_c3d_xr o read_vicon_ezc3d_xr)
+          para elegir la función de lectura (read_vicon_c3d o read_vicon_ezc3d_xr)
 
     07/12/2024, v.1.4.0
         - Calcula más variables relacionadas con la caída (FZMaxCaida, PMinCaida, etc.).
@@ -685,15 +685,15 @@ def load_bioware_pl(
 
 
 # Carga un archivo Bioware C3D a xarray
-def read_bioware_c3d(
+def read_kistler_c3d(
     file: str | Path, n_vars_load: List[str] | None = None, engine: str = "ezc3d"
 ) -> xr.DataArray:
     print("Redirecting to biomdp.io.read_kistler_c3d function")
-    from biomdp.io.read_kistler_c3d import read_kistler_c3d_xr
+    from biomdp.io.read_kistler_c3d import read_kistler_c3d
 
     # from read_vicon_c3d import read_vicon_c3d_xr, read_vicon_c3d_xr_global
 
-    da = read_kistler_c3d_xr(file, n_vars_load, engine=engine)
+    da = read_kistler_c3d(file, n_vars_load, engine=engine)
 
     return da
 
@@ -707,7 +707,7 @@ def load_merge_vicon_csv(
     assign_subcat: bool = True,
     show=False,
 ) -> xr.DataArray:
-    from biomdp.io.read_vicon_csv import read_vicon_csv_pl_xr
+    from biomdp.io.read_vicon_csv import read_vicon_csv
 
     file_list = sorted(list(path.glob("**/*.csv")))
     file_list = [x for x in file_list if "error" not in x.name]
@@ -724,7 +724,7 @@ def load_merge_vicon_csv(
     for n, file in enumerate(file_list):
         print(f"Loading file: {n}/{len(file_list)} {file.name}")
         try:
-            daProvis = read_vicon_csv_pl_xr(
+            daProvis = read_vicon_csv(
                 file, section=section, n_vars_load=n_vars_load
             ).expand_dims(
                 {"ID": ["_".join(file.stem.split("_"))]}, axis=0
@@ -770,7 +770,7 @@ def load_merge_vicon_csv_logsheet(
 ) -> xr.DataArray:
     """Load file listing based on log sheet data"""
 
-    from biomdp.io.read_vicon_csv import read_vicon_csv_pl_xr
+    from biomdp.io.read_vicon_csv import read_vicon_csv
 
     if log_sheet is None:
         print("You must specify the Dataframe with the log sheet")
@@ -797,7 +797,7 @@ def load_merge_vicon_csv_logsheet(
                     print(f"Loading section {section}, file: {file.name}")
                     # print(f'{S}_{t}_{r}', f'{S}_{t}_{r}' in [x.stem for x in file_list])
                     try:
-                        daProvis = read_vicon_csv_pl_xr(
+                        daProvis = read_vicon_csv(
                             file, section=section, n_vars_load=n_vars_load
                         ).expand_dims(
                             {"ID": ["_".join(file.stem.split("_"))]}, axis=0
@@ -843,7 +843,7 @@ def load_merge_vicon_c3d_logsheet(
     engine="ezc3d",
     show=False,
 ) -> xr.DataArray:
-    from biomdp.io.read_vicon_c3d import read_vicon_c3d_xr
+    from biomdp.io.read_vicon_c3d import read_vicon_c3d
 
     if log_sheet is None:
         print("You must specify the Dataframe with the log sheet")
@@ -870,7 +870,7 @@ def load_merge_vicon_c3d_logsheet(
                     print(f"Loading section {section}, file: {file.name}")
                     # print(f'{S}_{t}_{r}', f'{S}_{t}_{r}' in [x.stem for x in file_list])
                     try:
-                        daProvis = read_vicon_c3d_xr(  # read_c3d_function(
+                        daProvis = read_vicon_c3d(  # read_c3d_function(
                             file,
                             section=section,
                             n_vars_load=n_vars_load,
@@ -1183,7 +1183,7 @@ def load_merge_bioware_pd(
         DESCRIPTION.
 
     """
-    from biomdp.io.read_kistler_txt import load_bioware_pd
+    from biomdp.io.read_kistler_txt import read_kistler_txt
 
     if data_type is None:
         data_type = float
@@ -1224,7 +1224,7 @@ def load_merge_bioware_pd(
         try:
             timerSub = time.perf_counter()  # inicia el contador de tiempo
 
-            dfProvis = load_bioware_pd(file, lin_header, n_vars_load)
+            dfProvis = read_kistler_txt(file, lin_header, n_vars_load)
 
             if len(file.stem.split("_")) == 5:
                 n_project = file.stem.split("_")[0] if n_project is None else n_project
@@ -5774,7 +5774,7 @@ class jump_forces_utils:
     def load_preprocessed(self, work_path, n_preprocessed_file):
         if Path((work_path / (n_preprocessed_file)).with_suffix(".nc")).is_file():
             tpo = time.time()
-            self.datos = xr.load_dataarray(
+            self.data = xr.load_dataarray(
                 (work_path / (n_preprocessed_file)).with_suffix(".nc")
             ).sel(tipo=self.jump_test)
             print(
@@ -5787,21 +5787,23 @@ class jump_forces_utils:
 
     def calculate_weight(self, window=[100, 600], show=False):
         self.weight = (
-            self.datos.sel(axis="z")
+            self.data.sel(axis="z")
             .isel(time=slice(window[0], window[1]))
             .mean(dim="time")
         )
 
         if show:
 
-            def dibuja_peso(x, y, **kwargs):  # de momento no funciona
+            def plot_weight(x, y, **kwargs):  # provisional
                 print(x)  # kwargs['data'])
                 # plt.plot()
 
-            g = self.datos.sel(axis="z").plot.line(
-                col="ID", col_wrap=4, hue="trial", sharey=False
+            g = (
+                self.data.sel(axis="z")
+                .stack(ID_plate=("ID", "plate"))
+                .plot.line(col="ID_plate", col_wrap=4, sharey=False)
             )
-            # g = xr.plot.FacetGrid(self.datos, col='ID', col_wrap=4)
+            # g = xr.plot.FacetGrid(self.data, col='ID', col_wrap=4)
             # g.map_dataarray(dibuja_peso, x='time', y=None)#, y='trial')
 
             for h, ax in enumerate(g.axes):  # extrae cada fila
@@ -5809,26 +5811,26 @@ class jump_forces_utils:
                     try:
                         idn = g.data.loc[g.name_dicts[h, i]].ID
                         # print('weight=', self.weight.sel(ID=idn).data)#idn)
-                        # Rango medida peso
-                        # ax[i].axvspan(g.data.time[int(window[0]*self.datos.freq)], g.data.time[int(window[1]*self.datos.freq)], alpha=0.2, color='C1')
+                        # Mean weight range
+                        # ax[i].axvspan(g.data.time[int(window[0]*self.data.freq)], g.data.time[int(window[1]*self.data.freq)], alpha=0.2, color='C1')
                         ax[i].axvspan(
-                            (len(self.datos.time) + window[0]) / self.datos.freq,
-                            (len(self.datos.time) + window[1]) / self.datos.freq,
+                            (len(self.data.time) + window[0]) / self.data.freq,
+                            (len(self.data.time) + window[1]) / self.data.freq,
                             alpha=0.2,
                             color="C1",
                         )
-                        # Líneas peso
+                        # Weight lines
                         ax[i].hlines(
                             self.weight.sel(ID=idn).data,
-                            xmin=self.datos.time[0],
-                            xmax=self.datos.time[-1],
+                            xmin=self.data.time[0],
+                            xmax=self.data.time[-1],
                             colors=["C0", "C1", "C2"],
                             lw=1,
                             ls="--",
                             alpha=0.6,
                         )
                     except:
-                        print("No va el", h, i)
+                        print("Error in", h, i)
 
 
 # =============================================================================
@@ -5838,193 +5840,106 @@ class jump_forces_utils:
 # %% PRUEBAS
 # =============================================================================
 if __name__ == "__main__":
-    if False:
-        import numpy as np
-        import pandas as pd
-        import xarray as xr
 
-        from pathlib import Path
+    import numpy as np
+    import pandas as pd
+    import xarray as xr
 
-        import sys
+    from pathlib import Path
 
-        from biomdp.filter_butter import filter_butter
+    import sys
 
-        # ----Pruebas carga archivos
-        path = Path(
-            r"F:\Investigacion\Proyectos\Saltos\2023PreactivacionSJ\DataCollection\S01\FeedbackFuerza"
+    from biomdp.filter_butter import filter_butter
+    from biomdp.io import read_kistler_txt
+
+    work_path = Path(r"src\datasets")
+    file = work_path / "kistler_CMJ_1plate.txt"
+
+    daCMJ = read_kistler_txt(file)
+    daCMJ.plot.line(x="time", col="plate")
+
+    daCMJ = daCMJ.expand_dims("ID").assign_coords(ID=["S01_CMJ_1"])
+
+    daCMJ = daCMJ.sel(axis="z")
+    # Filtra
+    daCMJ = filter_butter(dat_orig=daCMJ, fr=daCMJ.freq, fc=400)
+
+    # Offsets flight adjustment, even before weight---------------------------
+    daCMJ = adjust_offsetFz(
+        daData=daCMJ,
+        jump_test="CMJ",
+        kind="flight",
+        threshold=40,
+        pct_window=5,
+    )  # , show=True)
+
+    # Replacewith zero the flight  window-------------
+    daCMJ = reset_Fz_flight(
+        daData=daCMJ, jump_test="CMJ", threshold=30, pct_window=5
+    )  # , show=True)
+
+    daEventsForces = (
+        xr.full_like(daCMJ.isel(time=0).drop_vars("time"), np.nan).expand_dims(
+            {"event": BASIC_EVENTS}, axis=-1
         )
-        file = path / "S01_CMJ_000.txt"
-        fuerzas_pl = load_bioware_pl(file)
-        fuerzas_xr = load_bioware_pl(file, to_dataarray=True)
-        fuerzas_xr.isel(n_var=0).plot.line(x="time")
+    ).copy()
 
-        # Con C3D
-        from biomdp.io import read_kistler_c3d as rkc3d
-
-        da = rkc3d.read_kistler_c3d_xr(file)
-        da = rkc3d.read_kistler_ezc3d_xr(file)  # does not read the entire file
-        da = rkc3d.split_plataforms(da)
-        da = rkc3d.compute_forces_axes(da)
-        da.plot.line(x="time", col="plat")
-
-        daFuerzas = load_merge_bioware_pl(
-            path,
-            n_project="preacSJ23",
-            n_vars_load=[
-                "abs time (s)",
-                "Fx",
-                "Fy",
-                "Fz",
-                "Fz1",
-                "Fz2",
-                "Fz3",
-                "Fz4",
-                "Ax",
-                "Ay",
-            ],
-        )
-        daFuerzasrepe = split_dim_repe(daFuerzas)
-        # daFuerzasrepeaxis = split_dim_axis(daFuerzasrepe.sel(n_var=["x", "y", "z"]))
-
-        daFuerzas = load_merge_bioware_pl(path, n_project="preacSJ23")
-        daFuerzasaxis = split_dim_repe(daFuerzas)
-
-        daFuerzas = load_merge_bioware_pl(path, n_project="preacSJ23")
-        daFuerzasaxis = split_dim_plats(daFuerzas, merge_2_plats=1)
-
-        ##
-
-        # =============================================================================
-        # %% CMJ del máster trimmed
-        # =============================================================================
-
-        # ----Pruebas tratamientos
-        xr.set_options(keep_attrs=True)
-        visual_bloque_particip = slice(
-            None
-        )  # [16,17] #nº de participantes para generar gráficas de visualización. EMPIEZA EN CERO
-
-        nom_archivo_preprocesado = Path(
-            r"F:/Investigacion/Proyectos/Saltos/MasterPracticas/data-science-template-main_SaltosMasterPracticas/data/processed/SaltosMasterPrac_CMJ_Trimmed.nc"
-        )
-
-        # sys.path.append(r"F:/Investigacion/Proyectos/Saltos/MasterPracticas")
-        daCMJ = xr.load_dataarray(nom_archivo_preprocesado)
-        daCMJ = daCMJ.sel(axis="z")
-        # Filtra
-        daCMJ = filter_butter(dat_orig=daCMJ, fr=daCMJ.freq, fc=400)
-
-        # Ajuste offset vuelo, incluso antes del peso---------------------------
-        daCMJ = adjust_offsetFz(
+    # Estimates the start and end of the analysis adjustment
+    daEventsForces.loc[dict(event=["iniAnalisis", "finAnalisis"])] = (
+        guess_iniend_analysis(
             daData=daCMJ,
             jump_test="CMJ",
-            kind="vuelo",
-            threshold=40,
-            pct_window=5,
-        )  # , show=True)
-
-        # Sustitución window vuelo por cero-------------
-        daCMJ = reset_Fz_flight(
-            daData=daCMJ, jump_test="CMJ", threshold=30, pct_window=5
-        )  # , show=True)
-
-        daEventsForces = (
-            xr.full_like(daCMJ.isel(time=0).drop_vars("time"), np.nan).expand_dims(
-                {"event": BASIC_EVENTS}, axis=-1
-            )
-        ).copy()
-        # Estima el ajuste del inicio y final del análisis
-        daEventsForces.loc[dict(event=["iniAnalisis", "finAnalisis"])] = (
-            guess_iniend_analysis(
-                daData=daCMJ,
-                jump_test="CMJ",
-                daEvents=daEventsForces.sel(event=["iniAnalisis", "finAnalisis"]),
-                window=[1.5, 1.2],
-                threshold=30,
-            )
+            daEvents=daEventsForces.sel(event=["iniAnalisis", "finAnalisis"]),
+            window=[1.5, 1.2],
+            threshold=30,
         )
-        # Ajuste personalizado inicio-fin análisis
-        # daEventsForces.loc[dict(ID='S06_CMJ_2', repe=0, event='iniAnalisis')] = daEventsForces.loc[dict(ID='S06_CMJ_2', repe=0, event='iniAnalisis')] - np.array(0.3) * daCMJ.freq
+    )
 
-        # ----Cálculo peso
-        # Ventanas donde calcular el peso en cada salto
-        daEventsForces.loc[dict(event=["iniPeso", "finPeso"])] = (
-            np.array([0.0, 0.5]) * daCMJ.freq
-        )
-        # daVentanasPeso = daEventsForces.loc[dict(event=['iniPeso', 'finPeso'])]
-        """Comprobación
-        visual_bloque_particip = slice(10, 20)
-        graphs_events(daData=daCMJ.isel(ID=visual_bloque_particip), daEvents=daEventsForces, show_in_console=True)
-        """
+    # ----Calculate weight
+    # Windows for calculating the weight of each jump
+    daEventsForces.loc[dict(event=["iniPeso", "finPeso"])] = (
+        np.array([0.0, 0.5]) * daCMJ.freq
+    )
 
-        # Ajuste personalizado casos con inicio incorrecto para medir peso
-        # daEventsForces.loc[dict(ID='S04_CMJ_2', repe=[1,2], event=['iniPeso', 'finPeso'])] = np.array([0.1, 1.1]) * daCMJ.freq
+    # First calculate the weight of the average of the selected stable zone
+    daWeight_mean = calculate_weight(
+        daData=daCMJ,
+        weight_window=daEventsForces.sel(event=["iniPeso", "finPeso"]),
+    )  # , show=True)
 
-        # Primero calcula el peso de la media de la zona estable seleccionada
-        daWeight_meania = calculate_weight(
-            daData=daCMJ,
-            weight_window=daEventsForces.sel(event=["iniPeso", "finPeso"]),
-        )  # , show=True)
-        # Para afinar el peso, primero detecta eventos provisionales
-        daEventsForces = detect_standard_events(
-            daData=daCMJ,
-            daEvents=daEventsForces,
-            daWeight=daWeight_meania,
-            jump_test="CMJ",
-            threshold=30.0,
-        )
-        daPesoCMJ = finetune_weight(
-            daData=daCMJ,
-            daWeight=daWeight_meania,
-            daEvents=daEventsForces,
-            kind="iter",
-        )  # , show=True)
+    # To fine-tune the weight, it first detects tentative events
+    daEventsForces = detect_standard_events(
+        daData=daCMJ,
+        daEvents=daEventsForces,
+        daWeight=daWeight_mean,
+        jump_test="CMJ",
+        threshold=30.0,
+    )
+    daWeightCMJ = finetune_weight(
+        daData=daCMJ,
+        daWeight=daWeight_mean,
+        daEvents=daEventsForces,
+        kind="iter",
+    )  # , show=True)
 
-        """
-        #Graph with the weights' dispersion
-        daPesoCMJ.sel(stat='media').assign_coords(ID=np.arange(len(daPesoCMJ.ID))).plot.line(x='ID', marker='o')
-        daPesoCMJ.sel(stat='resid').assign_coords(ID=np.arange(len(daPesoCMJ.ID))).plot.line(x='ID', marker='o')
-        """
-
-        # =============================================================================
-        # %%
-        # =============================================================================
-        work_path = Path(r"F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros")
-        nom_archivo_preprocesado = "PotenciaDJ_Preprocesado"
-
-        daCMJ = load_preprocessed(work_path, nom_archivo_preprocesado, jump_test="CMJ")
-
-        ##################
-        # DJ
-        ##################
-        daDJ = load_preprocessed(work_path, nom_archivo_preprocesado, jump_test="DJ")
-
-        daVentanasPeso = (
-            xr.DataArray(
-                data=[6500, 7000], coords=[["ini", "fin"]], dims=("window")
-            ).expand_dims({"ID": daDJ.coords["ID"], "repe": daDJ.coords["repe"]})
-        ).copy()
-        daWeight = calcula_peso(daDJ, weight_window=daVentanasPeso, show=True)
-        daVentanasPeso.loc[dict(ID="13", repe=2)] = [6000, 6500]
-
-        # Ajustes de peso puntuales
-
-        daDJ_norm = daDJ / daWeight
-        daDJ_norm.sel(axis="z").plot.line(x="time", col="ID", col_wrap=4)
-
-    r"""
     # =============================================================================
     # TEST AS CLASS
     # =============================================================================
-    work_path = Path(r'F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros')
-    n_preprocessed_file = 'PotenciaDJ_Preprocesado'
-    
-    dj = jump_forces_utils(jump_test='DJ')
-    
-    dj.carga_preprocesados(work_path, n_preprocessed_file)
-    dj.data
-    dj.jump_test
-    
-    dj.calcula_peso(daWindow=[-1500, -1000], show=True)
-    dj.weight.sel(ID='01', trial='1')
+
+    """work_path = Path(r"src\datasets")
+    file = work_path / "kistler_CMJ_1plate.txt"
+    daCMJ = (
+        read_kistler_txt(file)
+        .expand_dims("ID")
+        .assign_coords(ID=["S01_CMJ_1"])
+    )
+
+    cmj = jump_forces_utils(daCMJ, jump_test="CMJ")
+
+    cmj.calculate_weight()
+    cmj.data
+    cmj.jump_test
+
+    cmj.calculate_weight(window=[-1500, -1000], show=True)
+    cmj.weight.sel(ID="01", trial="1")
     """

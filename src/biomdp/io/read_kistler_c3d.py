@@ -14,11 +14,14 @@ Bioware's .c3d exports only sensor data separately,
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.1.1"
-__date__ = "11/03/2025"
+__version__ = "0.2.0"
+__date__ = "25/03/2025"
 
 """
 Updates:
+    25/03/2025, v0.2.0
+        - Incuded general function to distribute according to "engine".
+
     11/03/2025, v0.1.1
             - Adapted to biomdp with translations.
     
@@ -139,7 +142,7 @@ def read_kistler_c3d_c3d(
         da_analog.attrs["units"] = "N"
         da_analog.time.attrs["units"] = "s"
 
-        print(f"Time {time.perf_counter() - timerSub:.3f} s \n")
+        # print(f"Time {time.perf_counter() - timerSub:.3f} s \n")
 
     except Exception as err:
         print(f"\nATTENTION. Unable to process {file.name}, {err}, \n")
@@ -202,7 +205,7 @@ def read_kistler_ezc3d(
         da.attrs["units"] = unit_force
         da.time.attrs["units"] = "s"
 
-        print(f"Time {time.perf_counter() - timerSub:.3f} s \n")
+        # print(f"Time {time.perf_counter() - timerSub:.3f} s \n")
 
     except Exception as err:
         print(f"\nATTENTION. Unable to process {file.name}, {err}\n")
@@ -306,7 +309,6 @@ if __name__ == "__main__":
     daForce = read_kistler_c3d(file, engine="c3d")
     daForce.isel(plate=0).plot.line(x="time")  # , col="plate")
 
-    work_path = Path(r"src\biomdp\datasets")
     file = work_path / "kistler_DJ_2plates.c3d"
     daForce = read_kistler_c3d(file, engine="c3d")
     daForce.plot.line(x="time", col="plate")
@@ -322,7 +324,6 @@ if __name__ == "__main__":
     daForce2.plot.line(x="time")
 
     # Compare with c3d and ezc3d
-    work_path = Path(r"src\biomdp\datasets")
     file = work_path / "kistler_DJ_2plates.c3d"
     daForce = read_kistler_c3d(file, engine="c3d")
     daForce.plot.line(x="time", col="plate")

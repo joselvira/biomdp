@@ -12,11 +12,14 @@ Created on Mon Jun 17 13:05:37 2019
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v4.1.2"
-__date__ = "10/03/2025"
+__version__ = "v4.2.0"
+__date__ = "25/03/2025"
 
 """
 Updates:
+    25/03/2025, v4.2.0
+        - Incuded general function to distribute according to "engine". 
+
     10/03/2025, v4.1.2
         - Adapted to biomdp with translations. 
 
@@ -101,7 +104,7 @@ def read_vicon_csv(
     coincidence: str = "similar",
     sep: str = ",",
     to_dataarray: bool = False,
-    engine="polars",
+    engine: str = "polars",
     raw: bool = False,
 ) -> Any:
 
@@ -150,7 +153,7 @@ def read_vicon_csv_pl(
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
     sep: str = ",",
-    to_dataarray: bool = True,
+    # to_dataarray: bool = True,
     raw: bool = False,
 ) -> xr.DataArray:
     """

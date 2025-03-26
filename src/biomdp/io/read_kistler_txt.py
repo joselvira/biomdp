@@ -13,11 +13,14 @@ Read data from Kistler Bioware .txt exported files.
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.1.0"
-__date__ = "09/03/2025"
+__version__ = "0.2.0"
+__date__ = "25/03/2025"
 
 """
 Updates:
+    25/03/2025, v0.2.0
+        - Incuded general function to distribute according to "engine".
+    
     09/03/2025, v0.1.0
         - Version imported from jump_forces_utils.
 
@@ -25,9 +28,11 @@ Updates:
 
 from typing import List, Any
 import numpy as np
+
 import pandas as pd
 import xarray as xr
-import polars as pl
+
+# import polars as pl
 
 import time
 from pathlib import Path
@@ -42,44 +47,47 @@ def read_kistler_txt(
     file: str | Path,
     lin_header: int = 17,
     n_vars_load: List[str] | None = None,
-    to_dataarray: bool = False,
+    # to_dataarray: bool = False,
     engine="polars",
     raw: bool = False,
+    magnitude: str = "force",
 ) -> Any:
 
     if not file.exists():
         raise FileNotFoundError(f"File {file} not found")
 
     if engine == "polars":
-        da = read_kistler_txt_pl(
+        ret = read_kistler_txt_pl(
             file,
             lin_header=lin_header,
             n_vars_load=n_vars_load,
-            to_dataarray=to_dataarray,
             raw=raw,
+            magnitude=magnitude,
         )
 
     elif engine == "pandas":
-        da = read_kistler_txt_pd(
+        ret = read_kistler_txt_pd(
             file,
             lin_header=lin_header,
             n_vars_load=n_vars_load,
-            to_dataarray=to_dataarray,
+            raw=raw,
+            magnitude=magnitude,
         )
 
     elif engine == "arrow":
-        da = read_kistler_txt_arrow(
+        ret = read_kistler_txt_arrow(
             file,
             lin_header=lin_header,
             n_vars_load=n_vars_load,
-            to_dataarray=to_dataarray,
+            raw=raw,
+            magnitude=magnitude,
         )
     else:
         raise ValueError(
             f"Engine {engine} not valid\nTry with 'polars', 'pandas' or 'arrow'"
         )
 
-    return da
+    return ret
 
 
 # Carga un archivo de Bioware como dataframe de Polars
@@ -87,10 +95,18 @@ def read_kistler_txt_pl(
     file: str | Path,
     lin_header: int = 17,
     n_vars_load: List[str] | None = None,
-    to_dataarray: bool = False,
+    # to_dataarray: bool = False,
     raw: bool = False,
     magnitude: str = "force",
-) -> pl.DataFrame | xr.DataArray:
+) -> xr.DataArray | Any:
+
+    try:
+        import polars as pl
+    except:
+        raise ImportError(
+            "Polars package not instaled. Install it if you want to use the accelerated version"
+        )
+
     try:
         df = (
             pl.read_csv(
@@ -113,6 +129,7 @@ def read_kistler_txt_pl(
             return df
 
         else:
+            freq = 1 / (df[1, "abs time (s)"] - df[0, "abs time (s)"])
             if magnitude == "force":
                 try:
                     x = df.select(pl.col("^*Fx.*$")).to_numpy()
@@ -121,7 +138,7 @@ def read_kistler_txt_pl(
                 except:
                     raise Exception("Expected header with abs time (s), Fx, Fy, Fz")
                 data = np.stack([x, y, z])
-                freq = 1 / (df[1, "abs time (s)"] - df[0, "abs time (s)"])
+
                 # ending = -3
                 coords = {
                     "axis": ["x", "y", "z"],
@@ -139,7 +156,213 @@ def read_kistler_txt_pl(
                     .astype(float)
                     .transpose("plate", "axis", "time")
                 )
-                da.name = "forces"
+                da.name = "Forces"
+                da.attrs["freq"] = freq
+                da.time.attrs["units"] = "s"
+                da.attrs["units"] = "N"
+
+            elif magnitude == "cop":
+
+                try:
+                    x = df.select(pl.col("^*Ax.*$")).to_numpy()
+                    y = df.select(pl.col("^*Ay.*$")).to_numpy()
+                except:
+                    raise Exception("Expected header with abs time (s), Ax, Ay")
+                data = np.stack([x, y])
+
+                coords = {
+                    "axis": ["x", "y"],
+                    "time": np.arange(data.shape[1]) / freq,
+                    "plate": range(
+                        1, x.shape[1] + 1
+                    ),  # [x[:ending] for x in df.columns if 'x' in x[-1]],
+                }
+                da = (
+                    xr.DataArray(
+                        data=data,
+                        dims=coords.keys(),
+                        coords=coords,
+                    )
+                    .astype(float)
+                    .transpose("plate", "axis", "time")
+                )
+                da.name = "COP"
+                da.attrs["freq"] = freq
+                da.time.attrs["units"] = "s"
+                da.attrs["units"] = "mm"
+
+            else:
+                raise ValueError(
+                    f"Magnitude {magnitude} not valid.\nTry with 'force' or 'cop'"
+                )
+
+            return da
+
+    except Exception as err:
+        print(f"\nATTENTION. Unable to read {file.name}, {err}, \n")
+
+
+def read_kistler_txt_pd(
+    file: str | Path,
+    lin_header: int = 17,
+    n_vars_load: List[str] | None = None,
+    # to_dataarray: bool = False,
+    raw: bool = False,
+    magnitude: str = "force",
+) -> xr.DataArray | pd.DataFrame:
+
+    try:
+        df = (
+            pd.read_csv(
+                file,
+                header=lin_header,
+                usecols=n_vars_load,  # ['Fx', 'Fy', 'Fz', 'Fx.1', 'Fy.1', 'Fz.1'], #n_vars_load,
+                # skiprows=18,
+                delimiter="\t",
+                # dtype=np.float64,
+                engine="c",  # "pyarrow" con pyarrow no funciona bien de momento cargar columnas con nombre repetido,
+            ).drop(index=0)
+        ).astype(float)
+        # df.dtypes
+
+        if raw:
+            return df
+        # ----Transform pandas to xarray
+        else:
+            freq = 1 / (df.loc[2, "abs time (s)"] - df.loc[1, "abs time (s)"])
+            if magnitude == "force":
+                x = df.filter(regex="Fx")  # .to_numpy()
+                y = df.filter(regex="Fy")
+                z = df.filter(regex="Fz")
+                data = np.stack([x, y, z])
+                # ending = -3
+                coords = {
+                    "axis": ["x", "y", "z"],
+                    "time": np.arange(data.shape[1]) / freq,
+                    "plate": range(
+                        1, x.shape[1] + 1
+                    ),  # [x[:ending] for x in df.columns if 'x' in x[-1]],
+                }
+                da = (
+                    xr.DataArray(
+                        data=data,
+                        dims=coords.keys(),
+                        coords=coords,
+                    )
+                    .astype(float)
+                    .transpose("plate", "axis", "time")
+                )
+                # coords = {
+                #     "axis": ["x", "y", "z"],
+                #     "time": np.arange(data.shape[1]) / freq,
+                #     "n_var": [
+                #         "Force"
+                #     ],  # [x[:ending] for x in df.columns if 'x' in x[-1]],
+                # }
+                # da = (
+                #     xr.DataArray(
+                #         data=data,
+                #         dims=coords.keys(),
+                #         coords=coords,
+                #     )
+                #     .astype(float)
+                #     .transpose("n_var", "axis", "time")
+                # )
+                da.name = "Forces"
+                da.attrs["freq"] = freq
+                da.time.attrs["units"] = "s"
+                da.attrs["units"] = "N"
+
+            elif magnitude == "cop":
+                x = df.filter(regex="Ax")  # .to_numpy()
+                y = df.filter(regex="Ay")
+                data = np.stack([x, y])
+                # ending = -3
+                coords = {
+                    "axis": ["x", "y"],
+                    "time": np.arange(data.shape[1]) / freq,
+                    "plate": range(
+                        1, x.shape[1] + 1
+                    ),  # [x[:ending] for x in df.columns if 'x' in x[-1]],
+                }
+                da = (
+                    xr.DataArray(
+                        data=data,
+                        dims=coords.keys(),
+                        coords=coords,
+                    )
+                    .astype(float)
+                    .transpose("plate", "axis", "time")
+                )
+                da.name = "COP"
+                da.attrs["freq"] = freq
+                da.time.attrs["units"] = "s"
+                da.attrs["units"] = "mm"
+            else:
+                raise ValueError(
+                    f"Magnitude {magnitude} not valid.\nTry with 'force' or 'cop'"
+                )
+
+            return da
+
+    except Exception as err:
+        print(f"\nATTENTION. Unable to read {file.name}, {err}, \n")
+
+
+def read_kistler_txt_arrow(
+    file: str | Path,
+    lin_header: int = 17,
+    n_vars_load: List[str] | None = None,
+    # to_dataarray: bool = False,
+    raw: bool = False,
+    magnitude: str = "force",
+) -> pd.DataFrame:
+    """In test, at the moment it does not work when there are repeated cols"""
+    try:
+        from pyarrow import csv
+    except:
+        raise ImportError("pyarrow not installed")
+
+    try:
+        read_options = csv.ReadOptions(
+            # column_names=['Fx', 'Fy', 'Fz'],
+            skip_rows=lin_header,
+            skip_rows_after_names=1,
+        )
+        parse_options = csv.ParseOptions(delimiter="\t")
+        data = csv.read_csv(
+            file, read_options=read_options, parse_options=parse_options
+        )
+
+        df = data.to_pandas()
+        if raw:
+            return df
+        # ----Transform pandas to xarray
+        else:
+            if magnitude == "force":
+                x = df.filter(regex="Fx")  # .to_numpy()
+                y = df.filter(regex="Fy")
+                z = df.filter(regex="Fz")
+                data = np.stack([x, y, z])
+                freq = 1 / (df.loc[2, "abs time (s)"] - df.loc[1, "abs time (s)"])
+                ending = -3
+                coords = {
+                    "axis": ["x", "y", "z"],
+                    "time": np.arange(data.shape[1]) / freq,
+                    "plate": range(
+                        1, x.shape[1] + 1
+                    ),  # [x[:ending] for x in df.columns if 'x' in x[-1]],
+                }
+                da = (
+                    xr.DataArray(
+                        data=data,
+                        dims=coords.keys(),
+                        coords=coords,
+                    )
+                    .astype(float)
+                    .transpose("plate", "axis", "time")
+                )
+                da.name = "Forces"
                 da.attrs["freq"] = freq
                 da.time.attrs["units"] = "s"
                 da.attrs["units"] = "N"
@@ -147,87 +370,10 @@ def read_kistler_txt_pl(
             elif magnitude == "cop":
                 raise Exception("Not implemented yet")
 
+            return da
+
     except Exception as err:
-        print(f"\nATTENTION. Unable to process {file.name}, {err}, \n")
-
-    return da
-
-
-def read_kistler_txt_arrow(
-    file: str | Path,
-    lin_header: int = 17,
-    n_vars_load: List[str] | None = None,
-    to_dataarray: bool = False,
-) -> pd.DataFrame:
-    """In test, at the moment it does not work when there are repeated cols"""
-    from pyarrow import csv
-
-    read_options = csv.ReadOptions(
-        # column_names=['Fx', 'Fy', 'Fz'],
-        skip_rows=lin_header,
-        skip_rows_after_names=1,
-    )
-    parse_options = csv.ParseOptions(delimiter="\t")
-    data = csv.read_csv(file, read_options=read_options, parse_options=parse_options)
-    return data.to_pandas()
-
-
-def read_kistler_txt_pd(
-    file: str | Path,
-    lin_header: int = 17,
-    n_vars_load: List[str] | None = None,
-    to_dataarray: bool = False,
-) -> pd.DataFrame | xr.DataArray:
-
-    df = (
-        pd.read_csv(
-            file,
-            header=lin_header,
-            usecols=n_vars_load,  # ['Fx', 'Fy', 'Fz', 'Fx.1', 'Fy.1', 'Fz.1'], #n_vars_load,
-            # skiprows=18,
-            delimiter="\t",
-            # dtype=np.float64,
-            engine="c",  # "pyarrow" con pyarrow no funciona bien de momento cargar columnas con nombre repetido,
-        ).drop(index=0)
-        # , columns=nom_vars_cargar)
-        # .slice(1, None) #quita la fila de unidades (N) #no hace falta con skip_rows_after_header=1
-        # .select(pl.col(n_vars_load))
-        # .rename({'abs time (s)':'time'}) #'Fx':'x', 'Fy':'y', 'Fz':'z',
-        #          #'Fx_duplicated_0':'x_duplicated_0', 'Fy_duplicated_0':'y_duplicated_0', 'Fz_duplicated_0':'z'
-        #          })
-    )
-    # df.dtypes
-
-    # ----Transform pandas to xarray
-    if to_dataarray:
-        x = df.filter(regex="Fx*")  # .to_numpy()
-        y = df.filter(regex="Fy*")
-        z = df.filter(regex="Fx*")
-        data = np.stack([x, y, z])
-        freq = 1 / (df.loc[2, "abs time (s)"] - df.loc[1, "abs time (s)"])
-        ending = -3
-        coords = {
-            "axis": ["x", "y", "z"],
-            "time": np.arange(data.shape[1]) / freq,
-            "n_var": ["Force"],  # [x[:ending] for x in df.columns if 'x' in x[-1]],
-        }
-        da = (
-            xr.DataArray(
-                data=data,
-                dims=coords.keys(),
-                coords=coords,
-            )
-            .astype(float)
-            .transpose("n_var", "axis", "time")
-        )
-        da.name = "Forces"
-        da.attrs["freq"] = freq
-        da.time.attrs["units"] = "s"
-        da.attrs["units"] = "N"
-
-        return da
-
-    return df
+        print(f"\nATTENTION. Unable to read {file.name}, {err}, \n")
 
 
 def split_plataforms(da: xr.DataArray) -> xr.DataArray:
@@ -299,12 +445,60 @@ if __name__ == "__main__":
 
     # from biomdp.io.read_kistler_txt import read_kistler_c3d_xr, read_kistler_ezc3d_xr
 
-    work_path = Path(r"src\biomdp\datasets")
+    work_path = Path(r"src\datasets")
     file = work_path / "kistler_CMJ_1plate.txt"
     daForce = read_kistler_txt(file)
     daForce.isel(plate=0).plot.line(x="time")  # , col="plat")
+
+    dfForce = read_kistler_txt(file, raw=True, engine="pandas")
+    dfForce.plot(x="abs time (s)")
+
+    dfForce = read_kistler_txt(file, raw=True, engine="arrow")
+    dfForce.plot(x="abs time (s)")
 
     file = work_path / "kistler_DJ_2plates.txt"
     daForce = read_kistler_txt(file)
     daForce.plot.line(x="time", col="plate")
     daForce.sum(dim="plate").plot.line(x="time")
+
+    daForce = read_kistler_txt(file, engine="pandas")
+    daForce.plot.line(x="time", col="plate")
+
+    daForce = read_kistler_txt(file, engine="arrow")
+    daForce.plot.line(x="time", col="plate")
+
+    dfForce = read_kistler_txt(file, raw=True, engine="pandas")
+    dfForce[["Fx", "Fy", "Fz"]].plot()
+
+    file = work_path / "kistler_COP.txt"
+    daForce = read_kistler_txt(file, magnitude="cop")
+    daForce.to_dataset("axis").plot.scatter(x="x", y="y", col="plate")
+
+    daForce = read_kistler_txt(file, magnitude="cop", engine="pandas")
+    daForce.to_dataset("axis").plot.scatter(x="x", y="y", col="plate")
+
+    import timeit
+
+    def test_performance():
+        result = read_kistler_txt(file, engine="polars")
+        return result
+
+    print(
+        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+    )
+
+    def test_performance():
+        result = read_kistler_txt(file, engine="pandas")
+        return result
+
+    print(
+        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+    )
+
+    def test_performance():
+        result = read_kistler_txt(file, engine="arrow")
+        return result
+
+    print(
+        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+    )

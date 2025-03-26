@@ -10,11 +10,14 @@ Created on Fry Sep 15 16:36:37 2023
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v0.1.1"
-__date__ = "10/03/2025"
+__version__ = "v0.2.0"
+__date__ = "25/03/2025"
 
 """
 Updates:
+    25/03/2025, v0.2.0
+        - Incuded general function to distribute according to "engine".
+    
     19/03/2025, v0.1.1
         - Adapted to biomdp with translations. 
 
@@ -423,6 +426,11 @@ def read_vicon_c3d_xr_global(
         )
         return
 
+    try:
+        import c3d
+    except:
+        raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
+
     timer = time.time()  # inicia el contador de tiempo
 
     # se asegura de que la extensión es c3d
@@ -571,6 +579,10 @@ def read_vicon_c3d_xr_global_ds(
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
 ):
+    try:
+        import c3d
+    except:
+        raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
 
     timer = time.time()  # inicia el contador de tiempo
 

@@ -27,11 +27,13 @@ Updates:
         - Basado en el usado para registros 2021 para TFM de María Aracil. 
 
         """
-from typing import List
+from typing import List, Any
 import numpy as np
+
 import pandas as pd
 import xarray as xr
-import polars as pl
+
+# import polars as pl
 
 import matplotlib.pyplot as plt
 
@@ -238,10 +240,46 @@ def df_to_da(
     return daAll
 
 
+def read_isen_csv(
+    file: str | Path,
+    n_vars_load: List[str] | None = None,
+    # to_dataarray: bool = False,
+    engine="polars",
+    raw: bool = False,
+) -> Any:
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
+    if engine == "polars":
+        da = read_isen_pl(
+            file,
+            n_vars_load=n_vars_load,
+            raw=raw,
+        )
+
+    elif engine == "pandas":
+        da = read_isen_pd(
+            file,
+            n_vars_load=n_vars_load,
+            raw=raw,
+        )
+
+    else:
+        raise ValueError(f"Engine {engine} not valid\nTry with 'polars' or 'pandas'")
+
+    return da
+
+
 def read_isen_pd(
-    file: str | Path, n_vars_load: List[str] | None = None, to_dataarray: bool = False
+    file: str | Path, n_vars_load: List[str] | None = None, raw: bool = False
 ) -> pd.DataFrame:
     # file = Path(r'F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\Piloto0iSen\S00_Todos-CaderasRodillas_00.csv')
+
+    try:
+        import pandas as pd
+    except:
+        raise ImportError("Pandas package not instaled")
 
     df = pd.read_csv(file, dtype=np.float64, engine="c")  # .astype(np.float64)
     # df = df.drop(columns=df.filter(regex="(Normal)") + df.filter(regex="(Tiempo.)"))
@@ -252,18 +290,28 @@ def read_isen_pd(
 
     # df.filter(regex="Tiempo.")
 
-    if to_dataarray:
-        da = xr.DataArray()
-        return da
+    if raw:
+        return df
 
-    return df
+    else:
+        da = xr.DataArray()
+        print("To dataarray not implemented yet")
+        return da
 
 
 def read_isen_pl(
-    file: str | Path, n_vars_load: List[str] | None = None, to_dataarray: bool = False
-) -> xr.DataArray | pl.DataFrame:
+    file: str | Path, n_vars_load: List[str] | None = None, raw: bool = False
+) -> xr.DataArray | Any:
     # file = Path(r'F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\Piloto0iSen\S00_Todos-CaderasRodillas_00.csv')
     # file = Path(r'F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\Piloto0iSen\S00_Todos-Sensores_00.csv')
+
+    try:
+        import polars as pl
+    except:
+        raise ImportError(
+            "Polars package not instaled. Install it if you want to use the accelerated version"
+        )
+
     df = (
         pl.read_csv(
             file,
@@ -285,8 +333,10 @@ def read_isen_pl(
     """
     # df = df.to_pandas()
 
+    if raw:
+        return df
     # ----Transform polars to xarray
-    if to_dataarray:
+    else:
 
         # Separa ejes articulares
         x = df.select(pl.col("^Flexo-extensión.*$")).to_numpy()
@@ -316,11 +366,9 @@ def read_isen_pl(
 
         return da
 
-    return df
-
 
 def load_merge_iSen_angles_csv(
-    path: str | Path = None,
+    path: str | Path | None = None,
     file_list: List[str | Path] | None = None,
     n_vars_load: List[str] | None = None,
     n_project: str | None = None,
@@ -357,6 +405,13 @@ def load_merge_iSen_angles_csv(
         DESCRIPTION.
 
     """
+    try:
+        import polars as pl
+    except:
+        raise ImportError(
+            "Polars package not instaled. Install it if you want to use the accelerated version"
+        )
+
     if data_type is None:
         data_type = float
 
@@ -390,7 +445,7 @@ def load_merge_iSen_angles_csv(
         try:
             timerSub = time.perf_counter()  # inicia el contador de tiempo
 
-            dfProvis = read_isen_pl(file, n_vars_load)
+            dfProvis = read_isen_pl(file, n_vars_load, raw=True)
 
             if len(file.stem.split("_")) == 5:
                 n_project = file.stem.split("_")[0] if n_project is None else n_project
@@ -406,10 +461,19 @@ def load_merge_iSen_angles_csv(
                 particip = file.stem.split("_")[0]
                 tipo = file.stem.split("_")[-2]
                 subtipo = "X"
+            elif len(file.stem.split("_")) == 2:
+                particip = "X"
+                tipo = "X"
+                subtipo = "X"
             if n_project is None:
-                n_project = "EstudioX"
+                n_project = "projectX"
 
-            repe = str(int(file.stem.split("_")[-1]))  # int(file.stem.split('.')[0][-1]
+            try:
+                repe = str(
+                    int(file.stem.split("_")[-1])
+                )  # int(file.stem.split('.')[0][-1]
+            except:
+                repe = 0
             ID = f"{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_project}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
 
             # freq = np.round(1/(dfProvis['time'][1]-dfProvis['time'][0]),1)
@@ -529,7 +593,8 @@ def load_merge_iSen_angles_csv(
 
 
 def load_merge_iSen_sensors_csv(
-    path: str | Path,
+    path: str | Path | None = None,
+    file_list: List[str | Path] | None = None,
     n_vars_load: List[str] | None = None,
     n_project: str | None = None,
     data_type: str | None = None,
@@ -560,15 +625,29 @@ def load_merge_iSen_sensors_csv(
 
     """
 
+    try:
+        import polars as pl
+    except:
+        raise ImportError(
+            "Polars package not instaled. Install it if you want to use the accelerated version"
+        )
+
     if data_type is None:
         data_type = float
 
-    file_list = sorted(
-        list(path.glob("*.csv"))  # "**/*.csv"
-    )  #'**/*.txt' incluye los que haya en subcarpetas
-    file_list = [
-        x for x in file_list if "error" not in x.name and "aceleración local" in x.name
-    ]  # selecciona archivos
+    if file_list is None:
+        file_list = sorted(
+            list(path.glob("*.csv"))  # "**/*.csv"
+        )  #'**/*.txt' incluye los que haya en subcarpetas
+        file_list = [
+            x
+            for x in file_list
+            if "error" not in x.name
+            and "aceleración local" not in x.name
+            and "Actual" not in x.name
+        ]  # selecciona archivos
+    else:
+        file_list = file_list
 
     # file = Path("F:/Investigacion/Proyectos/Tesis/TesisCoralPodologa/Registros/PRUEBASiSEN/ANGULOS.csv")
 
@@ -586,7 +665,7 @@ def load_merge_iSen_sensors_csv(
         try:
             timerSub = time.perf_counter()  # inicia el contador de tiempo
 
-            dfProvis = read_isen_pl(file, n_vars_load)
+            dfProvis = read_isen_pl(file, n_vars_load, raw=True)
 
             # ADAPT DIRECTORY LABELS
             if len(file.stem.split("_")) == 5:
@@ -966,13 +1045,19 @@ if __name__ == "__main__":
 
     # Vicon
     # work_path = Path('F:\Programacion\Python\Mios\TratamientoDatos\EjemploBikefitting')
-    work_path = Path(
-        r"F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\Piloto0iSen"
-    )
+    work_path = Path(r"src\datasets")
     # dfAllFiles, daAllFiles = carga_preprocesa_vicon(path=work_path)
+    file = work_path / "iSen_angles.csv"
+    daData = read_isen_csv(file, engine="polars", raw=True)
 
-    # guardar_preprocesados_vicon(path=work_path , nom_archivo='Prueba', df= dfAllFiles, da=daAllFiles)
-    daData = load_merge_iSen_angles_csv(path=work_path)
+    file = work_path / "iSen_angles.csv"
+    daData = load_merge_iSen_angles_csv(file_list=[file])
+    daData.sel(axis="x", time=slice(30, None)).plot.line(
+        x="time", col="n_var", row="ID"
+    )
+
+    file = work_path / "iSen_sensors.csv"
+    daData = load_merge_iSen_sensors_csv(file_list=[file])
     daData.sel(axis="x", time=slice(30, None)).plot.line(
         x="time", col="n_var", row="ID"
     )

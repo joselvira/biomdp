@@ -71,8 +71,8 @@ import time
 import os
 import sys
 
-from biomdp.io.read_vicon_csv import read_vicon_csv, read_vicon_csv_pl_xr
-from biomdp.io.read_vicon_c3d import read_vicon_c3d_xr
+# from biomdp.io.read_vicon_csv import read_vicon_csv, read_vicon_csv
+# from biomdp.io.read_vicon_c3d import read_vicon_c3d
 import biomdp.slice_time_series_phases as stsp
 
 # =============================================================================
@@ -141,7 +141,7 @@ nomVarsCentrales = [
     "C7",
 ]
 
-renombrar_vars = {
+rename_vars = {
     "LASI": "ASI_L",
     "RASI": "ASI_R",
     "LPSI": "PSI_L",
@@ -1562,12 +1562,12 @@ def load_variables_nexus_EMG(vicon=None, n_vars=None) -> xr.DataArray:
     )
 
     # Ajusta a mano los sensores de cada lado
-    """renombrar_vars={'EMG9':'GLU', 'EMG10':'REC', 'EMG11':'BIV',
+    """rename_vars={'EMG9':'GLU', 'EMG10':'REC', 'EMG11':'BIV',
                     'EMG12':'VAE', 'EMG13':'VAI',
                     'EMG14':'GAS', 'EMG15':'TIB',
                     }
     
-    # renombrar_vars={'EMG1':'GLU_R', 'EMG2':'BIC_R', 'EMG3':'REC_R', 'EMG4':'VME_R', 'EMG5':'GAS_R', 'EMG6':'TIB_R', 
+    # rename_vars={'EMG1':'GLU_R', 'EMG2':'BIC_R', 'EMG3':'REC_R', 'EMG4':'VME_R', 'EMG5':'GAS_R', 'EMG6':'TIB_R', 
     #                 'EMG7':'GLU_L', 'EMG8':'BIC_L', 'EMG9':'REC_L', 'EMG10':'VME_L', 'EMG11':'GAS_L', 'EMG12':'TIB_L',
     #                 }
     """
@@ -1883,7 +1883,7 @@ def split_trajectories_sides(daData) -> xr.DataArray:
 
 
 # =============================================================================
-# %%Load all csv files in the same dataframe. Knem and EMG version
+# %%Load all csv files in the same dataframe. Kinem and EMG version
 # =============================================================================
 def load_csv_generic_pl_xr(
     file_list: List[str | Path],
@@ -1891,6 +1891,8 @@ def load_csv_generic_pl_xr(
     section: str | None = None,
 ) -> xr.DataArray:
     """Load all csv files into the same dataframe. Cinem and EMG version."""
+    from biomdp.io.read_vicon_csv import read_vicon_csv
+
     # Polars version
     print("\nLoading files...")
     timerCarga = time.perf_counter()
@@ -1903,8 +1905,11 @@ def load_csv_generic_pl_xr(
         try:
             timerSub = time.perf_counter()
 
-            daProvis = read_vicon_csv_pl_xr(
-                file, section=section, n_vars_load=n_vars_load
+            daProvis = read_vicon_csv(
+                file,
+                section=section,
+                n_vars_load=n_vars_load,
+                engine="polars",
             ).expand_dims(
                 {
                     "ID": [
@@ -1946,6 +1951,8 @@ def load_csv_generic_pl_xr(
 
 
 def load_c3d_generic_xr(file_list, n_vars_load=None, section=None) -> xr.DataArray:
+    from biomdp.io.read_vicon_c3d import read_vicon_c3d
+
     print("\nLoading files...")
     timerCarga = time.perf_counter()
 
@@ -1958,7 +1965,7 @@ def load_c3d_generic_xr(file_list, n_vars_load=None, section=None) -> xr.DataArr
         try:
             timerSub = time.perf_counter()
 
-            daProvis = read_vicon_c3d_xr(
+            daProvis = read_vicon_c3d(
                 file, section=section, n_vars_load=n_vars_load
             ).expand_dims(
                 {
@@ -2001,9 +2008,11 @@ def load_c3d_generic_xr(file_list, n_vars_load=None, section=None) -> xr.DataArr
 
 
 def load_preprocess_csv_cinem(
-    file_list, n_vars_load=None, nomArchivoPreprocesado=None
+    file_list, n_vars_load=None, n_preprocessed_file=None
 ) -> xr.DataArray:
-    # if nomArchivoPreprocesado==None:
+    from biomdp.io.read_vicon_csv import read_vicon_csv_pd
+
+    # if n_preprocessed_file==None:
     #     raise Exception('Debes indicar el nombre de los archivos preprocesados')
 
     # nomVarsDiscretas240 = ['FrecuenciaPedaleo_y',
@@ -2012,7 +2021,7 @@ def load_preprocess_csv_cinem(
     #                     'AngArtLKneeMaxExt_x', 'AngArtRKneeMaxExt_x']
 
     # En versiones del modelo anteriores a la 2.5.0 se ajustan los nombres de las variables para hacer facil distinción de lateralidad
-    renombrar_vars_coords = {
+    rename_vars_coords = {
         "AngArtLHip_x": "AngArtHip_L_x",
         "AngArtRHip_x": "AngArtHip_R_x",
         "AngArtLHip_y": "AngArtHip_L_y",
@@ -2048,7 +2057,7 @@ def load_preprocess_csv_cinem(
         "AngBiela_y": "AngBiela_LR_y",
         "vAngBiela": "vAngBiela_LR_x",
     }
-    renombrar_vars = {
+    rename_vars = {
         "AngArtLHip": "AngArtHip_L",
         "AngArtRHip": "AngArtHip_R",
         "AngArtLKnee": "AngArtKnee_L",
@@ -2087,16 +2096,19 @@ def load_preprocess_csv_cinem(
         try:
             timerSub = time.time()
             print("Loading file: {0:s}".format(file.name))
-            dfprovis, freq = read_vicon_csv(
-                file, nomBloque="Model Outputs", returnFreq=True, header_format="noflat"
+            dfprovis, freq = read_vicon_csv_pd(
+                file,
+                n_block="Model Outputs",
+                returnFreq=True,
+                header_format="noflat",
             )
-            # dfprovis, daprovis, freq = read_vicon_csv(file, nomBloque='Model Outputs', returnFreq=True, formatoxArray=True)
+            # dfprovis, daprovis, freq = read_vicon_csv(file, n_block='Model Outputs', returnFreq=True, formatoxArray=True)
 
             dfprovis = (
                 dfprovis.loc[
                     :, ~dfprovis.columns.duplicated()
                 ]  # quita duplicados (aparecen en centros articulares)
-                .rename(columns=renombrar_vars)  # , inplace=True)
+                .rename(columns=rename_vars)  # , inplace=True)
                 .sort_index()
             )
 
@@ -2368,7 +2380,7 @@ def load_preprocess_c3d_cinem(file_list, n_vars_load=None) -> xr.DataArray:
             if n_vars_load:
                 da = da.sel(n_var=n_vars_load)
 
-            renombrar_vars = {
+            rename_vars = {
                 "EMG1": "GLU_R",
                 "EMG2": "BIC_R",
                 "EMG3": "REC_R",
@@ -2444,9 +2456,11 @@ def load_preprocess_c3d_cinem(file_list, n_vars_load=None) -> xr.DataArray:
 
 # ------------------------------
 def load_preprocess_csv_EMG_pl_xr(
-    file_list, n_vars_load=None, nomBloque="Devices", freqEMG=None
+    file_list, n_vars_load=None, n_block="Devices", freqEMG=None
 ) -> xr.DataArray:
     # TODO: Polars version unfinished
+    from biomdp.io.read_vicon_csv import read_vicon_csv
+
     print("Loading files...")
     timer = time.time()
 
@@ -2459,15 +2473,17 @@ def load_preprocess_csv_EMG_pl_xr(
             timerSub = time.time()
             print("Loading file: {0:s}".format(file.name))
 
-            dfprovis = read_vicon_csv_pl_xr(file, section=nomBloque, to_dataarray=False)
+            dfprovis = read_vicon_csv(
+                file, section=n_block, raw=True, engine="polars"
+            )  # to_dataarray=False)
 
             freq = 1 / dfprovis[2, "time"] - dfprovis[0, "time"]
 
             if n_vars_load:
                 dfprovis = dfprovis[n_vars_load]
 
-            if nomBloque == "Devices":
-                renombrar_vars = {
+            if n_block == "Devices":
+                rename_vars = {
                     "EMG1": "GLU_R",
                     "EMG2": "BIC_R",
                     "EMG3": "REC_R",
@@ -2482,12 +2498,12 @@ def load_preprocess_csv_EMG_pl_xr(
                     "EMG12": "TIB_L",
                 }
                 dfprovis = (
-                    dfprovis.rename(columns=renombrar_vars)
+                    dfprovis.rename(columns=rename_vars)
                     .sort_index()
-                    .iloc[:, : len(renombrar_vars)]
+                    .iloc[:, : len(rename_vars)]
                 )
 
-            elif nomBloque == "Model Outputs":
+            elif n_block == "Model Outputs":
                 # Añade el ángulo de la biela para lado L y R interpolando de marcadores a EMG
                 angBiela = dfprovis["AngBiela"]["y"]
                 angBiela = np.interp(
@@ -2569,8 +2585,9 @@ def load_preprocess_csv_EMG_pl_xr(
 
 
 def load_preprocess_csv_EMG(
-    file_list, n_vars_load=None, nomBloque="Devices", freqEMG=None
+    file_list, n_vars_load=None, n_block="Devices", freqEMG=None
 ) -> xr.DataArray:
+    from biomdp.io.read_vicon_csv import read_vicon_csv_pd
 
     print("Loading files...")
     timer = time.time()
@@ -2584,15 +2601,15 @@ def load_preprocess_csv_EMG(
             timerSub = time.time()
             print("Loading file: {0:s}".format(file.name))
 
-            dfprovis, freq = read_vicon_csv(
-                file, nomBloque=nomBloque, returnFreq=True, header_format="noflat"
+            dfprovis, freq = read_vicon_csv_pd(
+                file, n_block=n_block, returnFreq=True, header_format="noflat"
             )
-            # dfprovis, daprovis, freq = read_vicon_csv(file, nomBloque='Model Outputs', returnFreq=True, formatoxArray=True)
+            # dfprovis, daprovis, freq = read_vicon_csv(file, n_block='Model Outputs', returnFreq=True, formatoxArray=True)
             if n_vars_load:
                 dfprovis = dfprovis[n_vars_load]
 
-            if nomBloque == "Devices":
-                renombrar_vars = {
+            if n_block == "Devices":
+                rename_vars = {
                     "EMG1": "GLU_R",
                     "EMG2": "BIC_R",
                     "EMG3": "REC_R",
@@ -2607,12 +2624,12 @@ def load_preprocess_csv_EMG(
                     "EMG12": "TIB_L",
                 }
                 dfprovis = (
-                    dfprovis.rename(columns=renombrar_vars)
+                    dfprovis.rename(columns=rename_vars)
                     .sort_index()
-                    .iloc[:, : len(renombrar_vars)]
+                    .iloc[:, : len(rename_vars)]
                 )
 
-            elif nomBloque == "Model Outputs":
+            elif n_block == "Model Outputs":
                 # Añade el ángulo de la biela para lado L y R interpolando de marcadores a EMG
                 angBiela = dfprovis["AngBiela"]["y"]
                 angBiela = np.interp(
@@ -2694,7 +2711,7 @@ def load_preprocess_csv_EMG(
 
 
 def load_preprocess_c3d_EMG(
-    file_list, n_vars_load=None, nomBloque="Devices", freqEMG=None
+    file_list, n_vars_load=None, n_block="Devices", freqEMG=None
 ) -> xr.DataArray:
     try:
         import c3d
@@ -2755,8 +2772,8 @@ def load_preprocess_c3d_EMG(
             if n_vars_load:
                 da = da.sel(n_var=n_vars_load)
 
-            if nomBloque == "Devices":
-                renombrar_vars = {
+            if n_block == "Devices":
+                rename_vars = {
                     "EMG1": "GLU_R",
                     "EMG2": "BIC_R",
                     "EMG3": "REC_R",
