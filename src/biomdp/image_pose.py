@@ -19,12 +19,16 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.1.3"
-__date__ = "09/03/2025"
+__version__ = "v.1.1.4"
+__date__ = "27/03/2025"
 
 
 """
 Updates:
+    27/03/2025, v1.6.4
+        - save_frame_file supports Path objects.
+        - Error message if could not save processed image.
+
     09/03/2025, v1.6.3
         - Adapted to biomdp with translations.
 
@@ -927,7 +931,7 @@ def process_video(
     mtc: float = 0.5,
     model_path: str | Path | None = None,
     num_frame: int | None = None,
-    save_frame_file: bool = True,
+    save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 10,
 ) -> xr.DataArray:
@@ -952,8 +956,10 @@ def process_video(
         Path to the model file, defaults to None, which uses "pose_landmarker_heavy.task".
     num_frame : int, optional
         Number of frames to process, if None, all frames are processed.
-    save_frame_file : bool, optional
-        Flag to save frames to file, defaults to True.
+    save_frame_file : bool or Path, optional
+        Defaults to None
+        True: save to the same folder
+        Path: save to the proposed folderto save frames to file.
     show : bool or str, optional
         If False, no display is shown. If True, it displays the frames with markers in a local environment.
         If 'colab', it displays the frames in Google Colab.
@@ -1130,14 +1136,27 @@ def process_video(
                         cv2.destroyAllWindows()
 
                 # Save the selected num_frame
-                if num_frame is not None and save_frame_file:
-                    cv2.imwrite(
-                        (file.parent / f"{file.stem}_fot{num_frame}")
-                        .with_suffix(".jpg")
-                        .as_posix(),
+                if num_frame is not None and save_frame_file not in [None, False]:
+                    if save_frame_file == True:
+                        save_frame_file = file.parent
+
+                    if isinstance(save_frame_file, Path):
+                        if not save_frame_file.is_dir():
+                            save_frame_file.mkdir(parents=True)
+                        # save_frame_file = save_frame_file.as_posix()
+
+                    saved = cv2.imwrite(
+                        (
+                            (
+                                save_frame_file / f"{file.stem}_fot{num_frame}"
+                            ).with_suffix(".jpg")
+                        ).as_posix(),
                         cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
                     )
-                    print(f"Saved frame {num_frame}")
+                    if saved:
+                        print(f"Saved frame {num_frame}")
+                    else:
+                        print(f"Error saving file {file} frame {num_frame}")
 
             else:  # if show== False
                 if frame % show_every_frames == 0:
