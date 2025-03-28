@@ -15,13 +15,16 @@ Lectura de archivos .csv exportados de iSen.
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.1.0"
-__date__ = "17/08/2024"
+__version__ = "0.1.2"
+__date__ = "28/03/2025"
 
 """
 Updates:
-     11/03/2025, v0.1.1
-            - Adapted to biomdp with translations.
+    28/03/2025, v0.1.2
+        - Indluded Polars import in df_to_da function.
+        
+    11/03/2025, v0.1.1
+        - Adapted to biomdp with translations.
     
     17/08/2024, v0.1.0
         - Basado en el usado para registros 2021 para TFM de María Aracil. 
@@ -184,6 +187,13 @@ def assign_subcategories_xr(da: xr.DataArray, n_project: str = None) -> xr.DataA
 def df_to_da(
     dfAll: pd.DataFrame, n_project: str | None = None, show: bool = False
 ) -> xr.DataArray:
+    try:
+        import polars as pl
+    except:
+        raise ImportError(
+            "Polars package not instaled. Install it if you want to use the accelerated version"
+        )
+
     if isinstance(dfAll, pl.DataFrame):
         # Transforma df polars a dataarray con todas las variables cargadas
         vars_leidas = dfAll.select(
