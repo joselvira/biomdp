@@ -26,7 +26,7 @@ Updates:
     05/03/2025, v0.4.1
         - Adapted to biomdp with translations.
     
-    26/07/2024, v0.3.0
+    26/07/2024, v0.4.0
         - Corrección importante en el cálculo de AngSegRETROPIE con modelo
           antiguo (a partir de metas).
     

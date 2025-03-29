@@ -25,11 +25,11 @@ __date__ = "27/03/2025"
 
 """
 Updates:
-    27/03/2025, v1.6.4
+    27/03/2025, v1.1.4
         - save_frame_file supports Path objects.
         - Error message if could not save processed image.
 
-    09/03/2025, v1.6.3
+    09/03/2025, v1.1.3
         - Adapted to biomdp with translations.
 
     04/03/2025, v1.1.2
