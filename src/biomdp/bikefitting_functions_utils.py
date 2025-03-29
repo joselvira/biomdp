@@ -1402,7 +1402,7 @@ def slice_model_bikefitting_xr_cinem(
     t_ini = time.perf_counter()
 
     if verbose:
-        print(f"\nSegmentando {len(daData.ID)} archivos...")
+        print(f"\nSegmented {len(daData.ID)} files...")
 
     # No es necesario separar lado L y R porque aunque usan criterios distintos de
     # corte según AngBiela, AngBiela viene ya ajustado para cada lado
@@ -1517,7 +1517,7 @@ def slice_model_bikefitting_xr_cinem(
     # )
 
     if verbose:
-        print(f"Terminado de segmentar en {time.perf_counter() - t_ini:.2f} s")
+        print(f"Finished segmenting in {time.perf_counter() - t_ini:.2f} s")
 
     return daSegment
 
