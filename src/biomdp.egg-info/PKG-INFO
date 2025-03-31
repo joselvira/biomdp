@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: biomdp
-Version: 0.7.10
+Version: 0.7.12
 Summary: Usefull set of functions for analyzing time series records, particularly for biomechanical data
 Author-email: "Jose L. L. Elvira" <jose.lopeze@umh.es>
 Project-URL: Homepage, https://github.com/joselvira/biomdp
