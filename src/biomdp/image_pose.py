@@ -19,12 +19,17 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.1.4"
-__date__ = "27/03/2025"
+__version__ = "v.1.1.5"
+__date__ = "30/03/2025"
 
 
 """
 Updates:
+    31/03/2025, v1.1.5
+        - process_video returns axis in video coordinates instead of 0-1.
+        - Coordinates calculated in pose_landmarkers_to_xr.
+          Y axis inverted according to image height.
+    
     27/03/2025, v1.1.4
         - save_frame_file supports Path objects.
         - Error message if could not save processed image.
@@ -58,6 +63,8 @@ Updates:
 """
 
 from typing import List
+import warnings
+
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -201,30 +208,34 @@ def extract_markers(data_mark, coords):
     ).transpose("marker", "axis")
 
 
-def pose_landmarkers_to_xr(pose_landmarker_result, image):
-    landmarks = pose_landmarker_result.pose_landmarks[0]
-    data = np.full((len(landmarks), 5), np.nan)
-    h, w, c = image.numpy_view().shape
-    for i, _landmark in enumerate(landmarks):
-        data[i, 0] = _landmark.x * w
-        data[i, 1] = _landmark.y * h
-        data[i, 2] = _landmark.z * c
-        if _landmark.visibility:
-            data[i, 3] = _landmark.visibility
-        if _landmark.presence:
-            data[i, 4] = _landmark.presence
+def pose_landmarkers_to_xr(pose_landmarker_result, image=None):
+    data = np.full((len(N_MARKERS), 5), np.nan)
+    try:
+        landmarks = pose_landmarker_result.pose_landmarks[0]
+        h, w, c = image.numpy_view().shape
+        for i, _landmark in enumerate(landmarks):
+            data[i, 0] = _landmark.x * w
+            data[i, 1] = h-(_landmark.y * h) # Y axis inverted
+            data[i, 2] = _landmark.z * c
+            if _landmark.visibility:
+                data[i, 3] = _landmark.visibility
+            if _landmark.presence:
+                data[i, 4] = _landmark.presence
 
-    # Pasa a dataarray
+    except:
+        ...
+
+    # To dataarray
     coords = {
         "marker": N_MARKERS,
         "axis": ["x", "y", "z", "visib", "presence"],
     }
-
-    return xr.DataArray(
+    da = xr.DataArray(
         data=data,
         dims=coords.keys(),
         coords=coords,
     )
+    return da
 
 
 def assign_subcategories_xr(da, estudio=None) -> xr.DataArray:
@@ -784,6 +795,7 @@ def process_image(
     mppc: float = 0.8,
     mtc: float = 0.8,
     model_path: str | Path | None = None,
+    save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     format: str = "xr",
 ):
@@ -851,6 +863,9 @@ def process_image(
         # The pose landmarker must be created with the image mode.
         pose_landmarker_result = landmarker.detect(image)
 
+    
+    
+    
     if show is not False:
         annotated_image = draw_landmarks_on_image(
             image.numpy_view(), pose_landmarker_result
@@ -890,10 +905,13 @@ def process_image(
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
+
+
+
     if format == "raw":
         return pose_landmarker_result
     elif format == "xr":
-        return pose_landmarkers_to_xr(pose_landmarker_result)
+        return pose_landmarkers_to_xr(pose_landmarker_result, image)
 
     else:
         raise ValueError(f"Format {format} not recognized. Must be 'raw' or 'xr'")
@@ -934,6 +952,7 @@ def process_video(
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 10,
+    verbose: bool = False,
 ) -> xr.DataArray:
     """
     Processes a video file to extract pose landmarks using MediaPipe Pose.
@@ -1046,11 +1065,18 @@ def process_video(
 
             # Perform pose landmarking on the provided single image.
             # The pose landmarker must be created with the video mode.
-            pose_landmarker_result = landmarker.detect_for_video(
-                mp_image, int(frame * 1 / fv * 1000)
-            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                
+                pose_landmarker_result = landmarker.detect_for_video(
+                    mp_image, int(frame * 1 / fv * 1000)
+                )
 
-            # Loop through the detected poses to visualize.
+            daMarkers.loc[dict(ID=file.stem, time=frame)] = pose_landmarkers_to_xr(
+                pose_landmarker_result, mp_image
+            )
+            # daMarkers.isel(ID=0).plot.line(x="time", col='marker', col_wrap=4, sharey=False)
+            '''# Loop through the detected poses to visualize.
             if pose_landmarker_result.pose_landmarks:
                 pose_landmarks = pose_landmarker_result.pose_landmarks[0]
 
@@ -1085,8 +1111,11 @@ def process_video(
 
             else:
                 dat = np.full((33, 5), np.nan)
+                if num_frame is not None:
+                    print(f"No pose landmarks in {file} frame {frame}")
 
             daMarkers.loc[dict(ID=file.stem, time=frame)] = np.asanyarray(dat)
+            '''
 
             # Calcula fps
             cTime = time.time()
@@ -1153,14 +1182,17 @@ def process_video(
                         ).as_posix(),
                         cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
                     )
+
                     if saved:
-                        print(f"Saved frame {num_frame}")
+                        if verbose:
+                            print(f"Saved frame {num_frame}")
                     else:
                         print(f"Error saving file {file} frame {num_frame}")
 
             else:  # if show== False
                 if frame % show_every_frames == 0:
-                    print(f"Frame {frame}/{num_frames} fps: {fps:.2f}")
+                    if verbose:
+                        print(f"Frame {frame}/{num_frames} fps: {fps:.2f}")
 
             # Waits for user to press any key
             if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
@@ -1173,16 +1205,243 @@ def process_video(
     # closing all open windows
     cv2.destroyAllWindows()
 
-    print(f"Video processed in {time.perf_counter() - t_ini:.2f} s")
+    if verbose:
+        print(f"Video processed in {time.perf_counter() - t_ini:.2f} s")
 
     # Adjust time coordinate
     if num_frame is None:
         daMarkers = daMarkers.assign_coords(time=np.arange(0, num_frames) / fv)
-    else:  # con un solo fotograma
+    else:  # single frame
         # daMarkers = daMarkers.isel(time=slice(frame - 3, frame + 3)).assign_coords(
         #     time=np.arange(frame - 3, frame + 3) / fv
         # )
         daMarkers = daMarkers.isel(time=frame).assign_coords(time=num_frame / fv)
+
+    if n_vars_load is not None:
+        daMarkers = daMarkers.sel(marker=n_vars_load)
+
+    # Invert y coordinates
+    # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+
+    return daMarkers
+
+
+def process_image_from_video(
+    file: str | Path,
+    fv: int = 30,
+    n_vars_load: List[str] | None = None,
+    mpdc: float = 0.5,
+    mppc: float = 0.5,
+    mtc: float = 0.5,
+    model_path: str | Path | None = None,
+    num_frame: int | None = None,
+    save_frame_file: bool | Path | None = None,
+    show: bool | str = False,
+    show_every_frames: int = 10,
+    verbose: bool = False,
+) -> xr.DataArray:
+    """
+    Processes a video file to extract pose landmarks using MediaPipe Pose.
+
+    Parameters
+    ----------
+    file : str or Path
+        Path to the video file to be processed.
+    fv : int, optional
+        Frame rate of the video, defaults to 30.
+    n_vars_load : list os str, optional
+        List of variables to load, defaults to None.
+    mpdc : float, optional
+        Minimum pose detection confidence, defaults to 0.5.
+    mppc : float, optional
+        Minimum pose presence confidence, defaults to 0.5.
+    mtc : float, optional
+        Minimum tracking confidence, defaults to 0.5.
+    model_path : str or Path, optional
+        Path to the model file, defaults to None, which uses "pose_landmarker_heavy.task".
+    num_frame : int, optional
+        Number of frames to process, if None, all frames are processed.
+    save_frame_file : bool or Path, optional
+        Defaults to None
+        True: save to the same folder
+        Path: save to the proposed folderto save frames to file.
+    show : bool or str, optional
+        If False, no display is shown. If True, it displays the frames with markers in a local environment.
+        If 'colab', it displays the frames in Google Colab.
+    show_every_frames : int, optional
+        Frame skip number to display.
+
+    Returns
+    -------
+    xarray.DataArray
+        A DataArray containing the pose landmarks and additional metadata.
+    """
+
+    if num_frame is None or not isinstance(num_frame, int):
+        raise ValueError(
+            f"num_frame must be an integer. Received {num_frame}."
+        )
+    if not isinstance(file, Path):
+        file = Path(file)
+
+    t_ini = time.perf_counter()
+    # print(f"Processing video {file.name}...")
+
+    # The landmarker is initialized. Use it here.
+    cap = cv2.VideoCapture(file.as_posix())
+    num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    vid_fps = cap.get(cv2.CAP_PROP_FPS)
+    # print(f"Video fps:{vid_fps}")
+    if num_frame > num_frames or num_frame < 0:
+        raise ValueError(
+            f"num_frame {num_frame} is out of range of video frames (0-{num_frames})"
+        )
+
+    
+    # data_mark = np.full((num_frames, 33, 3), np.nan)
+
+    # Precreate Dataarray
+    coords = {
+        "time": np.arange(1),  # / fv,
+        "marker": N_MARKERS,
+        "axis": ["x", "y", "z", "visib", "presence"],
+    }
+    daMarkers = (
+        xr.DataArray(
+            data=np.full((1, 33, 5), np.nan),
+            dims=coords.keys(),
+            coords=coords,
+        ).expand_dims({"ID": [file.stem]})
+        # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
+        .copy()
+    )  # .transpose("marker", "axis", "time")
+
+    # Process frame
+    if not cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame):
+        print("Frame not found")
+        return  # restar 1?????
+    
+    success, img = cap.read()
+    if not success:
+        print("Frame not found")
+        return
+
+    # Reset colors. It is not necessary but it does not seem to slow down
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img)
+
+    BaseOptions = mp.tasks.BaseOptions
+    PoseLandmarker = mp.tasks.vision.PoseLandmarker
+    PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+    VisionRunningMode = mp.tasks.vision.RunningMode
+
+    options = PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=model_path),
+        running_mode=VisionRunningMode.IMAGE,
+        min_pose_detection_confidence=mpdc,
+        min_pose_presence_confidence=mppc,
+        min_tracking_confidence=mtc,
+        output_segmentation_masks=False,
+    )
+    with PoseLandmarker.create_from_options(options) as landmarker:
+        # Perform pose landmarking on the provided single image.
+        # The pose landmarker must be created with the image mode.
+        pose_landmarker_result = landmarker.detect(mp_image)
+
+    annotated_image = draw_landmarks_on_image(
+            img, pose_landmarker_result
+        )
+    daMarkers.loc[dict(time=0)] = pose_landmarkers_to_xr(pose_landmarker_result, mp_image)
+    
+    # Invert y coordinates
+    daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+
+    
+    # plot_pose_2D(daMarkers)
+
+    
+    ############################
+
+    # Annotate in the images
+    annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
+    cv2.putText(
+        annotated_image,
+        "q or Esc to exit",
+        (30, 10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (255, 0, 0),
+        2,
+    )
+    cv2.putText(
+        annotated_image,
+        f"Frame {num_frame}/{num_frames}",
+        (30, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (255, 0, 0),
+        2,
+    )
+
+    if show in [True, "colab"]:        
+
+        if show == True:
+            cv2.imshow(
+                r"Marker detection",
+                cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+            )           
+
+        elif show == "colab":
+            from google.colab.patches import cv2_imshow
+            
+            cv2_imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+        # waits for user to press any key
+        # (this is necessary to avoid Python kernel form crashing)
+        cv2.waitKey(0)
+
+        # closing all open windows
+        cv2.destroyAllWindows()
+
+    # Save the selected num_frame
+    if num_frame is not None and save_frame_file not in [None, False]:
+        if save_frame_file == True:
+            save_frame_file = file.parent
+
+        if isinstance(save_frame_file, Path):
+            if not save_frame_file.is_dir():
+                save_frame_file.mkdir(parents=True)
+            # save_frame_file = save_frame_file.as_posix()
+
+        saved = cv2.imwrite(
+            (
+                (save_frame_file / f"{file.stem}_fot{num_frame}").with_suffix(
+                    ".jpg"
+                )
+            ).as_posix(),
+            cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+        )
+
+        if saved:
+            if verbose:
+                print(f"Saved frame {num_frame}")
+        else:
+            print(f"Error saving file {file} frame {num_frame}")
+
+
+
+    # Waits for user to press any key
+    if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
+        pass
+    # cv2.waitKey(0)
+    
+    # closing all open windows
+    cv2.destroyAllWindows()
+
+    if verbose:
+        print(f"Video processed in {time.perf_counter() - t_ini:.2f} s")
+
+    # Adjust time coordinate
+    daMarkers = daMarkers.isel(time=0).assign_coords(time=num_frame / fv)
 
     if n_vars_load is not None:
         daMarkers = daMarkers.sel(marker=n_vars_load)
