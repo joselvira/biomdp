@@ -29,6 +29,7 @@ Updates:
         - process_video returns axis in video coordinates instead of 0-1.
         - Coordinates calculated in pose_landmarkers_to_xr.
           Y axis inverted according to image height.
+        - In function process-video, checks if the file exists.
     
     27/03/2025, v1.1.4
         - save_frame_file supports Path objects.
@@ -176,6 +177,66 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
     annotated_image = np.copy(rgb_image)
 
+    from mediapipe.python.solutions.pose import PoseLandmark
+    from mediapipe.python.solutions.drawing_utils import DrawingSpec
+
+    _THICKNESS_POSE_LANDMARKS = 2
+    _POSE_LANDMARKS_LEFT = frozenset(
+        [
+            PoseLandmark.LEFT_EYE_INNER,
+            PoseLandmark.LEFT_EYE,
+            PoseLandmark.LEFT_EYE_OUTER,
+            PoseLandmark.LEFT_EAR,
+            PoseLandmark.MOUTH_LEFT,
+            PoseLandmark.LEFT_SHOULDER,
+            PoseLandmark.LEFT_ELBOW,
+            PoseLandmark.LEFT_WRIST,
+            PoseLandmark.LEFT_PINKY,
+            PoseLandmark.LEFT_INDEX,
+            PoseLandmark.LEFT_THUMB,
+            PoseLandmark.LEFT_HIP,
+            PoseLandmark.LEFT_KNEE,
+            PoseLandmark.LEFT_ANKLE,
+            PoseLandmark.LEFT_HEEL,
+            PoseLandmark.LEFT_FOOT_INDEX,
+        ]
+    )
+
+    _POSE_LANDMARKS_RIGHT = frozenset(
+        [
+            PoseLandmark.RIGHT_EYE_INNER,
+            PoseLandmark.RIGHT_EYE,
+            PoseLandmark.RIGHT_EYE_OUTER,
+            PoseLandmark.RIGHT_EAR,
+            PoseLandmark.MOUTH_RIGHT,
+            PoseLandmark.RIGHT_SHOULDER,
+            PoseLandmark.RIGHT_ELBOW,
+            PoseLandmark.RIGHT_WRIST,
+            PoseLandmark.RIGHT_PINKY,
+            PoseLandmark.RIGHT_INDEX,
+            PoseLandmark.RIGHT_THUMB,
+            PoseLandmark.RIGHT_HIP,
+            PoseLandmark.RIGHT_KNEE,
+            PoseLandmark.RIGHT_ANKLE,
+            PoseLandmark.RIGHT_HEEL,
+            PoseLandmark.RIGHT_FOOT_INDEX,
+        ]
+    )
+    pose_landmark_style = {}
+    left_spec = DrawingSpec(
+        color=(0, 138, 255), thickness=_THICKNESS_POSE_LANDMARKS, circle_radius=2
+    )
+    right_spec = DrawingSpec(
+        color=(231, 217, 0), thickness=_THICKNESS_POSE_LANDMARKS, circle_radius=2
+    )
+    for landmark in _POSE_LANDMARKS_LEFT:
+        pose_landmark_style[landmark] = left_spec
+    for landmark in _POSE_LANDMARKS_RIGHT:
+        pose_landmark_style[landmark] = right_spec
+    pose_landmark_style[PoseLandmark.NOSE] = DrawingSpec(
+        color=(224, 224, 224), thickness=_THICKNESS_POSE_LANDMARKS
+    )
+
     # Loop through the detected poses to visualize.
     for idx in range(len(pose_landmarks_list)):
         pose_landmarks = pose_landmarks_list[idx]
@@ -195,7 +256,11 @@ def draw_landmarks_on_image(rgb_image, detection_result):
             annotated_image,
             pose_landmarks_proto,
             solutions.pose.POSE_CONNECTIONS,
-            solutions.drawing_styles.get_default_pose_landmarks_style(),
+            pose_landmark_style,
+            # solutions.drawing_styles.DrawingSpec(
+            #     thickness=1, circle_radius=3
+            # ),
+            # solutions.drawing_styles.get_default_pose_landmarks_style(),
         )
     return annotated_image
 
@@ -215,7 +280,7 @@ def pose_landmarkers_to_xr(pose_landmarker_result, image=None):
         h, w, c = image.numpy_view().shape
         for i, _landmark in enumerate(landmarks):
             data[i, 0] = _landmark.x * w
-            data[i, 1] = h-(_landmark.y * h) # Y axis inverted
+            data[i, 1] = h - (_landmark.y * h)  # Y axis inverted
             data[i, 2] = _landmark.z * c
             if _landmark.visibility:
                 data[i, 3] = _landmark.visibility
@@ -863,9 +928,6 @@ def process_image(
         # The pose landmarker must be created with the image mode.
         pose_landmarker_result = landmarker.detect(image)
 
-    
-    
-    
     if show is not False:
         annotated_image = draw_landmarks_on_image(
             image.numpy_view(), pose_landmarker_result
@@ -904,9 +966,6 @@ def process_image(
             cv2.imshow("Mask results", visualized_mask)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
-
-
-
 
     if format == "raw":
         return pose_landmarker_result
@@ -994,6 +1053,9 @@ def process_video(
     if not isinstance(file, Path):
         file = Path(file)
 
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found.")
+
     t_ini = time.perf_counter()
     # print(f"Processing video {file.name}...")
 
@@ -1067,7 +1129,7 @@ def process_video(
             # The pose landmarker must be created with the video mode.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                
+
                 pose_landmarker_result = landmarker.detect_for_video(
                     mp_image, int(frame * 1 / fv * 1000)
                 )
@@ -1278,9 +1340,7 @@ def process_image_from_video(
     """
 
     if num_frame is None or not isinstance(num_frame, int):
-        raise ValueError(
-            f"num_frame must be an integer. Received {num_frame}."
-        )
+        raise ValueError(f"num_frame must be an integer. Received {num_frame}.")
     if not isinstance(file, Path):
         file = Path(file)
 
@@ -1297,7 +1357,6 @@ def process_image_from_video(
             f"num_frame {num_frame} is out of range of video frames (0-{num_frames})"
         )
 
-    
     # data_mark = np.full((num_frames, 33, 3), np.nan)
 
     # Precreate Dataarray
@@ -1319,8 +1378,8 @@ def process_image_from_video(
     # Process frame
     if not cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame):
         print("Frame not found")
-        return  # restar 1?????
-    
+        return  # substract 1?????
+
     success, img = cap.read()
     if not success:
         print("Frame not found")
@@ -1343,23 +1402,24 @@ def process_image_from_video(
         min_tracking_confidence=mtc,
         output_segmentation_masks=False,
     )
-    with PoseLandmarker.create_from_options(options) as landmarker:
-        # Perform pose landmarking on the provided single image.
-        # The pose landmarker must be created with the image mode.
-        pose_landmarker_result = landmarker.detect(mp_image)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
 
-    annotated_image = draw_landmarks_on_image(
-            img, pose_landmarker_result
-        )
-    daMarkers.loc[dict(time=0)] = pose_landmarkers_to_xr(pose_landmarker_result, mp_image)
-    
-    # Invert y coordinates
+        with PoseLandmarker.create_from_options(options) as landmarker:
+            # Perform pose landmarking on the provided single image.
+            # The pose landmarker must be created with the image mode.
+            pose_landmarker_result = landmarker.detect(mp_image)
+
+    annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
+    daMarkers.loc[dict(time=0)] = pose_landmarkers_to_xr(
+        pose_landmarker_result, mp_image
+    )
+
+    # Invert Y coordinates
     daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
 
-    
     # plot_pose_2D(daMarkers)
 
-    
     ############################
 
     # Annotate in the images
@@ -1383,17 +1443,17 @@ def process_image_from_video(
         2,
     )
 
-    if show in [True, "colab"]:        
+    if show in [True, "colab"]:
 
         if show == True:
             cv2.imshow(
                 r"Marker detection",
                 cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
-            )           
+            )
 
         elif show == "colab":
             from google.colab.patches import cv2_imshow
-            
+
             cv2_imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
         # waits for user to press any key
         # (this is necessary to avoid Python kernel form crashing)
@@ -1414,9 +1474,7 @@ def process_image_from_video(
 
         saved = cv2.imwrite(
             (
-                (save_frame_file / f"{file.stem}_fot{num_frame}").with_suffix(
-                    ".jpg"
-                )
+                (save_frame_file / f"{file.stem}_fot{num_frame}").with_suffix(".jpg")
             ).as_posix(),
             cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
         )
@@ -1427,13 +1485,11 @@ def process_image_from_video(
         else:
             print(f"Error saving file {file} frame {num_frame}")
 
-
-
     # Waits for user to press any key
     if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
         pass
     # cv2.waitKey(0)
-    
+
     # closing all open windows
     cv2.destroyAllWindows()
 
