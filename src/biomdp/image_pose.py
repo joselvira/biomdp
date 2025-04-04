@@ -19,12 +19,16 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.1.5"
-__date__ = "30/03/2025"
+__version__ = "v.1.2.0"
+__date__ = "04/04/2025"
 
 
 """
 Updates:
+    04/04/2025, v1.2.0
+        - Introduced a custom funtion (draw_model_on_image) to draw
+          detected points in the image.
+    
     31/03/2025, v1.1.5
         - process_video returns axis in video coordinates instead of 0-1.
         - Coordinates calculated in pose_landmarkers_to_xr.
@@ -172,15 +176,98 @@ N_MARCADORES = [
     "toe_R",
 ]
 
+MODEL_STICK_UNIONS = [
+    ("shoulder_L", "shoulder_R"),
+    ("shoulder_L", "elbow_L"),
+    ("elbow_L", "wrist_L"),
+    ("shoulder_R", "elbow_R"),
+    ("elbow_R", "wrist_R"),
+    ("hip_L", "hip_R"),
+    ("hip_L", "shoulder_L"),
+    ("hip_R", "shoulder_R"),
+    ("hip_L", "knee_L"),
+    ("knee_L", "ankle_L"),
+    ("heel_L", "toe_L"),
+    ("hip_R", "knee_R"),
+    ("knee_R", "ankle_R"),
+    ("heel_R", "toe_R"),
+]
 
-def draw_landmarks_on_image(rgb_image, detection_result):
+
+def draw_model_on_image(
+    rgb_image: np.ndarray, _daMarkers: xr.DataArray, radius: int = 3, lw: int = 1
+) -> np.ndarray:
+
+    modified_image = rgb_image.copy()
+    h, w, c = rgb_image.shape
+
+    # Invert Y coordinates
+    _daMarkers.loc[dict(axis="y")] = -_daMarkers.loc[dict(axis="y")] + h
+
+    for marker1, marker2 in MODEL_STICK_UNIONS:
+        try:
+            if marker1 in _daMarkers.marker and marker2 in _daMarkers.marker:
+
+                x1 = int(_daMarkers.isel(ID=0).sel(marker=marker1, axis="x"))
+                y1 = int(_daMarkers.isel(ID=0).sel(marker=marker1, axis="y"))
+                x2 = int(_daMarkers.isel(ID=0).sel(marker=marker2, axis="x"))
+                y2 = int(_daMarkers.isel(ID=0).sel(marker=marker2, axis="y"))
+                modified_image = cv2.line(
+                    rgb_image, (x1, y1), (x2, y2), (255, 255, 255, 0.5), lw, cv2.LINE_AA
+                )
+        except:  # in case of nan
+            pass
+
+    for marker in _daMarkers.marker:
+        try:
+            if marker.str.endswith("_L"):
+                marker_color = (255, 0, 0, 0.5)
+            elif marker.str.endswith("_R"):
+                marker_color = (0, 255, 0, 0.5)
+            else:
+                marker_color = (255, 255, 255, 0.5)
+            x = int(_daMarkers.isel(ID=0).sel(marker=marker, axis="x"))
+            y = int(_daMarkers.isel(ID=0).sel(marker=marker, axis="y"))
+            modified_image = cv2.circle(
+                modified_image,
+                (x, y),
+                radius,
+                marker_color,
+                thickness=1,
+                lineType=cv2.LINE_AA,
+            )
+        except:  # in case of nan
+            pass
+
+    # alpha = 0.7
+    # result_image = cv2.addWeighted(modified_image, alpha, rgb_image, 1 - alpha, 0)
+
+    """
+    cv2.imshow(
+            r"Marker detection",
+            cv2.cvtColor(result_image, cv2.COLOR_RGB2BGR),
+        )
+
+    # waits for user to press any key
+    # (this is necessary to avoid Python kernel form crashing)
+    cv2.waitKey(0)
+
+    # closing all open windows
+    cv2.destroyAllWindows()
+
+    """
+
+    return modified_image
+
+
+def draw_landmarks_on_image(rgb_image, detection_result, radius=2):
     pose_landmarks_list = detection_result.pose_landmarks
     annotated_image = np.copy(rgb_image)
 
     from mediapipe.python.solutions.pose import PoseLandmark
     from mediapipe.python.solutions.drawing_utils import DrawingSpec
 
-    _THICKNESS_POSE_LANDMARKS = 2
+    _THICKNESS_POSE_LANDMARKS = radius
     _POSE_LANDMARKS_LEFT = frozenset(
         [
             PoseLandmark.LEFT_EYE_INNER,
@@ -1011,6 +1098,7 @@ def process_video(
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 10,
+    radius: int = 2,
     verbose: bool = False,
 ) -> xr.DataArray:
     """
@@ -1056,6 +1144,9 @@ def process_video(
     if not file.exists():
         raise FileNotFoundError(f"File {file} not found.")
 
+    if model_path is None:
+        model_path = "pose_landmarker_heavy.task"
+
     t_ini = time.perf_counter()
     # print(f"Processing video {file.name}...")
 
@@ -1065,8 +1156,6 @@ def process_video(
     VisionRunningMode = mp.tasks.vision.RunningMode
 
     # Create a pose landmarker instance with the video mode:
-    if model_path is None:
-        model_path = "pose_landmarker_heavy.task"
     options = PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=Path(model_path)),
         running_mode=VisionRunningMode.VIDEO,
@@ -1116,6 +1205,7 @@ def process_video(
 
             success, img = cap.read()
             if not success:
+                # print(f"Frame {frame} not found")
                 break
 
             # Reset colors. It is not necessary but it does not seem to slow down
@@ -1131,7 +1221,7 @@ def process_video(
                 warnings.simplefilter("ignore")
 
                 pose_landmarker_result = landmarker.detect_for_video(
-                    mp_image, int(frame * 1 / fv * 1000)
+                    mp_image, int(frame / fv * 1000)
                 )
 
             daMarkers.loc[dict(ID=file.stem, time=frame)] = pose_landmarkers_to_xr(
@@ -1187,7 +1277,10 @@ def process_video(
 
             # Anota en las imágenes
             if show in [True, "colab"]:
-                annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
+                # annotated_image = draw_model_on_image(img, daMarkers, radius=radius)
+                annotated_image = draw_landmarks_on_image(
+                    img, pose_landmarker_result, radius=radius
+                )
                 cv2.putText(
                     annotated_image,
                     "q or Esc to exit",
@@ -1299,7 +1392,8 @@ def process_image_from_video(
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
-    show_every_frames: int = 10,
+    # show_every_frames: int = 10,
+    radius: int = 2,
     verbose: bool = False,
 ) -> xr.DataArray:
     """
@@ -1412,20 +1506,22 @@ def process_image_from_video(
             # The pose landmarker must be created with the image mode.
             pose_landmarker_result = landmarker.detect(mp_image)
 
-    annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
     daMarkers.loc[dict(time=0)] = pose_landmarkers_to_xr(
         pose_landmarker_result, mp_image
     )
+    if n_vars_load is not None:
+        daMarkers = daMarkers.sel(marker=n_vars_load)
+
+    # annotated_image = draw_model_on_image(img, daMarkers, radius)
+    annotated_image = draw_landmarks_on_image(img, pose_landmarker_result, radius)
 
     # Invert Y coordinates
-    daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+    # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
 
     # plot_pose_2D(daMarkers)
 
     ############################
 
-    # Annotate in the images
-    annotated_image = draw_landmarks_on_image(img, pose_landmarker_result)
     cv2.putText(
         annotated_image,
         "q or Esc to exit",
@@ -1501,11 +1597,8 @@ def process_image_from_video(
     # Adjust time coordinate
     daMarkers = daMarkers.isel(time=0).assign_coords(time=num_frame / fv)
 
-    if n_vars_load is not None:
-        daMarkers = daMarkers.sel(marker=n_vars_load)
-
     # Invert y coordinates
-    daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+    # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
 
     return daMarkers
 
