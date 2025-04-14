@@ -271,7 +271,7 @@ def _plot(
 
         ax.set_xlabel("Num. datos")
         ax.set_ylabel("Variable")
-        ax.set_title("Filtrado Butterworth {0:3g} Hz".format(fc))
+        ax.set_title("Filter Butterworth {0:3g} Hz".format(fc))
 
         if bNecesarioCerrarFigura:
             plt.show()
@@ -390,13 +390,13 @@ if __name__ == "__main__":
     fy2, rms2 = filter_butter(y[100:300], 1000, 10, 2, show=True, returnRMS=True)
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    fig.suptitle("Título grande", y=1.03)
+    fig.suptitle("Big title", y=1.03)
 
     fy = filter_butter(y, 1000, 50, 2, show=True, ax=ax)
-    ax.set_title("Superpone el Título pequeno", y=1.0)
+    ax.set_title("Little title", y=1.0)
     plt.show()
 
-    # Con dataframe de varias columnas
+    # Multicolumn dataframe
     num = 1000
     colNames = ["A", "B", "C", "D"]
     dfWalks = pd.DataFrame(
@@ -406,7 +406,7 @@ if __name__ == "__main__":
     dfWalks_filt = filter_butter(dfWalks, 1000, 5, 2, show=True)
     dfWalks_filt, RMS = filter_butter(dfWalks, 1000, 50, 2, show=True, returnRMS=True)
 
-    # con pd series
+    # Pandas series
     dfWalks_filt, RMS = filter_butter(
         dfWalks.iloc[:, 0], 1000, 5, 2, show=True, returnRMS=True
     )

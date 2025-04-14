@@ -19,12 +19,15 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.2.0"
-__date__ = "04/04/2025"
+__version__ = "v.1.3.0"
+__date__ = "10/04/2025"
 
 
 """
 Updates:
+    10/04/2025, v1.3.0
+        - Introduced funtions for rtmlib pose.
+    
     04/04/2025, v1.2.0
         - Introduced a custom funtion (draw_model_on_image) to draw
           detected points in the image.
@@ -73,7 +76,8 @@ import warnings
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
-import seaborn as sns
+
+# import seaborn as sns
 
 import time
 from pathlib import Path
@@ -83,18 +87,6 @@ try:
 except:
     raise ImportError(
         "Could not load the “opencv” library. \nInstall with conda install conda-forge::opencv."
-    )
-
-try:
-    import mediapipe as mp
-
-    from mediapipe import solutions
-    from mediapipe.framework.formats import landmark_pb2
-    from mediapipe.tasks import python
-    from mediapipe.tasks.python import vision
-except:
-    raise ImportError(
-        "Could not load the “mediapipe” library.\nInstall with pip install mediapipe."
     )
 
 
@@ -191,6 +183,36 @@ MODEL_STICK_UNIONS = [
     ("hip_R", "knee_R"),
     ("knee_R", "ankle_R"),
     ("heel_R", "toe_R"),
+]
+
+# from halpe26: https://github.com/open-mmlab/mmpose/blob/dev-1.x/configs/_base_/datasets/halpe26.py
+N_MARKERS_RTMLIB26 = [
+    "nose",
+    "eye_L",
+    "eye_R",
+    "ear_L",
+    "ear_R",
+    "shoulder_L",
+    "shoulder_R",
+    "elbow_L",
+    "elbow_R",
+    "wrist_L",
+    "wrist_R",
+    "hip_L",
+    "hip_R",
+    "knee_L",
+    "knee_R",
+    "ankle_L",
+    "ankle_R",
+    "head",
+    "neck",
+    "hip",
+    "toe_L",
+    "toe_R",
+    "small_toe_L",
+    "small_toe_R",
+    "heel_L",
+    "heel_R",
 ]
 
 
@@ -433,14 +455,14 @@ def split_dim_side(daData, n_bilat=None):
 
 
 def add_shoulder_hip_centers(daData):
-    if "cadera" not in daData.marker and "hombro" not in daData.marker:
+    if "hip" not in daData.marker and "shoulder" not in daData.marker:
         raise ValueError("No hay marcadores caderas ni hombros")
 
-    c_cad = (
-        daData.sel(marker="cadera").mean("side").assign_coords(marker="centro_caderas")
-    )
+    c_cad = daData.sel(marker="hip").mean("side").assign_coords(marker="hip_center")
     c_hom = (
-        daData.sel(marker="hombro").mean("side").assign_coords(marker="centro_hombros")
+        daData.sel(marker="shoulder")
+        .mean("side")
+        .assign_coords(marker="shoulder_center")
     )
     return xr.concat([daData, c_cad, c_hom], dim="marker")
 
@@ -821,7 +843,7 @@ def process_video_deprecated(
     )
     if show:
         da_ang.plot.line(x="time", marker="o", size=3)
-        sns.move_legend(plt.gca(), loc="center left", bbox_to_anchor=(1, 0.5))
+        # sns.move_legend(plt.gca(), loc="center left", bbox_to_anchor=(1, 0.5))
         plt.tight_layout()
 
     # Escribe el resultado
@@ -983,6 +1005,18 @@ def process_image(
         Object containing the pose landmarks and segmentation mask.
     """
 
+    try:
+        import mediapipe as mp
+
+        from mediapipe import solutions
+        from mediapipe.framework.formats import landmark_pb2
+        from mediapipe.tasks import python
+        from mediapipe.tasks.python import vision
+    except:
+        raise ImportError(
+            "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."
+        )
+
     if isinstance(file, Path):
         file = file.as_posix()
 
@@ -1032,9 +1066,7 @@ def process_image(
             cv2.destroyAllWindows()
 
         elif show == True:
-            cv2.imshow(
-                "Marker detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
-            )
+            cv2.imshow(file.stem, cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
             # waits for user to press any key
             # (this is necessary to avoid Python kernel form crashing)
             cv2.waitKey(0)
@@ -1050,7 +1082,7 @@ def process_image(
                 np.repeat(segmentation_mask[:, :, np.newaxis], 3, axis=2) * 255
             )
 
-            cv2.imshow("Mask results", visualized_mask)
+            cv2.imshow(file.stem, visualized_mask)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
@@ -1087,6 +1119,275 @@ def procesS_video_modern(
 
 
 def process_video(
+    file: str | Path,
+    fv: int = 30,
+    n_vars_load: List[str] | None = None,
+    mpdc: float = 0.5,
+    mppc: float = 0.5,
+    mtc: float = 0.5,
+    model_path: str | Path | None = None,
+    mode: str = "balanced",  # 'performance', 'lightweight', 'balanced'
+    det_frequency: int = 1,
+    num_frame: int | None = None,
+    save_frame_file: bool | Path | None = None,
+    show: bool | str = False,
+    show_every_frames: int = 10,
+    radius: int = 2,
+    verbose: bool = False,
+    engine="mediapipe",  # "mediapipe", "rtmlib"
+) -> xr.DataArray:
+
+    if engine == "mediapipe":
+        daReturn = process_video_mediapipe(
+            file=file,
+            fv=fv,
+            n_vars_load=n_vars_load,
+            mpdc=mpdc,
+            mppc=mppc,
+            mtc=mtc,
+            model_path=model_path,
+            num_frame=num_frame,
+            save_frame_file=save_frame_file,
+            show=show,
+            show_every_frames=show_every_frames,
+            radius=radius,
+            verbose=verbose,
+        )
+    elif engine == "rtmlib":
+        daReturn = process_video_rtmlib(
+            file=file,
+            fv=fv,
+            n_vars_load=n_vars_load,
+            mode=mode,
+            det_frequency=det_frequency,
+            num_frame=num_frame,
+            save_frame_file=save_frame_file,
+            show=show,
+            show_every_frames=show_every_frames,
+            radius=radius,
+            verbose=verbose,
+        )
+    return daReturn
+
+
+def process_video_rtmlib(
+    file: str | Path,
+    fv: int = 30,
+    n_vars_load: List[str] | None = None,
+    mode="balanced",
+    det_frequency: int = 1,
+    num_frame: int | None = None,
+    save_frame_file: bool | Path | None = None,
+    show: bool | str = False,
+    show_every_frames: int = 1,
+    radius: int = 2,
+    verbose: bool = False,
+) -> xr.DataArray:
+    """
+    Processes a video file to extract pose landmarks using MediaPipe Pose.
+
+    Parameters
+    ----------
+    file : str or Path
+        Path to the video file to be processed.
+    fv : int, optional
+        Frame rate of the video, defaults to 30.
+    n_vars_load : list os str, optional
+        List of variables to load, defaults to None.
+    model_path : str or Path, optional
+        Path to the model file, defaults to None, which uses "pose_landmarker_heavy.task".
+    num_frame : int, optional
+        Number of frames to process, if None, all frames are processed.
+    save_frame_file : bool or Path, optional
+        Defaults to None
+        True: save to the same folder
+        Path: save to the proposed folderto save frames to file.
+    show : bool or str, optional
+        If False, no display is shown. If True, it displays the frames with markers in a local environment.
+        If 'colab', it displays the frames in Google Colab.
+    show_every_frames : int, optional
+        Frame skip number to display.
+
+    Returns
+    -------
+    xarray.DataArray
+        A DataArray containing the pose landmarks and additional metadata.
+    """
+
+    try:
+        from rtmlib import BodyWithFeet, PoseTracker, draw_skeleton, draw_bbox
+    except ImportError:
+        raise ImportError(
+            "rtmlib is not installed. Please install it with 'pip install sports2d' or 'pip install rtmlib -i https://pypi.org/simple'."
+        )
+
+    if not isinstance(file, Path):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found.")
+
+    t_ini = time.perf_counter()
+    # print(f"Processing video {file.name}...")
+
+    device = "cpu"
+    openpose_skeleton = False  # True for openpose-style, False for mmpose-style
+
+    body_feet_tracker = PoseTracker(
+        BodyWithFeet,
+        det_frequency=det_frequency,
+        to_openpose=openpose_skeleton,
+        mode=mode,  # balanced, performance, lightweight
+        backend="openvino",  # opencv, onnxruntime, openvino
+        device=device,
+        tracking=True,
+    )
+
+    cap = cv2.VideoCapture(file.as_posix())
+    num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    vid_fps = cap.get(cv2.CAP_PROP_FPS)
+    # print(f"Video fps:{vid_fps}")
+
+    if num_frame is not None and (num_frame > num_frames or num_frame < 0):
+        raise ValueError(
+            f"num_frame {num_frame} is out of range of video frames (0-{num_frames})"
+        )
+
+    # Precreate Dataarray
+    coords = {
+        "time": np.arange(0, num_frames),  # / fv,
+        "marker": N_MARKERS_RTMLIB26,
+        "axis": ["x", "y", "score"],
+    }
+    daMarkers = (
+        xr.DataArray(
+            data=np.full((num_frames, len(N_MARKERS_RTMLIB26), 3), np.nan),
+            dims=coords.keys(),
+            coords=coords,
+        ).expand_dims({"ID": [file.stem]})
+        # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
+        .copy()
+    )  # .transpose("marker", "axis", "time")
+
+    pTime = 0
+    frame_idx = 0
+
+    while cap.isOpened() and frame_idx < num_frames:
+        if num_frame is not None:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame)  # restar 1?????
+            if show not in [True, "colab"]:
+                show = True
+
+        success, img = cap.read()
+        if not success:
+            # print(f"Frame {frame} not found")
+            break
+
+        # Reset colors. It is not necessary but it does not seem to slow down
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        keypoints, scores = body_feet_tracker(img)
+
+        daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.vstack(
+            [keypoints[0].T, scores[0]]
+        ).T
+
+        # Calculate fps
+        cTime = time.time()
+        fps = 1 / (cTime - pTime) if cTime != pTime else 0
+
+        annotated_image = img.copy()
+
+        # Annotate in the images
+        if show in [True, "colab"]:
+            # annotated_image = draw_model_on_image(img, daMarkers, radius=radius)
+
+            cv2.putText(
+                annotated_image,
+                "q or Esc to exit",
+                (30, 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+            show_frame = frame_idx if num_frame is None else frame_idx + num_frame
+            cv2.putText(
+                annotated_image,
+                f"Frame {show_frame}/{num_frames} fps: {fps:.2f}",
+                (30, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+            annotated_image = draw_skeleton(
+                annotated_image,
+                keypoints,
+                scores,
+                openpose_skeleton=openpose_skeleton,
+                kpt_thr=0.3,
+                line_width=3,
+            )
+
+            if show == True:
+                cv2.imshow(
+                    file.stem,
+                    cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+                )
+
+            elif show == "colab":
+                from google.colab.patches import cv2_imshow
+
+                if frame_idx % show_every_frames == 0:
+                    cv2_imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+                    # waits for user to press any key
+                    # (this is necessary to avoid Python kernel form crashing)
+                    cv2.waitKey(0)
+
+                    # closing all open windows
+                    cv2.destroyAllWindows()
+
+        else:  # if show== False
+            if frame_idx % show_every_frames == 0:
+                if verbose:
+                    print(f"Frame {frame_idx}/{num_frames} fps: {fps:.2f}")
+
+        # annotated_image = cv2.resize(annotated_image, (960, 640))
+
+        # Waits for user to press any key
+        if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
+            break
+        # cv2.waitKey(0)
+
+        pTime = cTime
+        frame_idx += 1
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+    if verbose:
+        print(f"Video processed in {time.perf_counter() - t_ini:.2f} s")
+
+    # Adjust time coordinate
+    if num_frame is None:
+        daMarkers = daMarkers.assign_coords(time=np.arange(0, num_frames) / fv)
+    else:  # single frame
+        # daMarkers = daMarkers.isel(time=slice(frame - 3, frame + 3)).assign_coords(
+        #     time=np.arange(frame - 3, frame + 3) / fv
+        # )
+        daMarkers = daMarkers.isel(time=frame_idx).assign_coords(time=num_frame / fv)
+
+    if n_vars_load is not None:
+        daMarkers = daMarkers.sel(marker=n_vars_load)
+
+    # Invert y coordinates
+    # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+
+    return daMarkers
+
+
+def process_video_mediapipe(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
@@ -1138,6 +1439,18 @@ def process_video(
         A DataArray containing the pose landmarks and additional metadata.
     """
 
+    try:
+        import mediapipe as mp
+
+        from mediapipe import solutions
+        from mediapipe.framework.formats import landmark_pb2
+        from mediapipe.tasks import python
+        from mediapipe.tasks.python import vision
+    except:
+        raise ImportError(
+            "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."
+        )
+
     if not isinstance(file, Path):
         file = Path(file)
 
@@ -1171,14 +1484,11 @@ def process_video(
         num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         vid_fps = cap.get(cv2.CAP_PROP_FPS)
         # print(f"Video fps:{vid_fps}")
+
         if num_frame is not None and (num_frame > num_frames or num_frame < 0):
             raise ValueError(
                 f"num_frame {num_frame} is out of range of video frames (0-{num_frames})"
             )
-
-        pTime = 0
-        frame = 0
-        # data_mark = np.full((num_frames, 33, 3), np.nan)
 
         # Precreate Dataarray
         coords = {
@@ -1188,7 +1498,7 @@ def process_video(
         }
         daMarkers = (
             xr.DataArray(
-                data=np.full((num_frames, 33, 5), np.nan),
+                data=np.full((num_frames, len(N_MARKERS), 5), np.nan),
                 dims=coords.keys(),
                 coords=coords,
             ).expand_dims({"ID": [file.stem]})
@@ -1196,8 +1506,12 @@ def process_video(
             .copy()
         )  # .transpose("marker", "axis", "time")
 
+        pTime = 0
+        frame_idx = 0
+        # data_mark = np.full((num_frames, 33, 3), np.nan)
+
         # Process frame by frame
-        while frame < num_frames:  # cap.isOpened()
+        while frame_idx < num_frames:  # cap.isOpened()
             if num_frame is not None:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame)  # restar 1?????
                 if show not in [True, "colab"]:
@@ -1205,7 +1519,7 @@ def process_video(
 
             success, img = cap.read()
             if not success:
-                # print(f"Frame {frame} not found")
+                # print(f"Frame {frame_idx} not found")
                 break
 
             # Reset colors. It is not necessary but it does not seem to slow down
@@ -1221,10 +1535,10 @@ def process_video(
                 warnings.simplefilter("ignore")
 
                 pose_landmarker_result = landmarker.detect_for_video(
-                    mp_image, int(frame / fv * 1000)
+                    mp_image, int(frame_idx / fv * 1000)
                 )
 
-            daMarkers.loc[dict(ID=file.stem, time=frame)] = pose_landmarkers_to_xr(
+            daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = pose_landmarkers_to_xr(
                 pose_landmarker_result, mp_image
             )
             # daMarkers.isel(ID=0).plot.line(x="time", col='marker', col_wrap=4, sharey=False)
@@ -1264,18 +1578,18 @@ def process_video(
             else:
                 dat = np.full((33, 5), np.nan)
                 if num_frame is not None:
-                    print(f"No pose landmarks in {file} frame {frame}")
+                    print(f"No pose landmarks in {file} frame {frame_idx}")
 
-            daMarkers.loc[dict(ID=file.stem, time=frame)] = np.asanyarray(dat)
+            daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.asanyarray(dat)
             '''
 
-            # Calcula fps
+            # Calculate fps
             cTime = time.time()
             fps = 1 / (cTime - pTime) if cTime != pTime else 0
 
             ############################
 
-            # Anota en las imágenes
+            # Annotate in the images
             if show in [True, "colab"]:
                 # annotated_image = draw_model_on_image(img, daMarkers, radius=radius)
                 annotated_image = draw_landmarks_on_image(
@@ -1290,7 +1604,7 @@ def process_video(
                     (255, 0, 0),
                     2,
                 )
-                show_frame = frame if num_frame is None else frame + num_frame
+                show_frame = frame_idx if num_frame is None else frame_idx + num_frame
                 cv2.putText(
                     annotated_image,
                     f"Frame {show_frame}/{num_frames} fps: {fps:.2f}",
@@ -1303,14 +1617,14 @@ def process_video(
 
                 if show == True:
                     cv2.imshow(
-                        r"Marker detection",
+                        file.stem,
                         cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
                     )
 
                 elif show == "colab":
                     from google.colab.patches import cv2_imshow
 
-                    if frame % show_every_frames == 0:
+                    if frame_idx % show_every_frames == 0:
                         cv2_imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
                         # waits for user to press any key
                         # (this is necessary to avoid Python kernel form crashing)
@@ -1345,9 +1659,9 @@ def process_video(
                         print(f"Error saving file {file} frame {num_frame}")
 
             else:  # if show== False
-                if frame % show_every_frames == 0:
+                if frame_idx % show_every_frames == 0:
                     if verbose:
-                        print(f"Frame {frame}/{num_frames} fps: {fps:.2f}")
+                        print(f"Frame {frame_idx}/{num_frames} fps: {fps:.2f}")
 
             # Waits for user to press any key
             if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
@@ -1355,7 +1669,7 @@ def process_video(
             # cv2.waitKey(0)
 
             pTime = cTime
-            frame += 1
+            frame_idx += 1
 
     # closing all open windows
     cv2.destroyAllWindows()
@@ -1367,10 +1681,10 @@ def process_video(
     if num_frame is None:
         daMarkers = daMarkers.assign_coords(time=np.arange(0, num_frames) / fv)
     else:  # single frame
-        # daMarkers = daMarkers.isel(time=slice(frame - 3, frame + 3)).assign_coords(
-        #     time=np.arange(frame - 3, frame + 3) / fv
+        # daMarkers = daMarkers.isel(time=slice(frame_idx - 3, frame_idx + 3)).assign_coords(
+        #     time=np.arange(frame_idx - 3, frame_idx + 3) / fv
         # )
-        daMarkers = daMarkers.isel(time=frame).assign_coords(time=num_frame / fv)
+        daMarkers = daMarkers.isel(time=frame_idx).assign_coords(time=num_frame / fv)
 
     if n_vars_load is not None:
         daMarkers = daMarkers.sel(marker=n_vars_load)
@@ -1545,7 +1859,7 @@ def process_image_from_video(
 
         if show == True:
             cv2.imshow(
-                r"Marker detection",
+                file.stem,
                 cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
             )
 
@@ -1677,9 +1991,7 @@ def process_video_mixed(file, fv=30, show=False):
                 (255, 0, 0),
                 2,
             )
-            cv2.imshow(
-                r"Marker detection", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
-            )
+            cv2.imshow(file.stem, cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
 
         elif show == "mask":
             # Ejemplo de máscara

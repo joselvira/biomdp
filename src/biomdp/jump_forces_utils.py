@@ -631,7 +631,7 @@ def load_bioware_pl(
     to_dataarray: bool = False,
 ):  # -> pl.DataFrame | xr.DataArray:
     print("Redirecting to biomdp.io.read_kistler_txt function")
-    from biomdp.io.read_kistler_txt import read_bioware_pl
+    from biomdp.io.read_kistler_txt import read_kistler_txt_pl
 
     """
     df = (
@@ -681,7 +681,7 @@ def load_bioware_pl(
 
     return df
     """
-    return read_bioware_pl(file, lin_header, n_vars_load, to_dataarray)
+    return read_kistler_txt_pl(file, lin_header, n_vars_load, to_dataarray)
 
 
 # Carga un archivo Bioware C3D a xarray
@@ -963,6 +963,8 @@ def load_merge_bioware_pl(
         DESCRIPTION.
 
     """
+    from biomdp.io.read_kistler_txt import read_kistler_txt_pl
+
     if data_type is None:
         data_type = float
 
@@ -1002,7 +1004,7 @@ def load_merge_bioware_pl(
         try:
             timerSub = time.perf_counter()  # inicia el contador de tiempo
 
-            dfProvis = load_bioware_pl(file, lin_header, n_vars_load)
+            dfProvis = read_kistler_txt_pl(file, lin_header, n_vars_load, raw=True)
 
             if len(file.stem.split("_")) == 5:
                 n_project = file.stem.split("_")[0] if n_project is None else n_project
@@ -1022,7 +1024,7 @@ def load_merge_bioware_pl(
                 n_project = "EstudioX"
 
             repe = str(int(file.stem.split("_")[-1]))  # int(file.stem.split('.')[0][-1]
-            ID = f"{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_project}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
+            ID = f"{n_project}_{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_project}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
 
             # freq = np.round(1/(dfProvis['time'][1]-dfProvis['time'][0]),1)
 
