@@ -286,8 +286,21 @@ def draw_landmarks_on_image(rgb_image, detection_result, radius=2):
     pose_landmarks_list = detection_result.pose_landmarks
     annotated_image = np.copy(rgb_image)
 
-    from mediapipe.python.solutions.pose import PoseLandmark
-    from mediapipe.python.solutions.drawing_utils import DrawingSpec
+    try:
+        # import mediapipe as mp
+
+        from mediapipe import solutions
+        from mediapipe.framework.formats import landmark_pb2
+
+        # from mediapipe.tasks import python
+        # from mediapipe.tasks.python import vision
+        from mediapipe.python.solutions.pose import PoseLandmark
+        from mediapipe.python.solutions.drawing_utils import DrawingSpec
+
+    except:
+        raise ImportError(
+            "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."
+        )
 
     _THICKNESS_POSE_LANDMARKS = radius
     _POSE_LANDMARKS_LEFT = frozenset(
@@ -1176,6 +1189,9 @@ def process_video_rtmlib(
     n_vars_load: List[str] | None = None,
     mode="balanced",
     det_frequency: int = 1,
+    keypoint_likelihood_threshold=0.3,
+    average_likelihood_threshold=0.5,
+    keypoint_number_threshold=0.3,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
@@ -1216,6 +1232,9 @@ def process_video_rtmlib(
 
     try:
         from rtmlib import BodyWithFeet, PoseTracker, draw_skeleton, draw_bbox
+        from Sports2D.process import setup_pose_tracker
+        from Pose2Sim.skeletons import HALPE_26
+        from Pose2Sim.common import sort_people_sports2d, draw_bounding_box
     except ImportError:
         raise ImportError(
             "rtmlib is not installed. Please install it with 'pip install sports2d' or 'pip install rtmlib -i https://pypi.org/simple'."
@@ -1230,20 +1249,68 @@ def process_video_rtmlib(
     t_ini = time.perf_counter()
     # print(f"Processing video {file.name}...")
 
-    device = "cpu"
+    tracking_mode = "sports2d"
+    person_ordering_method = "highest_likelihood"
+    model_name = "HALPE_26"
+    pose_model_name = "body_with_feet"
+    pose_model = eval(model_name)
     openpose_skeleton = False  # True for openpose-style, False for mmpose-style
 
-    body_feet_tracker = PoseTracker(
+    fontSize = 0.4
+    thickness = 1
+    colors = [
+        (255, 0, 0),
+        (0, 0, 255),
+        (255, 255, 0),
+        (255, 0, 255),
+        (0, 255, 255),
+        (0, 0, 0),
+        (255, 255, 255),
+        (125, 0, 0),
+        (0, 125, 0),
+        (0, 0, 125),
+        (125, 125, 0),
+        (125, 0, 125),
+        (0, 125, 125),
+        (255, 125, 125),
+        (125, 255, 125),
+        (125, 125, 255),
+        (255, 255, 125),
+        (255, 125, 255),
+        (125, 255, 255),
+        (125, 125, 125),
+        (255, 0, 125),
+        (255, 125, 0),
+        (0, 125, 255),
+        (0, 255, 125),
+        (125, 0, 255),
+        (125, 255, 0),
+        (0, 255, 0),
+    ]
+
+    # body_feet_tracker = PoseTracker(
+    #     BodyWithFeet,
+    #     det_frequency=det_frequency,
+    #     to_openpose=False,  # True for openpose-style, False for mmpose-style
+    #     mode=mode,  # balanced, performance, lightweight
+    #     backend='openvino',  # opencv, onnxruntime, openvino
+    #     device="auto",
+    #     tracking=True,
+    # )
+    body_feet_tracker = setup_pose_tracker(
         BodyWithFeet,
         det_frequency=det_frequency,
-        to_openpose=openpose_skeleton,
+        # to_openpose=False,  # True for openpose-style, False for mmpose-style
         mode=mode,  # balanced, performance, lightweight
-        backend="openvino",  # opencv, onnxruntime, openvino
-        device=device,
-        tracking=True,
+        backend="auto",  # opencv, onnxruntime, openvino
+        device="auto",
+        tracking=False,
     )
 
     cap = cv2.VideoCapture(file.as_posix())
+    if not cap.isOpened():
+        raise NameError(f"{file} is not a valid video.")
+
     num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     vid_fps = cap.get(cv2.CAP_PROP_FPS)
     # print(f"Video fps:{vid_fps}")
@@ -1273,24 +1340,64 @@ def process_video_rtmlib(
     frame_idx = 0
 
     while cap.isOpened() and frame_idx < num_frames:
-        if num_frame is not None:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame)  # restar 1?????
-            if show not in [True, "colab"]:
-                show = True
 
         success, img = cap.read()
         if not success:
             # print(f"Frame {frame} not found")
-            break
+            frame_idx += 1
+            continue
 
         # Reset colors. It is not necessary but it does not seem to slow down
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        h, w = img.shape[:2]
 
         keypoints, scores = body_feet_tracker(img)
 
-        daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.vstack(
-            [keypoints[0].T, scores[0]]
+        # Track poses across frames
+        if "prev_keypoints" not in locals():
+            prev_keypoints = keypoints
+        prev_keypoints, keypoints, scores = sort_people_sports2d(
+            prev_keypoints, keypoints, scores=scores
+        )
+        # Retrieve keypoints and scores for the person, remove low-confidence keypoints
+        person_idx = 0
+        person_X, person_Y = np.where(
+            scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
+            np.nan,
+            keypoints[person_idx],
         ).T
+        # plt.scatter(person_X, person_Y)
+        person_scores = np.where(
+            scores[person_idx] < keypoint_likelihood_threshold,
+            np.nan,
+            scores[person_idx],
+        )
+
+        # Skip person if the fraction of valid detected keypoints is too low
+        enough_good_keypoints = (
+            len(person_scores[~np.isnan(person_scores)])
+            >= len(person_scores) * keypoint_number_threshold
+        )
+        scores_of_good_keypoints = person_scores[~np.isnan(person_scores)]
+        average_score_of_remaining_keypoints_is_enough = (
+            np.nanmean(scores_of_good_keypoints)
+            if len(scores_of_good_keypoints) > 0
+            else 0
+        ) >= average_likelihood_threshold
+        if (
+            not enough_good_keypoints
+            or not average_score_of_remaining_keypoints_is_enough
+        ):
+            person_X = np.full_like(person_X, np.nan)
+            person_Y = np.full_like(person_Y, np.nan)
+            person_scores = np.full_like(person_scores, np.nan)
+
+        # Converto to dataarray
+        person_Y = h - person_Y  # Invert Y coordinates
+        daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.vstack(
+            [person_X, person_Y, person_scores]
+        ).T
+        # = np.vstack([keypoints[0].T, scores[0]]).T
 
         # Calculate fps
         cTime = time.time()
@@ -1300,7 +1407,7 @@ def process_video_rtmlib(
 
         # Annotate in the images
         if show in [True, "colab"]:
-            # annotated_image = draw_model_on_image(img, daMarkers, radius=radius)
+            # annotated_image = draw_model_on_image(annotated_image, daMarkers, radius=radius)
 
             cv2.putText(
                 annotated_image,
@@ -1328,6 +1435,14 @@ def process_video_rtmlib(
                 openpose_skeleton=openpose_skeleton,
                 kpt_thr=0.3,
                 line_width=3,
+            )
+            img = draw_bounding_box(
+                img,
+                [person_X],
+                [person_Y],
+                colors=colors,
+                fontSize=fontSize,
+                thickness=thickness,
             )
 
             if show == True:
@@ -1442,10 +1557,10 @@ def process_video_mediapipe(
     try:
         import mediapipe as mp
 
-        from mediapipe import solutions
-        from mediapipe.framework.formats import landmark_pb2
-        from mediapipe.tasks import python
-        from mediapipe.tasks.python import vision
+        # from mediapipe import solutions
+        # from mediapipe.framework.formats import landmark_pb2
+        # from mediapipe.tasks import python
+        # from mediapipe.tasks.python import vision
     except:
         raise ImportError(
             "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."

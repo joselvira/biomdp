@@ -11,10 +11,13 @@ Created on Fry Sep 15 16:36:37 2023
 
 __author__ = "Jose L. L. Elvira"
 __version__ = "v0.2.0"
-__date__ = "25/03/2025"
+__date__ = "26/04/2025"
 
 """
 Updates:
+    26/04/2025, v0.2.1
+            - Added function read_vicon_c3d_c3d_pose2sim (to explore).
+
     25/03/2025, v0.2.0
         - Incuded general function to distribute according to "engine".
     
@@ -73,6 +76,80 @@ def read_vicon_c3d(
         raise Exception(f"Engine {engine} not implemented.\nTry 'c3d' or 'ezc3d'")
 
     return da
+
+
+def read_vicon_c3d_c3d_pose2sim(
+    file: str | Path,
+    section: str | None = None,
+    n_vars_load: List[str] | None = None,
+    coincidence: str = "similar",
+) -> xr.DataArray:
+    """tests with c3d read from pose2sim"""
+    try:
+        import c3d
+    except:
+        raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
+
+    # file =Path(r"F:\Programacion\Python\Mios\biomdp\src\datasets\vicon_CMJ_kinem_kinet_emg.c3d")
+
+    # c3d header
+    reader = c3d.Reader(open(file, "rb"))
+    items_header = str(reader.header).split("\n")
+    items_header_list = [item.strip().split(": ") for item in items_header]
+    label_item = [item[0] for item in items_header_list]
+    value_item = [item[1] for item in items_header_list]
+    header_c3d = dict(zip(label_item, value_item))
+
+    # unit
+    for k1 in reader.group_items():
+        if k1[0] == "POINT":
+            for k2 in k1[1].param_items():
+                if k2[0] == "UNITS":
+                    if "mm" in k2[1].bytes[:].decode("utf-8"):
+                        unit = "mm"
+                        unit_scale = 0.001
+                    else:
+                        unit = "m"
+                        unit_scale = 1  # mm
+
+    # c3d data: reads 3D points (no analog data) and takes off computed data
+    labels = reader.point_labels
+    index_labels_markers = [
+        i
+        for i, s in enumerate(labels)
+        if "Angle" not in s
+        and "Power" not in s
+        and "Force" not in s
+        and "Moment" not in s
+        and "GRF" not in s
+    ]
+    labels_markers = [labels[ind] for ind in index_labels_markers]
+
+    index_data_markers = np.sort(
+        np.concatenate(
+            [
+                np.array(index_labels_markers) * 3,
+                np.array(index_labels_markers) * 3 + 1,
+                np.array(index_labels_markers) * 3 + 2,
+            ]
+        )
+    )
+    t0 = int(float(header_c3d["first_frame"])) / int(float(header_c3d["frame_rate"]))
+    tf = int(float(header_c3d["last_frame"])) / int(float(header_c3d["frame_rate"]))
+    trc_time = np.linspace(
+        t0, tf, num=(int(header_c3d["last_frame"]) - int(header_c3d["first_frame"]) + 1)
+    )
+
+    data = []
+    for n, (i, points, _) in enumerate(list(reader.read_frames())):
+        c3d_line = np.concatenate([item[:3] for item in points]) * unit_scale
+        # c3d_line_markers = c3d_line[index_data_markers]
+        data.append(points[:, :3]) * unit_scale
+        # trc_line = '{i}\t{t}\t'.format(i=i, t=trc_time[n]) + '\t'.join(map(str,c3d_line_markers))
+        # print(trc_line+'\n')
+    data = np.concatenate(data)
+
+    return data
 
 
 def read_vicon_c3d_c3d(
