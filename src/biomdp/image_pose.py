@@ -19,12 +19,16 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.3.0"
-__date__ = "10/04/2025"
+__version__ = "v.1.3.1"
+__date__ = "29/04/2025"
 
 
 """
 Updates:
+    29/04/2025, v1.3.1
+        - Specific arguments for mediapipe and rtmlib process_video
+          can be passed as **kwargs.
+    
     10/04/2025, v1.3.0
         - Introduced funtions for rtmlib pose.
     
@@ -1135,19 +1139,20 @@ def process_video(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    mpdc: float = 0.5,
-    mppc: float = 0.5,
-    mtc: float = 0.5,
-    model_path: str | Path | None = None,
-    mode: str = "balanced",  # 'performance', 'lightweight', 'balanced'
-    det_frequency: int = 1,
+    # mpdc: float = 0.5,
+    # mppc: float = 0.5,
+    # mtc: float = 0.5,
+    # model_path: str | Path | None = None,
+    # mode: str = "balanced",  # 'performance', 'lightweight', 'balanced'
+    # det_frequency: int = 1,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 10,
     radius: int = 2,
     verbose: bool = False,
-    engine="mediapipe",  # "mediapipe", "rtmlib"
+    engine="mediapipe",  # "mediapipe", "rtmlib",
+    **kwargs,
 ) -> xr.DataArray:
 
     if engine == "mediapipe":
@@ -1155,30 +1160,32 @@ def process_video(
             file=file,
             fv=fv,
             n_vars_load=n_vars_load,
-            mpdc=mpdc,
-            mppc=mppc,
-            mtc=mtc,
-            model_path=model_path,
+            # mpdc=mpdc,
+            # mppc=mppc,
+            # mtc=mtc,
+            # model_path=model_path,
             num_frame=num_frame,
             save_frame_file=save_frame_file,
             show=show,
             show_every_frames=show_every_frames,
             radius=radius,
             verbose=verbose,
+            **kwargs,
         )
     elif engine == "rtmlib":
         daReturn = process_video_rtmlib(
             file=file,
             fv=fv,
             n_vars_load=n_vars_load,
-            mode=mode,
-            det_frequency=det_frequency,
+            # mode=mode,
+            # det_frequency=det_frequency,
             num_frame=num_frame,
             save_frame_file=save_frame_file,
             show=show,
             show_every_frames=show_every_frames,
             radius=radius,
             verbose=verbose,
+            **kwargs,
         )
     return daReturn
 
@@ -1187,17 +1194,18 @@ def process_video_rtmlib(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    mode="balanced",
-    det_frequency: int = 1,
-    keypoint_likelihood_threshold=0.3,
-    average_likelihood_threshold=0.5,
-    keypoint_number_threshold=0.3,
+    # mode="balanced",
+    # det_frequency: int = 1,
+    # keypoint_likelihood_threshold=0.3,
+    # average_likelihood_threshold=0.5,
+    # keypoint_number_threshold=0.3,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 1,
     radius: int = 2,
     verbose: bool = False,
+    **kwargs,
 ) -> xr.DataArray:
     """
     Processes a video file to extract pose landmarks using MediaPipe Pose.
@@ -1239,6 +1247,23 @@ def process_video_rtmlib(
         raise ImportError(
             "rtmlib is not installed. Please install it with 'pip install sports2d' or 'pip install rtmlib -i https://pypi.org/simple'."
         )
+
+    mode = "balanced"
+    det_frequency = 1
+    keypoint_likelihood_threshold = 0.3
+    average_likelihood_threshold = 0.5
+    keypoint_number_threshold = 0.3
+
+    if "mode" in kwargs:
+        mode = kwargs["mode"]
+    if "det_frequency" in kwargs:
+        det_frequency = kwargs["det_frequency"]
+    if "keypoint_likelihood_threshold" in kwargs:
+        keypoint_likelihood_threshold = kwargs["keypoint_likelihood_threshold"]
+    if "average_likelihood_threshold" in kwargs:
+        average_likelihood_threshold = kwargs["average_likelihood_threshold"]
+    if "keypoint_number_threshold" in kwargs:
+        keypoint_number_threshold = kwargs["keypoint_number_threshold"]
 
     if not isinstance(file, Path):
         file = Path(file)
@@ -1434,7 +1459,7 @@ def process_video_rtmlib(
                 scores,
                 openpose_skeleton=openpose_skeleton,
                 kpt_thr=0.3,
-                line_width=3,
+                line_width=2,
             )
             img = draw_bounding_box(
                 img,
@@ -1506,16 +1531,13 @@ def process_video_mediapipe(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    mpdc: float = 0.5,
-    mppc: float = 0.5,
-    mtc: float = 0.5,
-    model_path: str | Path | None = None,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 10,
     radius: int = 2,
     verbose: bool = False,
+    **kwargs,
 ) -> xr.DataArray:
     """
     Processes a video file to extract pose landmarks using MediaPipe Pose.
@@ -1565,6 +1587,20 @@ def process_video_mediapipe(
         raise ImportError(
             "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."
         )
+
+    mpdc = 0.5
+    mppc = 0.5
+    mtc = 0.5
+    model_path = None
+
+    if "mpdc" in kwargs:
+        mpdc = kwargs["mpdc"]
+    if "mppc" in kwargs:
+        mppc = kwargs["mppc"]
+    if "mtc" in kwargs:
+        mtc = kwargs["mtc"]
+    if "model_path" in kwargs:
+        model_path = kwargs["model_path"]
 
     if not isinstance(file, Path):
         file = Path(file)
