@@ -8,6 +8,10 @@ __date__ = "12/03/2025"
 
 """
 Updates:
+    09/05/2025, v0.6.0
+        - Added function get_list_dir to scan subdirectories, returns a list
+          of subdirectories.
+
     12/03/2025, v0.5.1
         - Adapted to biomdp with translations.
 
@@ -791,3 +795,18 @@ if __name__ == "__main__":
     daCrosscorr_rap = daCrosscorr_rap.assign_coords(lag=range(len(daCrosscorr_rap.lag)))
     daCrosscorr_rap.plot.line(x="lag")
     nanargmax_xr(daCrosscorr_rap, dim="lag")
+
+
+def get_list_dir(n_path):
+    """
+    Recursively gets a list of all subdirectories in a given directory.
+    Returns a list of Path objects.
+    """
+    from os import scandir
+    from pathlib import Path
+
+    subfolders = [f.path for f in scandir(n_path) if f.is_dir()]
+    for n_path in list(subfolders):
+        subfolders.extend(get_list_dir(n_path))
+    subfolders = [Path(f) for f in subfolders]
+    return subfolders

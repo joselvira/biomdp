@@ -19,12 +19,19 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.3.1"
-__date__ = "29/04/2025"
+__version__ = "v.1.3.3"
+__date__ = "10/05/2025"
 
 
 """
 Updates:
+    10/05/2025, v1.3.3
+        - Increased functionality in rtmlib functions.
+    
+    
+    01/05/2025, v1.3.2
+        - Included rtmlib in process_image_from_video.
+    
     29/04/2025, v1.3.1
         - Specific arguments for mediapipe and rtmlib process_video
           can be passed as **kwargs.
@@ -1199,6 +1206,7 @@ def process_video_rtmlib(
     # keypoint_likelihood_threshold=0.3,
     # average_likelihood_threshold=0.5,
     # keypoint_number_threshold=0.3,
+    tracking: bool = False,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
@@ -1242,13 +1250,19 @@ def process_video_rtmlib(
         from rtmlib import BodyWithFeet, PoseTracker, draw_skeleton, draw_bbox
         from Sports2D.process import setup_pose_tracker
         from Pose2Sim.skeletons import HALPE_26
-        from Pose2Sim.common import sort_people_sports2d, draw_bounding_box
+        from Pose2Sim.common import (
+            sort_people_sports2d,
+            draw_bounding_box,
+            draw_keypts,
+            draw_skel,
+        )
     except ImportError:
         raise ImportError(
-            "rtmlib is not installed. Please install it with 'pip install sports2d' or 'pip install rtmlib -i https://pypi.org/simple'."
+            "rtmlib, Sports2D or Pose2Sim are not installed. Please install it with 'pip install sports2d Pose2Sim'"  # or 'pip install rtmlib -i https://pypi.org/simple'."
         )
 
     mode = "balanced"
+    tracking = False
     det_frequency = 1
     keypoint_likelihood_threshold = 0.3
     average_likelihood_threshold = 0.5
@@ -1256,6 +1270,8 @@ def process_video_rtmlib(
 
     if "mode" in kwargs:
         mode = kwargs["mode"]
+    if "tracking" in kwargs:
+        tracking = kwargs["tracking"]
     if "det_frequency" in kwargs:
         det_frequency = kwargs["det_frequency"]
     if "keypoint_likelihood_threshold" in kwargs:
@@ -1327,9 +1343,9 @@ def process_video_rtmlib(
         det_frequency=det_frequency,
         # to_openpose=False,  # True for openpose-style, False for mmpose-style
         mode=mode,  # balanced, performance, lightweight
+        tracking=tracking,
         backend="auto",  # opencv, onnxruntime, openvino
         device="auto",
-        tracking=False,
     )
 
     cap = cv2.VideoCapture(file.as_posix())
@@ -1365,6 +1381,12 @@ def process_video_rtmlib(
     frame_idx = 0
 
     while cap.isOpened() and frame_idx < num_frames:
+        if num_frame is not None:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame)  # restar 1?????
+            frame_idx = num_frame
+
+            if show not in [True, "colab"]:
+                show = True
 
         success, img = cap.read()
         if not success:
@@ -1384,6 +1406,52 @@ def process_video_rtmlib(
         prev_keypoints, keypoints, scores = sort_people_sports2d(
             prev_keypoints, keypoints, scores=scores
         )
+
+        # Process coordinates and compute angles
+        valid_X, valid_Y, valid_scores = [], [], []
+        # valid_X_flipped, valid_angles = [], []
+        for person_idx in range(len(keypoints)):
+
+            # Retrieve keypoints and scores for the person, remove low-confidence keypoints
+            person_X, person_Y = np.where(
+                scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
+                np.nan,
+                keypoints[person_idx],
+            ).T
+            person_scores = np.where(
+                scores[person_idx] < keypoint_likelihood_threshold,
+                np.nan,
+                scores[person_idx],
+            )
+
+            # Skip person if the fraction of valid detected keypoints is too low
+            enough_good_keypoints = (
+                len(person_scores[~np.isnan(person_scores)])
+                >= len(person_scores) * keypoint_number_threshold
+            )
+            scores_of_good_keypoints = person_scores[~np.isnan(person_scores)]
+            average_score_of_remaining_keypoints_is_enough = (
+                np.nanmean(scores_of_good_keypoints)
+                if len(scores_of_good_keypoints) > 0
+                else 0
+            ) >= average_likelihood_threshold
+            if (
+                not enough_good_keypoints
+                or not average_score_of_remaining_keypoints_is_enough
+            ):
+                person_X = np.full_like(person_X, np.nan)
+                person_Y = np.full_like(person_Y, np.nan)
+                person_scores = np.full_like(person_scores, np.nan)
+
+            # Check whether the person is looking to the left or right
+
+            person_X_flipped = person_X.copy()
+
+            valid_X.append(person_X)
+            valid_Y.append(person_Y)
+            valid_scores.append(person_scores)
+
+        """
         # Retrieve keypoints and scores for the person, remove low-confidence keypoints
         person_idx = 0
         person_X, person_Y = np.where(
@@ -1416,24 +1484,16 @@ def process_video_rtmlib(
             person_X = np.full_like(person_X, np.nan)
             person_Y = np.full_like(person_Y, np.nan)
             person_scores = np.full_like(person_scores, np.nan)
-
-        # Converto to dataarray
-        person_Y = h - person_Y  # Invert Y coordinates
-        daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.vstack(
-            [person_X, person_Y, person_scores]
-        ).T
-        # = np.vstack([keypoints[0].T, scores[0]]).T
+        """
 
         # Calculate fps
         cTime = time.time()
         fps = 1 / (cTime - pTime) if cTime != pTime else 0
 
-        annotated_image = img.copy()
-
         # Annotate in the images
         if show in [True, "colab"]:
+            annotated_image = img.copy()
             # annotated_image = draw_model_on_image(annotated_image, daMarkers, radius=radius)
-
             cv2.putText(
                 annotated_image,
                 "q or Esc to exit",
@@ -1453,6 +1513,19 @@ def process_video_rtmlib(
                 (255, 0, 0),
                 2,
             )
+            annotated_image = draw_keypts(
+                annotated_image,
+                valid_X,  # [person_X],
+                valid_Y,  # [person_Y],
+                valid_scores,  # scores,
+                cmap_str="RdYlGn",
+            )
+            # annotated_image = draw_skel(
+            #     annotated_image,
+            #     [person_X],
+            #     [person_Y],
+            #     pose_model,
+            # )
             annotated_image = draw_skeleton(
                 annotated_image,
                 keypoints,
@@ -1461,10 +1534,10 @@ def process_video_rtmlib(
                 kpt_thr=0.3,
                 line_width=2,
             )
-            img = draw_bounding_box(
-                img,
-                [person_X],
-                [person_Y],
+            annotated_image = draw_bounding_box(
+                annotated_image,
+                valid_X,  # [person_X],
+                valid_Y,  # [person_Y],
                 colors=colors,
                 fontSize=fontSize,
                 thickness=thickness,
@@ -1473,6 +1546,7 @@ def process_video_rtmlib(
             if show == True:
                 cv2.imshow(
                     file.stem,
+                    # annotated_image,
                     cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
                 )
 
@@ -1480,7 +1554,10 @@ def process_video_rtmlib(
                 from google.colab.patches import cv2_imshow
 
                 if frame_idx % show_every_frames == 0:
-                    cv2_imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
+                    cv2_imshow(
+                        # annotated_image
+                        cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+                    )
                     # waits for user to press any key
                     # (this is necessary to avoid Python kernel form crashing)
                     cv2.waitKey(0)
@@ -1493,12 +1570,49 @@ def process_video_rtmlib(
                 if verbose:
                     print(f"Frame {frame_idx}/{num_frames} fps: {fps:.2f}")
 
+        # Save the selected num_frame
+        if num_frame is not None and save_frame_file not in [None, False]:
+            if save_frame_file == True:
+                save_frame_file = file.parent
+            elif isinstance(save_frame_file, str):
+                save_frame_file = Path(save_frame_file)
+
+            if isinstance(save_frame_file, Path):
+                if not save_frame_file.is_dir():
+                    save_frame_file.mkdir(parents=True)
+                # save_frame_file = save_frame_file.as_posix()
+            # print(type(save_frame_file), save_frame_file)
+            n_file_saved = (
+                (save_frame_file / f"{file.stem}_fot{num_frame}_rtm").with_suffix(
+                    ".jpg"
+                )
+            ).as_posix()
+            print(num_frame, n_file_saved)
+            saved = cv2.imwrite(
+                n_file_saved,
+                # annotated_image,
+                cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+            )
+
+            if saved:
+                if verbose:
+                    print(f"Saved frame {num_frame}")
+            else:
+                print(f"Error saving file {file} frame {num_frame}")
+
         # annotated_image = cv2.resize(annotated_image, (960, 640))
 
         # Waits for user to press any key
         if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
             break
         # cv2.waitKey(0)
+
+        # Converto to dataarray
+        person_Y = h - person_Y  # Invert Y coordinates
+        daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.vstack(
+            [person_X, person_Y, person_scores]
+        ).T
+        # = np.vstack([keypoints[0].T, scores[0]]).T
 
         pTime = cTime
         frame_idx += 1
@@ -1689,6 +1803,7 @@ def process_video_mediapipe(
                     mp_image, int(frame_idx / fv * 1000)
                 )
 
+            # Converto to dataarray
             daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = pose_landmarkers_to_xr(
                 pose_landmarker_result, mp_image
             )
@@ -1797,7 +1912,7 @@ def process_video_mediapipe(
                     saved = cv2.imwrite(
                         (
                             (
-                                save_frame_file / f"{file.stem}_fot{num_frame}"
+                                save_frame_file / f"{file.stem}_fot{num_frame}_mdp"
                             ).with_suffix(".jpg")
                         ).as_posix(),
                         cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
@@ -1850,16 +1965,18 @@ def process_image_from_video(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    mpdc: float = 0.5,
-    mppc: float = 0.5,
-    mtc: float = 0.5,
-    model_path: str | Path | None = None,
+    # mpdc: float = 0.5,
+    # mppc: float = 0.5,
+    # mtc: float = 0.5,
+    # model_path: str | Path | None = None,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     # show_every_frames: int = 10,
     radius: int = 2,
     verbose: bool = False,
+    engine="mediapipe",  # "mediapipe", "rtmlib",
+    **kwargs,
 ) -> xr.DataArray:
     """
     Processes a video file to extract pose landmarks using MediaPipe Pose.
@@ -1902,8 +2019,6 @@ def process_image_from_video(
         raise ValueError(f"num_frame must be an integer. Received {num_frame}.")
     if not isinstance(file, Path):
         file = Path(file)
-    if model_path is None:
-        model_path = "pose_landmarker_heavy.task"
 
     t_ini = time.perf_counter()
     # print(f"Processing video {file.name}...")
@@ -1920,22 +2035,6 @@ def process_image_from_video(
 
     # data_mark = np.full((num_frames, 33, 3), np.nan)
 
-    # Precreate Dataarray
-    coords = {
-        "time": np.arange(1),  # / fv,
-        "marker": N_MARKERS,
-        "axis": ["x", "y", "z", "visib", "presence"],
-    }
-    daMarkers = (
-        xr.DataArray(
-            data=np.full((1, 33, 5), np.nan),
-            dims=coords.keys(),
-            coords=coords,
-        ).expand_dims({"ID": [file.stem]})
-        # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
-        .copy()
-    )  # .transpose("marker", "axis", "time")
-
     # Process frame
     if not cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame):
         print("Frame not found")
@@ -1948,47 +2047,9 @@ def process_image_from_video(
 
     # Reset colors. It is not necessary but it does not seem to slow down
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img)
-
-    BaseOptions = mp.tasks.BaseOptions
-    PoseLandmarker = mp.tasks.vision.PoseLandmarker
-    PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
-    VisionRunningMode = mp.tasks.vision.RunningMode
-
-    options = PoseLandmarkerOptions(
-        base_options=BaseOptions(model_asset_path=model_path),
-        running_mode=VisionRunningMode.IMAGE,
-        min_pose_detection_confidence=mpdc,
-        min_pose_presence_confidence=mppc,
-        min_tracking_confidence=mtc,
-        output_segmentation_masks=False,
-    )
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-
-        with PoseLandmarker.create_from_options(options) as landmarker:
-            # Perform pose landmarking on the provided single image.
-            # The pose landmarker must be created with the image mode.
-            pose_landmarker_result = landmarker.detect(mp_image)
-
-    daMarkers.loc[dict(time=0)] = pose_landmarkers_to_xr(
-        pose_landmarker_result, mp_image
-    )
-    if n_vars_load is not None:
-        daMarkers = daMarkers.sel(marker=n_vars_load)
-
-    # annotated_image = draw_model_on_image(img, daMarkers, radius)
-    annotated_image = draw_landmarks_on_image(img, pose_landmarker_result, radius)
-
-    # Invert Y coordinates
-    # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
-
-    # plot_pose_2D(daMarkers)
-
-    ############################
 
     cv2.putText(
-        annotated_image,
+        img,
         "q or Esc to exit",
         (30, 10),
         cv2.FONT_HERSHEY_SIMPLEX,
@@ -1997,7 +2058,7 @@ def process_image_from_video(
         2,
     )
     cv2.putText(
-        annotated_image,
+        img,
         f"Frame {num_frame}/{num_frames}",
         (30, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
@@ -2005,6 +2066,273 @@ def process_image_from_video(
         (255, 0, 0),
         2,
     )
+
+    if engine == "mediapipe":
+        try:
+            import mediapipe as mp
+
+            # from mediapipe import solutions
+            # from mediapipe.framework.formats import landmark_pb2
+            # from mediapipe.tasks import python
+            # from mediapipe.tasks.python import vision
+        except:
+            raise ImportError(
+                "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."
+            )
+
+        # Precreate Dataarray
+        coords = {
+            "time": np.arange(1),  # / fv,
+            "marker": N_MARKERS,
+            "axis": ["x", "y", "z", "visib", "presence"],
+        }
+        daMarkers = (
+            xr.DataArray(
+                data=np.full((1, len(N_MARKERS), 5), np.nan),
+                dims=coords.keys(),
+                coords=coords,
+            ).expand_dims({"ID": [file.stem]})
+            # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
+            .copy()
+        )  # .transpose("marker", "axis", "time")
+
+        mpdc = 0.5
+        mppc = 0.5
+        mtc = 0.5
+        model_path = None
+
+        if "mpdc" in kwargs:
+            mpdc = kwargs["mpdc"]
+        if "mppc" in kwargs:
+            mppc = kwargs["mppc"]
+        if "mtc" in kwargs:
+            mtc = kwargs["mtc"]
+        if "model_path" in kwargs:
+            model_path = kwargs["model_path"]
+
+        if model_path is None:
+            model_path = "pose_landmarker_heavy.task"
+
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img)
+
+        BaseOptions = mp.tasks.BaseOptions
+        PoseLandmarker = mp.tasks.vision.PoseLandmarker
+        PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+        VisionRunningMode = mp.tasks.vision.RunningMode
+
+        options = PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=model_path),
+            running_mode=VisionRunningMode.IMAGE,
+            min_pose_detection_confidence=mpdc,
+            min_pose_presence_confidence=mppc,
+            min_tracking_confidence=mtc,
+            output_segmentation_masks=False,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            with PoseLandmarker.create_from_options(options) as landmarker:
+                # Perform pose landmarking on the provided single image.
+                # The pose landmarker must be created with the image mode.
+                pose_landmarker_result = landmarker.detect(mp_image)
+
+        daMarkers.loc[dict(time=0)] = pose_landmarkers_to_xr(
+            pose_landmarker_result, mp_image
+        )
+
+        # annotated_image = draw_model_on_image(img, daMarkers, radius)
+        annotated_image = draw_landmarks_on_image(img, pose_landmarker_result, radius)
+
+    elif engine == "rtmlib":
+        try:
+            from rtmlib import BodyWithFeet, PoseTracker, draw_skeleton, draw_bbox
+            from Sports2D.process import setup_pose_tracker
+            from Pose2Sim.skeletons import HALPE_26
+            from Pose2Sim.common import (
+                sort_people_sports2d,
+                draw_bounding_box,
+                draw_keypts,
+                draw_skel,
+            )
+        except ImportError:
+            raise ImportError(
+                "rtmlib, Sports2D or Pose2Sim are not installed. Please install it with 'pip install sports2d Pose2Sim'"  # or 'pip install rtmlib -i https://pypi.org/simple'."
+            )
+
+        # Precreate Dataarray
+        coords = {
+            "time": np.arange(1),  # / fv,
+            "marker": N_MARKERS_RTMLIB26,
+            "axis": ["x", "y", "score"],
+        }
+        daMarkers = (
+            xr.DataArray(
+                data=np.full((1, len(N_MARKERS_RTMLIB26), 3), np.nan),
+                dims=coords.keys(),
+                coords=coords,
+            ).expand_dims({"ID": [file.stem]})
+            # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
+            .copy()
+        )  # .transpose("marker", "axis", "time")
+
+        mode = "balanced"
+        det_frequency = 1
+        keypoint_likelihood_threshold = 0.3
+        average_likelihood_threshold = 0.5
+        keypoint_number_threshold = 0.3
+
+        if "mode" in kwargs:
+            mode = kwargs["mode"]
+        if "det_frequency" in kwargs:
+            det_frequency = kwargs["det_frequency"]
+        if "keypoint_likelihood_threshold" in kwargs:
+            keypoint_likelihood_threshold = kwargs["keypoint_likelihood_threshold"]
+        if "average_likelihood_threshold" in kwargs:
+            average_likelihood_threshold = kwargs["average_likelihood_threshold"]
+        if "keypoint_number_threshold" in kwargs:
+            keypoint_number_threshold = kwargs["keypoint_number_threshold"]
+
+        tracking_mode = "sports2d"
+        person_ordering_method = "highest_likelihood"
+        model_name = "HALPE_26"
+        pose_model_name = "body_with_feet"
+        pose_model = eval(model_name)
+        openpose_skeleton = False  # True for openpose-style, False for mmpose-style
+
+        fontSize = 0.4
+        thickness = 1
+        colors = [
+            (255, 0, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (255, 0, 255),
+            (0, 255, 255),
+            (0, 0, 0),
+            (255, 255, 255),
+            (125, 0, 0),
+            (0, 125, 0),
+            (0, 0, 125),
+            (125, 125, 0),
+            (125, 0, 125),
+            (0, 125, 125),
+            (255, 125, 125),
+            (125, 255, 125),
+            (125, 125, 255),
+            (255, 255, 125),
+            (255, 125, 255),
+            (125, 255, 255),
+            (125, 125, 125),
+            (255, 0, 125),
+            (255, 125, 0),
+            (0, 125, 255),
+            (0, 255, 125),
+            (125, 0, 255),
+            (125, 255, 0),
+            (0, 255, 0),
+        ]
+
+        # body_feet_tracker = PoseTracker(
+        #     BodyWithFeet,
+        #     det_frequency=det_frequency,
+        #     to_openpose=False,  # True for openpose-style, False for mmpose-style
+        #     mode=mode,  # balanced, performance, lightweight
+        #     backend='openvino',  # opencv, onnxruntime, openvino
+        #     device="auto",
+        #     tracking=True,
+        # )
+        body_feet_tracker = setup_pose_tracker(
+            BodyWithFeet,
+            det_frequency=det_frequency,
+            # to_openpose=False,  # True for openpose-style, False for mmpose-style
+            mode=mode,  # balanced, performance, lightweight
+            backend="auto",  # opencv, onnxruntime, openvino
+            device="auto",
+            tracking=False,
+        )
+
+        h, w = img.shape[:2]
+
+        keypoints, scores = body_feet_tracker(img)
+
+        # Track poses across frames
+        if "prev_keypoints" not in locals():
+            prev_keypoints = keypoints
+        prev_keypoints, keypoints, scores = sort_people_sports2d(
+            prev_keypoints, keypoints, scores=scores
+        )
+        # Retrieve keypoints and scores for the person, remove low-confidence keypoints
+        person_idx = 0
+        person_X, person_Y = np.where(
+            scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
+            np.nan,
+            keypoints[person_idx],
+        ).T
+        # plt.scatter(person_X, person_Y)
+        person_scores = np.where(
+            scores[person_idx] < keypoint_likelihood_threshold,
+            np.nan,
+            scores[person_idx],
+        )
+
+        # Skip person if the fraction of valid detected keypoints is too low
+        enough_good_keypoints = (
+            len(person_scores[~np.isnan(person_scores)])
+            >= len(person_scores) * keypoint_number_threshold
+        )
+        scores_of_good_keypoints = person_scores[~np.isnan(person_scores)]
+        average_score_of_remaining_keypoints_is_enough = (
+            np.nanmean(scores_of_good_keypoints)
+            if len(scores_of_good_keypoints) > 0
+            else 0
+        ) >= average_likelihood_threshold
+        if (
+            not enough_good_keypoints
+            or not average_score_of_remaining_keypoints_is_enough
+        ):
+            person_X = np.full_like(person_X, np.nan)
+            person_Y = np.full_like(person_Y, np.nan)
+            person_scores = np.full_like(person_scores, np.nan)
+
+        annotated_image = draw_keypts(
+            img,
+            [person_X],
+            [person_Y],
+            scores,
+            cmap_str="RdYlGn",
+        )
+        # annotated_image = draw_skel(
+        #     annotated_image,
+        #     [person_X],
+        #     [person_Y],
+        #     pose_model,
+        # )
+        annotated_image = draw_skeleton(
+            annotated_image,
+            keypoints,
+            scores,
+            openpose_skeleton=openpose_skeleton,
+            kpt_thr=0.3,
+            line_width=2,
+        )
+        annotated_image = draw_bounding_box(
+            annotated_image,
+            [person_X],
+            [person_Y],
+            colors=colors,
+            fontSize=fontSize,
+            thickness=thickness,
+        )
+
+        # Converto to dataarray
+        person_Y = h - person_Y  # Invert Y coordinates
+        daMarkers.loc[dict(time=0)] = np.vstack([person_X, person_Y, person_scores]).T
+
+    # Invert Y coordinates
+    # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+
+    # plot_pose_2D(daMarkers)
+
+    ############################
 
     if show in [True, "colab"]:
 
@@ -2025,20 +2353,27 @@ def process_image_from_video(
         # closing all open windows
         cv2.destroyAllWindows()
 
+    if n_vars_load is not None:
+        daMarkers = daMarkers.sel(marker=n_vars_load)
+
     # Save the selected num_frame
     if num_frame is not None and save_frame_file not in [None, False]:
         if save_frame_file == True:
             save_frame_file = file.parent
+        elif isinstance(save_frame_file, str):
+            save_frame_file = Path(save_frame_file)
 
         if isinstance(save_frame_file, Path):
             if not save_frame_file.is_dir():
                 save_frame_file.mkdir(parents=True)
             # save_frame_file = save_frame_file.as_posix()
 
+        eng = "_mdp" if engine == "mediapipe" else "_rtm"
+        n_file_saved = (
+            (save_frame_file / f"{file.stem}_fot{num_frame}{eng}").with_suffix(".jpg")
+        ).as_posix()
         saved = cv2.imwrite(
-            (
-                (save_frame_file / f"{file.stem}_fot{num_frame}").with_suffix(".jpg")
-            ).as_posix(),
+            n_file_saved,
             cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
         )
 
@@ -2222,7 +2557,12 @@ def plot_pose_2D(
         )
     else:
         daData.to_dataset("axis").plot.scatter(
-            x=x, y=y, col=dim_col, col_wrap=3, linewidths=0.5
+            x=x,
+            y=y,
+            col=dim_col,
+            col_wrap=3,
+            linewidths=0.5,
+            sharex=False,
         )
 
 
