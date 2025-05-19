@@ -4759,7 +4759,7 @@ def adjust_offsetFz(
     moving average during the flight phase with the smallest standard deviation."
     Street, G., McMillan, S., Board, W., Rasmussen, M., & Heneghan, J. M. (2001). Sources of Error in Determining Countermovement Jump Height with the Impulse Method. Journal of Applied Biomechanics, 17(1), 43-54. https://doi.org/10.1123/jab.17.1.43
 
-    Better to apply before filtering
+    Better to apply it before filtering
 
     kind: one of "mean", "flight", "threshold"
     """

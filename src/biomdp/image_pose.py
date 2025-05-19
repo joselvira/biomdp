@@ -19,12 +19,16 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.3.3"
-__date__ = "10/05/2025"
+__version__ = "v.1.4.0"
+__date__ = "16/05/2025"
 
 
 """
 Updates:
+    16/05/2025, v1.4.0
+        - Improved rtmlib version of process_image_from_video,
+          allows to order persons by Y size.
+    
     10/05/2025, v1.3.3
         - Increased functionality in rtmlib functions.
     
@@ -1211,6 +1215,7 @@ def process_video_rtmlib(
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 1,
+    sort_persons_by_size: bool = True,
     radius: int = 2,
     verbose: bool = False,
     **kwargs,
@@ -1245,7 +1250,6 @@ def process_video_rtmlib(
     xarray.DataArray
         A DataArray containing the pose landmarks and additional metadata.
     """
-
     try:
         from rtmlib import BodyWithFeet, PoseTracker, draw_skeleton, draw_bbox
         from Sports2D.process import setup_pose_tracker
@@ -1445,46 +1449,33 @@ def process_video_rtmlib(
 
             # Check whether the person is looking to the left or right
 
-            person_X_flipped = person_X.copy()
+            # person_X_flipped = person_X.copy()
 
             valid_X.append(person_X)
             valid_Y.append(person_Y)
             valid_scores.append(person_scores)
 
-        """
-        # Retrieve keypoints and scores for the person, remove low-confidence keypoints
-        person_idx = 0
-        person_X, person_Y = np.where(
-            scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
-            np.nan,
-            keypoints[person_idx],
-        ).T
-        # plt.scatter(person_X, person_Y)
-        person_scores = np.where(
-            scores[person_idx] < keypoint_likelihood_threshold,
-            np.nan,
-            scores[person_idx],
-        )
+        if sort_persons_by_size:
+            # order of persons by size (larger to smaller)
+            sorted = np.argsort(
+                np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
+            )[::-1]
 
-        # Skip person if the fraction of valid detected keypoints is too low
-        enough_good_keypoints = (
-            len(person_scores[~np.isnan(person_scores)])
-            >= len(person_scores) * keypoint_number_threshold
-        )
-        scores_of_good_keypoints = person_scores[~np.isnan(person_scores)]
-        average_score_of_remaining_keypoints_is_enough = (
-            np.nanmean(scores_of_good_keypoints)
-            if len(scores_of_good_keypoints) > 0
-            else 0
-        ) >= average_likelihood_threshold
-        if (
-            not enough_good_keypoints
-            or not average_score_of_remaining_keypoints_is_enough
-        ):
-            person_X = np.full_like(person_X, np.nan)
-            person_Y = np.full_like(person_Y, np.nan)
-            person_scores = np.full_like(person_scores, np.nan)
-        """
+            if sorted[0] != 0:
+                _X = np.take_along_axis(
+                    np.asarray(valid_X), sorted[:, np.newaxis], axis=0
+                )
+                _Y = np.take_along_axis(
+                    np.asarray(valid_Y), sorted[:, np.newaxis], axis=0
+                )
+                _scores = np.take_along_axis(
+                    np.asarray(valid_scores), sorted[:, np.newaxis], axis=0
+                )
+
+                for i in range(len(sorted)):
+                    valid_X[i] = _X[i]
+                    valid_Y[i] = _Y[i]
+                    valid_scores[i] = _scores[i]
 
         # Calculate fps
         cTime = time.time()
@@ -1607,10 +1598,10 @@ def process_video_rtmlib(
             break
         # cv2.waitKey(0)
 
-        # Converto to dataarray
-        person_Y = h - person_Y  # Invert Y coordinates
+        # Convert to dataarray
+        valid_Y[0] = h - valid_Y[0]  # Invert Y coordinates
         daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.vstack(
-            [person_X, person_Y, person_scores]
+            [valid_X[0], valid_Y[0], person_scores]
         ).T
         # = np.vstack([keypoints[0].T, scores[0]]).T
 
@@ -2180,6 +2171,7 @@ def process_image_from_video(
         keypoint_likelihood_threshold = 0.3
         average_likelihood_threshold = 0.5
         keypoint_number_threshold = 0.3
+        sort_persons_by_size = True
 
         if "mode" in kwargs:
             mode = kwargs["mode"]
@@ -2191,6 +2183,8 @@ def process_image_from_video(
             average_likelihood_threshold = kwargs["average_likelihood_threshold"]
         if "keypoint_number_threshold" in kwargs:
             keypoint_number_threshold = kwargs["keypoint_number_threshold"]
+        if "sort_persons_by_size" in kwargs:
+            sort_persons_by_size = kwargs["sort_persons_by_size"]
 
         tracking_mode = "sports2d"
         person_ordering_method = "highest_likelihood"
@@ -2260,47 +2254,88 @@ def process_image_from_video(
         prev_keypoints, keypoints, scores = sort_people_sports2d(
             prev_keypoints, keypoints, scores=scores
         )
-        # Retrieve keypoints and scores for the person, remove low-confidence keypoints
-        person_idx = 0
-        person_X, person_Y = np.where(
-            scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
-            np.nan,
-            keypoints[person_idx],
-        ).T
-        # plt.scatter(person_X, person_Y)
-        person_scores = np.where(
-            scores[person_idx] < keypoint_likelihood_threshold,
-            np.nan,
-            scores[person_idx],
-        )
 
-        # Skip person if the fraction of valid detected keypoints is too low
-        enough_good_keypoints = (
-            len(person_scores[~np.isnan(person_scores)])
-            >= len(person_scores) * keypoint_number_threshold
-        )
-        scores_of_good_keypoints = person_scores[~np.isnan(person_scores)]
-        average_score_of_remaining_keypoints_is_enough = (
-            np.nanmean(scores_of_good_keypoints)
-            if len(scores_of_good_keypoints) > 0
-            else 0
-        ) >= average_likelihood_threshold
-        if (
-            not enough_good_keypoints
-            or not average_score_of_remaining_keypoints_is_enough
-        ):
-            person_X = np.full_like(person_X, np.nan)
-            person_Y = np.full_like(person_Y, np.nan)
-            person_scores = np.full_like(person_scores, np.nan)
+        # Process coordinates and compute angles
+        valid_X, valid_Y, valid_scores = [], [], []
+        # valid_X_flipped, valid_angles = [], []
+        for person_idx in range(len(keypoints)):
 
-        annotated_image = draw_keypts(
+            # Retrieve keypoints and scores for the person, remove low-confidence keypoints
+            person_X, person_Y = np.where(
+                scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
+                np.nan,
+                keypoints[person_idx],
+            ).T
+            person_scores = np.where(
+                scores[person_idx] < keypoint_likelihood_threshold,
+                np.nan,
+                scores[person_idx],
+            )
+
+            # Skip person if the fraction of valid detected keypoints is too low
+            enough_good_keypoints = (
+                len(person_scores[~np.isnan(person_scores)])
+                >= len(person_scores) * keypoint_number_threshold
+            )
+            scores_of_good_keypoints = person_scores[~np.isnan(person_scores)]
+            average_score_of_remaining_keypoints_is_enough = (
+                np.nanmean(scores_of_good_keypoints)
+                if len(scores_of_good_keypoints) > 0
+                else 0
+            ) >= average_likelihood_threshold
+            if (
+                not enough_good_keypoints
+                or not average_score_of_remaining_keypoints_is_enough
+            ):
+                person_X = np.full_like(person_X, np.nan)
+                person_Y = np.full_like(person_Y, np.nan)
+                person_scores = np.full_like(person_scores, np.nan)
+
+            # Check whether the person is looking to the left or right
+
+            # person_X_flipped = person_X.copy()
+
+            valid_X.append(person_X)
+            valid_Y.append(person_Y)
+            valid_scores.append(person_scores)
+
+        if sort_persons_by_size:
+            # order of persons by size (larger to smaller)
+            sorted = np.argsort(
+                np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
+            )[::-1]
+
+            if sorted[0] != 0:
+                _X = np.take_along_axis(
+                    np.asarray(valid_X), sorted[:, np.newaxis], axis=0
+                )
+                _Y = np.take_along_axis(
+                    np.asarray(valid_Y), sorted[:, np.newaxis], axis=0
+                )
+                _scores = np.take_along_axis(
+                    np.asarray(valid_scores), sorted[:, np.newaxis], axis=0
+                )
+
+                for i in range(len(sorted)):
+                    valid_X[i] = _X[i]
+                    valid_Y[i] = _Y[i]
+                    valid_scores[i] = _scores[i]
+
+        annotated_image = draw_bounding_box(
             img,
-            [person_X],
-            [person_Y],
-            scores,
-            cmap_str="RdYlGn",
+            valid_X,
+            valid_Y,
+            colors=colors,
+            fontSize=fontSize,
+            thickness=thickness,
         )
-        # annotated_image = draw_skel(
+        annotated_image = draw_keypts(
+            annotated_image,
+            [valid_X[0]],
+            [valid_Y[0]],
+            [valid_scores[0]],
+            cmap_str="RdYlGn",
+        )  # annotated_image = draw_skel(
         #     annotated_image,
         #     [person_X],
         #     [person_Y],
@@ -2314,18 +2349,12 @@ def process_image_from_video(
             kpt_thr=0.3,
             line_width=2,
         )
-        annotated_image = draw_bounding_box(
-            annotated_image,
-            [person_X],
-            [person_Y],
-            colors=colors,
-            fontSize=fontSize,
-            thickness=thickness,
-        )
 
         # Converto to dataarray
-        person_Y = h - person_Y  # Invert Y coordinates
-        daMarkers.loc[dict(time=0)] = np.vstack([person_X, person_Y, person_scores]).T
+        valid_Y[0] = h - valid_Y[0]  # Invert Y coordinates
+        daMarkers.loc[dict(time=0)] = np.vstack(
+            [valid_X[0], valid_Y[0], person_scores]
+        ).T
 
     # Invert Y coordinates
     # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
@@ -2528,6 +2557,7 @@ def plot_pose_2D(
     x: str = "x",
     y: str = "y",
     frames: int | List[int] = [None, None],
+    **kwargs,
 ):
     """
     Creates a 2D scatter plot of the given xr Dataaray, `daData`, for specified frames.
@@ -2549,21 +2579,28 @@ def plot_pose_2D(
     Returns:
     None
     """
+    col_wrap = 4
+    if "col_wrap" in kwargs:
+        col_wrap = kwargs["col_wrap"]
+
     if isinstance(frames, int):
         frames = [frames, frames + 1]
     if "time" in daData.dims:
-        daData.isel(time=slice(frames[0], frames[1])).to_dataset("axis").plot.scatter(
-            x=x, y=y, col=dim_col, col_wrap=3, linewidths=0.5
+        g = (
+            daData.isel(time=slice(frames[0], frames[1]))
+            .to_dataset("axis")
+            .plot.scatter(x=x, y=y, col=dim_col, col_wrap=3, linewidths=0.5)
         )
     else:
-        daData.to_dataset("axis").plot.scatter(
+        g = daData.to_dataset("axis").plot.scatter(
             x=x,
             y=y,
             col=dim_col,
-            col_wrap=3,
+            col_wrap=col_wrap,
             linewidths=0.5,
             sharex=False,
         )
+    return g
 
 
 # =============================================================================
