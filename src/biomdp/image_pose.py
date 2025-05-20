@@ -19,12 +19,17 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.4.0"
-__date__ = "16/05/2025"
+__version__ = "v.1.4.1"
+__date__ = "20/05/2025"
 
 
 """
 Updates:
+    20/05/2025, v1.4.1
+        - Fixed bub in rtmlib version of process_image_from_video.
+          It also allows to pass a pose_tracker previously created to avoid
+          reloading in each file.
+    
     16/05/2025, v1.4.0
         - Improved rtmlib version of process_image_from_video,
           allows to order persons by Y size.
@@ -1266,6 +1271,7 @@ def process_video_rtmlib(
         )
 
     mode = "balanced"
+    pose_tracker = None
     tracking = False
     det_frequency = 1
     keypoint_likelihood_threshold = 0.3
@@ -1274,6 +1280,8 @@ def process_video_rtmlib(
 
     if "mode" in kwargs:
         mode = kwargs["mode"]
+    if "pose_tracker" in kwargs:
+        pose_tracker = kwargs["pose_tracker"]
     if "tracking" in kwargs:
         tracking = kwargs["tracking"]
     if "det_frequency" in kwargs:
@@ -1342,7 +1350,7 @@ def process_video_rtmlib(
     #     device="auto",
     #     tracking=True,
     # )
-    body_feet_tracker = setup_pose_tracker(
+    pose_tracker = setup_pose_tracker(
         BodyWithFeet,
         det_frequency=det_frequency,
         # to_openpose=False,  # True for openpose-style, False for mmpose-style
@@ -1402,7 +1410,7 @@ def process_video_rtmlib(
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         h, w = img.shape[:2]
 
-        keypoints, scores = body_feet_tracker(img)
+        keypoints, scores = pose_tracker(img)
 
         # Track poses across frames
         if "prev_keypoints" not in locals():
@@ -2167,14 +2175,17 @@ def process_image_from_video(
         )  # .transpose("marker", "axis", "time")
 
         mode = "balanced"
+        pose_tracker = None
         det_frequency = 1
-        keypoint_likelihood_threshold = 0.3
-        average_likelihood_threshold = 0.5
-        keypoint_number_threshold = 0.3
+        keypoint_likelihood_threshold = 0.4
+        average_likelihood_threshold = 0.4
+        keypoint_number_threshold = 0.4
         sort_persons_by_size = True
 
         if "mode" in kwargs:
             mode = kwargs["mode"]
+        if "pose_tracker" in kwargs:
+            pose_tracker = kwargs["pose_tracker"]
         if "det_frequency" in kwargs:
             det_frequency = kwargs["det_frequency"]
         if "keypoint_likelihood_threshold" in kwargs:
@@ -2225,28 +2236,29 @@ def process_image_from_video(
             (0, 255, 0),
         ]
 
-        # body_feet_tracker = PoseTracker(
+        if pose_tracker is None:
+            pose_tracker = PoseTracker(
+                BodyWithFeet,
+                det_frequency=det_frequency,
+                to_openpose=False,  # True for openpose-style, False for mmpose-style
+                mode=mode,  # balanced, performance, lightweight
+                backend="openvino",  # opencv, onnxruntime, openvino
+                device="cpu",
+                tracking=False,
+            )
+        # body_feet_tracker = setup_pose_tracker(
         #     BodyWithFeet,
         #     det_frequency=det_frequency,
-        #     to_openpose=False,  # True for openpose-style, False for mmpose-style
+        #     # to_openpose=False,  # True for openpose-style, False for mmpose-style
         #     mode=mode,  # balanced, performance, lightweight
-        #     backend='openvino',  # opencv, onnxruntime, openvino
+        #     backend="auto",  # opencv, onnxruntime, openvino
         #     device="auto",
-        #     tracking=True,
+        #     tracking=False,
         # )
-        body_feet_tracker = setup_pose_tracker(
-            BodyWithFeet,
-            det_frequency=det_frequency,
-            # to_openpose=False,  # True for openpose-style, False for mmpose-style
-            mode=mode,  # balanced, performance, lightweight
-            backend="auto",  # opencv, onnxruntime, openvino
-            device="auto",
-            tracking=False,
-        )
 
         h, w = img.shape[:2]
 
-        keypoints, scores = body_feet_tracker(img)
+        keypoints, scores = pose_tracker(img)
 
         # Track poses across frames
         if "prev_keypoints" not in locals():
@@ -2294,16 +2306,28 @@ def process_image_from_video(
             # Check whether the person is looking to the left or right
 
             # person_X_flipped = person_X.copy()
-
-            valid_X.append(person_X)
-            valid_Y.append(person_Y)
-            valid_scores.append(person_scores)
+            if not np.isnan(person_scores).all():
+                valid_X.append(person_X)
+                valid_Y.append(person_Y)
+                valid_scores.append(person_scores)
 
         if sort_persons_by_size:
             # order of persons by size (larger to smaller)
+            # prov_Y = np.nan_to_num(valid_Y, nan=np.nanmean(np.array(valid_Y), axis=1))
+            # Replace NaN values with the mean of the array
+            prov_Y = [
+                np.nan_to_num(valid_Y[i], nan=np.nanmean(np.array(valid_Y[i])))
+                for i in range(len(valid_Y))
+            ]
             sorted = np.argsort(
-                np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
+                np.nanmax(prov_Y, axis=1)
+                - np.nanmin(prov_Y, axis=1)
+                # np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
             )[::-1]
+            # sorted = np.argsort(
+            #     np.nanmax(prov_Y, axis=1) - np.nanmin(prov_Y, axis=1)
+            #     # np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
+            # )[::-1]
 
             if sorted[0] != 0:
                 _X = np.take_along_axis(
