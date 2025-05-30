@@ -17,12 +17,15 @@ The maximum is used to normalize the EMG channels in the current file.
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.4.1"
-__date__ = "05/03/2025"
+__version__ = "0.4.2"
+__date__ = "30/05/2025"
 
 
 """
 Updates:
+    30/05/2025, v0.4.2
+        - Some minor adjustments.
+
     05/03/2025, v0.4.1
         - Adapted to biomdp with translations.
     
@@ -357,7 +360,7 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
     TODO: SIMPLIFICAR TODO SIN SEPARAR EN LADOS.
     """
 
-    timer_procesa = time.perf_counter()
+    timer_process = time.perf_counter()
 
     dsRlG = xr.Dataset()  # stores each segment's rotation matrix
 
@@ -768,14 +771,14 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
         dsRlG = dsRlG.drop_vars(["n_var"])
 
     print(
-        f"Bases from {len(daData.ID)} files calculated in {time.perf_counter() - timer_procesa:.3f} s."
+        f"Bases from {len(daData.ID)} files calculated in {time.perf_counter() - timer_process:.3f} s."
     )
 
     return dsRlG
 
 
 def calculate_angles_segments(dsRlG, verbose=False) -> xr.Dataset:
-    timer_procesa = time.perf_counter()
+    timer_process = time.perf_counter()
 
     dsAngSeg = xr.Dataset()
 
@@ -791,18 +794,21 @@ def calculate_angles_segments(dsRlG, verbose=False) -> xr.Dataset:
             continue
         dsAngSeg[f"AngSeg{RlG.upper()}"] = calculate_angle_xr(RlGChild=dsRlG[RlG])
         if verbose:
-            print("calculado")
+            print("Ok")
     # RlGChild=dsRlG[RlG]
 
     print(
-        f"Processed {len(dsRlG.ID)} files in {time.perf_counter() - timer_procesa:.3f} s."
+        f"Processed {len(dsRlG.ID)} files in {time.perf_counter() - timer_process:.3f} s."
     )
 
     return dsAngSeg
 
 
 def calculate_angles_joints(
-    dsRlG, daTrajec=None, complete_model=False, verbose=False
+    dsRlG: xr.Dataset,
+    daTrajec: xr.DataArray,
+    complete_model: bool = False,
+    verbose: bool = False,
 ) -> xr.Dataset:
     """
     Calcula ángulos de articulaciones a partir de las matrices de rotación
@@ -812,7 +818,7 @@ def calculate_angles_joints(
         raise ValueError("Datos de trayectoria necesarios para el modelo completo")
         return
 
-    timer_procesa = time.perf_counter()
+    timer_process = time.perf_counter()
 
     dsAngles = xr.Dataset()
 
@@ -862,7 +868,7 @@ def calculate_angles_joints(
                 child.isnull().all() or parent.isnull().all()
             ):  # si viene vacío se lo salta
                 if verbose:
-                    print("vacío")
+                    print("empty")
                 dsAngles[modeled_name] = xr.full_like(child.isel(axis_base=0), np.nan)
                 continue
 
@@ -870,7 +876,7 @@ def calculate_angles_joints(
                 RlGChild=child, RlGParent=parent
             )
             if verbose:
-                print("calculado")
+                print("Ok")
             """dsAngles[modeled_name] = xr.apply_ufunc(calcula_ang_artic_aux, child, parent,
                             input_core_dims=[['axis_base', 'axis'], ['axis_base', 'axis']],
                             output_core_dims=[['axis']],
@@ -1207,7 +1213,7 @@ def calculate_angles_joints(
             print('No se ha podido calcular el ángulo', modeled_name)
     '''
     print(
-        f"Calculated angles from {len(dsRlG.ID)} files in {time.perf_counter() - timer_procesa:.3f} s."
+        f"Calculated angles from {len(dsRlG.ID)} files in {time.perf_counter() - timer_process:.3f} s."
     )
 
     return dsAngles
@@ -1221,7 +1227,7 @@ def calculate_angles_from_trajec(
     Paso intermedio de calcular matrices de rotación
     tipo: 'artic', 'segment' o 'all'
     """
-    timer_procesa = time.perf_counter()
+    timer_process = time.perf_counter()
 
     print("\nCalculando matrices de rotación...")
     dsRlG = calculate_bases(daData, complete_model)  # daData=daDatos.isel(ID=0))
@@ -1254,7 +1260,7 @@ def calculate_angles_from_trajec(
     # daAngles.sel(n_var='AngArtHip').plot.line(x='time', row='ID', col='axis', hue='side')
 
     print(
-        f"Processed {len(daAngles.ID)} files in {time.perf_counter() - timer_procesa:.3f} s."
+        f"Processed {len(daAngles.ID)} files in {time.perf_counter() - timer_process:.3f} s."
     )
 
     return daAngles
@@ -1400,6 +1406,9 @@ def calculate_angle_xr(RlGChild, RlGParent=None) -> xr.DataArray:
 # %% Extrae variables del Nexus directamente
 # =============================================================================
 def load_variables_nexus_trajectories(vicon=None, n_vars=None) -> xr.DataArray:
+    if vicon is None:
+        raise ValueError("Must pass an object ViconNexus.ViconNexus")
+
     print("Loading Trajectories...")
     timer = time.time()
 
@@ -1479,6 +1488,9 @@ def load_variables_nexus_trajectories(vicon=None, n_vars=None) -> xr.DataArray:
 
 
 def load_variables_nexus_force(vicon=None, n_plate=None) -> xr.DataArray:
+    if vicon is None:
+        raise ValueError("Must pass an object ViconNexus.ViconNexus")
+
     print("Loading Forces...")
     timer = time.time()
 
@@ -1522,6 +1534,9 @@ def load_variables_nexus_force(vicon=None, n_plate=None) -> xr.DataArray:
 
 
 def load_variables_nexus_EMG(vicon=None, n_vars=None) -> xr.DataArray:
+    if vicon is None:
+        raise ValueError("Must pass an object ViconNexus.ViconNexus")
+
     print("Loading EMG...")
     timer = time.time()
 
@@ -1586,8 +1601,11 @@ def load_variables_nexus_EMG(vicon=None, n_vars=None) -> xr.DataArray:
     return da
 
 
-def write_variables_in_nexus_kinem(da, vicon) -> None:
+def write_variables_in_nexus_kinem(da: xr.DataArray, vicon=None) -> None:
     """Write processed Kinematics back to Nexus"""
+    if vicon is None:
+        raise ValueError("Must pass an object ViconNexus.ViconNexus")
+
     from itertools import product
 
     n_subject = vicon.GetSubjectNames()[0]
@@ -1632,8 +1650,11 @@ def write_variables_in_nexus_kinem(da, vicon) -> None:
         vicon.SetModelOutput(n_subject, n_modeled, insert_values.values, exists)
 
 
-def write_variables_in_nexus_forces(da=None, vicon=None) -> None:
+def write_variables_in_nexus_forces(da: xr.DataArray, vicon=None) -> None:
     """Write processed Forces back to Nexus"""
+    if vicon is None:
+        raise ValueError("Must pass an object ViconNexus.ViconNexus")
+
     # Get ModelOutput List
     n_subject = vicon.GetSubjectNames()[0]
     num_frames = vicon.GetTrialRange()[1]
@@ -1669,8 +1690,11 @@ def write_variables_in_nexus_forces(da=None, vicon=None) -> None:
     vicon.SetModelOutput(n_subject, modeled_name, var_model, exists)
 
 
-def write_variables_in_nexus_emg(da=None, vicon=None) -> None:
+def write_variables_in_nexus_emg(da: xr.DataArray, vicon=None) -> None:
     """Write processed EMG back to Nexus"""
+    if vicon is None:
+        raise ValueError("Must pass an object ViconNexus.ViconNexus")
+
     # Get ModelOutput List
 
     n_subject = vicon.GetSubjectNames()[0]
@@ -1709,7 +1733,7 @@ def write_variables_in_nexus_emg(da=None, vicon=None) -> None:
 # =============================================================================
 # %% Extract Nexus variables from csv or c3d
 # =============================================================================
-def df_to_da_EMG(data) -> xr.DataArray:
+def df_to_da_EMG(data: pd.DataFrame | xr.DataArray) -> xr.DataArray:
     if isinstance(data, pd.DataFrame):
         da = (
             data.set_index(["ID", "time"])
@@ -1719,6 +1743,8 @@ def df_to_da_EMG(data) -> xr.DataArray:
         )  # .transpose('ID', 'n_var', 'axis', 'time')
     elif isinstance(data, xr.DataArray):
         da = data
+    else:
+        raise TypeError("Input data must be a pandas DataFrame or an xarray DataArray")
 
     L = da.sel(
         n_var=da.n_var.str.endswith("_L")

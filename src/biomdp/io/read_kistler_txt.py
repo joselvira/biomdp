@@ -13,11 +13,14 @@ Read data from Kistler Bioware .txt exported files.
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.2.0"
-__date__ = "25/03/2025"
+__version__ = "0.2.1"
+__date__ = "30/05/2025"
 
 """
 Updates:
+    30/05/2025, v0.2.1
+        - Incuded "separator" parameter in read_kistler_txt_pl.
+
     25/03/2025, v0.2.0
         - Incuded general function to distribute according to "engine".
     
@@ -52,6 +55,8 @@ def read_kistler_txt(
     raw: bool = False,
     magnitude: str = "force",
 ) -> Any:
+    if isinstance(file, str):
+        file = Path(file)
 
     if not file.exists():
         raise FileNotFoundError(f"File {file} not found")
@@ -98,14 +103,25 @@ def read_kistler_txt_pl(
     # to_dataarray: bool = False,
     raw: bool = False,
     magnitude: str = "force",
+    separator: str = "\t",
 ) -> xr.DataArray | Any:
+    """
+    Read .txt files exported from Bioware
 
+    Note: since BioWare Version 5.6.1.0 time column changed from "abs time (s)" to "abs time"
+    """
     try:
         import polars as pl
     except:
         raise ImportError(
             "Polars package not instaled. Install it if you want to use the accelerated version"
         )
+
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
 
     try:
         df = (
@@ -115,7 +131,7 @@ def read_kistler_txt_pl(
                 skip_rows=lin_header,
                 skip_rows_after_header=1,
                 columns=n_vars_load,
-                separator="\t",
+                separator=separator,
             )  # , columns=nom_vars_cargar)
             # .slice(1, None) #quita la fila de unidades (N) #no hace falta con skip_rows_after_header=1
             # .select(pl.col(n_vars_load))
@@ -129,7 +145,9 @@ def read_kistler_txt_pl(
             return df
 
         else:
-            freq = 1 / (df[1, "abs time (s)"] - df[0, "abs time (s)"])
+            freq = 1 / (
+                df[1, 0] - df[0, 0]  # assumes time in first column
+            )  # (df[1, "abs time (s)"] - df[0, "abs time (s)"])
             if magnitude == "force":
                 try:
                     x = df.select(pl.col("^*Fx.*$")).to_numpy()
@@ -209,8 +227,15 @@ def read_kistler_txt_pd(
     # to_dataarray: bool = False,
     raw: bool = False,
     magnitude: str = "force",
-) -> xr.DataArray | pd.DataFrame:
+) -> xr.DataArray | pd.DataFrame | None:
 
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
+    
     try:
         df = (
             pd.read_csv(
@@ -229,7 +254,10 @@ def read_kistler_txt_pd(
             return df
         # ----Transform pandas to xarray
         else:
-            freq = 1 / (df.loc[2, "abs time (s)"] - df.loc[1, "abs time (s)"])
+            try:
+                freq = 1 / (df.loc[2, "abs time (s)"] - df.loc[1, "abs time (s)"])
+            except:
+                freq = 1 / (df.loc[2, "abs time"] - df.loc[1, "abs time"])
             if magnitude == "force":
                 x = df.filter(regex="Fx")  # .to_numpy()
                 y = df.filter(regex="Fy")
@@ -316,12 +344,19 @@ def read_kistler_txt_arrow(
     # to_dataarray: bool = False,
     raw: bool = False,
     magnitude: str = "force",
-) -> pd.DataFrame:
-    """In test, at the moment it does not work when there are repeated cols"""
+) -> pd.DataFrame | xr.DataArray:
+    """Testing, at the moment it does not work when there are repeated cols"""
+        
     try:
         from pyarrow import csv
     except:
         raise ImportError("pyarrow not installed")
+
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
 
     try:
         read_options = csv.ReadOptions(
@@ -368,7 +403,11 @@ def read_kistler_txt_arrow(
                 da.attrs["units"] = "N"
 
             elif magnitude == "cop":
-                raise Exception("Not implemented yet")
+                raise Exception("Magnitude "cop" not implemented yet")
+            else:
+                raise ValueError(
+                    f"Magnitude {magnitude} not valid.\nTry with 'force' or 'cop'"
+                )
 
             return da
 

@@ -147,9 +147,8 @@ def detect_onset_detecta_aux(
     #     args_func_events.pop('event_ini', None)
     # except:
     #     event_ini=0
-    if (
-        xSD is not None
-    ):  # the threshold is defined by the mean + x times the standard deviation
+    if xSD is not None:
+        # the threshold is defined by the mean + x times the standard deviation
         if "threshold" in args_func_events:
             args_func_events.pop("threshold", None)
         args_func_events["threshold"] = (
@@ -279,8 +278,8 @@ def find_onset_aux(
     integ = integrate.cumulative_trapezoid(data - threshold, daTotal.time, initial=0)
     # integDetr = integ
     integDetr = detrend(integ)
-    plt.plot(integDetr)
-    plt.plot(daIntegDetr[0, 0, 0])
+    # plt.plot(integDetr)
+    # plt.plot(daIntegDetr[0, 0, 0])
 
     fp = find_peaks(integDetr, **dict(height=0))[0]
     # do[:7, 1] - fp[:7]

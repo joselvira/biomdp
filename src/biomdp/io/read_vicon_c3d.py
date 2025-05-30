@@ -59,7 +59,8 @@ def read_vicon_c3d(
     coincidence: str = "similar",
     engine: str = "ezc3d",
 ) -> xr.DataArray:
-
+    if isinstance(file, str):
+        file = Path(file)
     if not file.exists():
         raise FileNotFoundError(f"File {file} not found")
 
@@ -90,6 +91,13 @@ def read_vicon_c3d_c3d_pose2sim(
     except:
         raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
 
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
+    # file =Path(r"F:\Programacion\Python\Mios\biomdp\src\datasets\vicon_CMJ_kinem_kinet_emg.c3d")
     # file =Path(r"F:\Programacion\Python\Mios\biomdp\src\datasets\vicon_CMJ_kinem_kinet_emg.c3d")
 
     # c3d header
@@ -163,6 +171,12 @@ def read_vicon_c3d_c3d(
         import c3d
     except:
         raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
+
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
 
     if section not in [
         "Trajectories",
@@ -335,6 +349,12 @@ def read_vicon_ezc3d(
         raise ImportError(
             "Module ezc3d not installed.\nInstall with pip install ezc3d or conda install -c conda-forge ezc3d"
         )
+
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
 
     if section not in [
         "Trajectories",
@@ -510,6 +530,12 @@ def read_vicon_c3d_xr_global(
 
     timer = time.time()  # inicia el contador de tiempo
 
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
     # se asegura de que la extensión es c3d
     file = file.with_suffix(".c3d")
 
@@ -662,6 +688,12 @@ def read_vicon_c3d_xr_global_ds(
         raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
 
     timer = time.time()  # inicia el contador de tiempo
+
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
 
     # se asegura de que la extensión es c3d
     file = file.with_suffix(".c3d")
