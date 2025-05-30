@@ -206,6 +206,7 @@ MODEL_STICK_UNIONS = [
 ]
 
 # from halpe26: https://github.com/open-mmlab/mmpose/blob/dev-1.x/configs/_base_/datasets/halpe26.py
+# https://github.com/Fang-Haoshu/Halpe-FullBody
 N_MARKERS_RTMLIB26 = [
     "nose",
     "eye_L",
@@ -2014,6 +2015,8 @@ def process_image_from_video(
         A DataArray containing the pose landmarks and additional metadata.
     """
 
+    if engine not in ["mediapipe", "rtmlib"]:
+        raise ValueError(f"Engine {engine} not supported. Use 'mediapipe' or 'rtmlib'.")
     if num_frame is None or not isinstance(num_frame, int):
         raise ValueError(f"num_frame must be an integer. Received {num_frame}.")
     if not isinstance(file, Path):
@@ -2047,7 +2050,7 @@ def process_image_from_video(
     # Reset colors. It is not necessary but it does not seem to slow down
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    cv2.putText(
+    annotated_image = cv2.putText(
         img,
         "q or Esc to exit",
         (30, 10),
@@ -2057,7 +2060,7 @@ def process_image_from_video(
         2,
     )
     cv2.putText(
-        img,
+        annotated_image,
         f"Frame {num_frame}/{num_frames}",
         (30, 30),
         cv2.FONT_HERSHEY_SIMPLEX,

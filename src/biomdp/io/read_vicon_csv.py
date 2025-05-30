@@ -81,7 +81,7 @@ Updates:
 from typing import List, Any
 import numpy as np
 
-# import pandas as pd
+import pandas as pd
 import xarray as xr
 
 from pathlib import Path
@@ -103,10 +103,11 @@ def read_vicon_csv(
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
     sep: str = ",",
-    to_dataarray: bool = False,
     engine: str = "polars",
     raw: bool = False,
 ) -> Any:
+    if isinstance(file, str):
+        file = Path(file)
 
     if not file.exists():
         raise FileNotFoundError(f"File {file} not found")
@@ -121,7 +122,6 @@ def read_vicon_csv(
             n_vars_load=n_vars_load,
             coincidence=coincidence,
             sep=sep,
-            to_dataarray=to_dataarray,
             raw=raw,
         )
     elif engine == "polars2":
@@ -153,9 +153,8 @@ def read_vicon_csv_pl(
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
     sep: str = ",",
-    # to_dataarray: bool = True,
     raw: bool = False,
-) -> xr.DataArray:
+):  # -> xr.DataArray | pl.DataFrame:
     """
     Reads data from a Vicon csv file and returns a Polars DataFrame or xarray DataArray
 
@@ -191,6 +190,12 @@ def read_vicon_csv_pl(
             "Polars package not instaled. Install it if you want to use the accelerated version"
         )
 
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
     if section in ["Forces", "EMG"]:
         n_block = "Devices"
     elif section == "Model Outputs EMG":
@@ -199,7 +204,7 @@ def read_vicon_csv_pl(
         n_block = section
     else:
         raise ValueError(
-            f"Section '{section}' not recognized\nTry with 'Trajectories', 'Model Outputs', 'Forces', 'EMG', 'Model Outputs EMG'"
+            f"Section '{section}' not recognized\nTry with 'full', 'Trajectories', 'Model Outputs', 'Forces', 'EMG', 'Model Outputs EMG'"
         )
 
     # ----Check for blank lines. In current Polars (0.17.2) line breaks do not match when starting with blank line
@@ -224,6 +229,7 @@ def read_vicon_csv_pl(
     # ----Search section position and length
     ini_section = None
     end_section = None
+    freq = 1
     with open(file, mode="rt") as f:
         num_lin = 0
 
@@ -248,6 +254,9 @@ def read_vicon_csv_pl(
                 break
 
             num_lin += 1
+
+        if end_section is None:
+            end_section = num_lin - 1
         # file_end = num_lin
 
     if ini_section is None:
@@ -355,14 +364,24 @@ def read_vicon_csv_pl(
             selection = [s for s in df.columns if any(xs in s for xs in n_vars_load)]
         elif coincidence == "exact":
             selection = n_vars_load
+        else:
+            raise ValueError(
+                f"Coincidence '{coincidence}' not recognized\nTry with 'similar' or 'exact'"
+            )
         df = df.select(pl.col(selection))
 
     if raw:  # keep Polars dataframe format
         # Add time column
-        df = df.with_columns(
-            pl.lit(np.arange(len(df)) / freq).alias("time"),
-            # pl.all()
-        )
+        df.insert_column(0, pl.lit(np.arange(len(df)) / freq).alias("time"))
+        df.insert_column(0, pl.lit(file.stem).alias("ID"))
+
+        # Add section as prefix
+        df = df.select(pl.all().name.prefix(f"{section}_"))
+
+        # df = df.with_columns(
+        #     pl.lit(np.arange(len(df)) / freq).alias("time"),
+        #     # pl.all()
+        # )
         return df
 
     else:  # ----Transform polars to xarray
@@ -400,7 +419,10 @@ def read_vicon_csv_pl(
                 dims=coords.keys(),
                 coords=coords,
             ).astype(float)
-
+        else:
+            raise ValueError(
+                f"Section '{section}' not recognized\nTry with 'full', 'Trajectories', 'Model Outputs', 'Forces', 'EMG', 'Model Outputs EMG'"
+            )
         da.name = section
         da.attrs["freq"] = freq
         da.time.attrs["units"] = "s"
@@ -462,6 +484,13 @@ def read_vicon_csv_pl2(
     Xarray DataArray.
 
     """
+    try:
+        import polars as pl
+    except:
+        raise ImportError(
+            "Polars package not instaled. Install it if you want to use the accelerated version"
+        )
+
     print("alternativo")
     if section in ["Forces", "EMG"]:
         n_block = "Devices"
@@ -474,8 +503,17 @@ def read_vicon_csv_pl2(
             f"Section '{section}' not recognized\nTry with 'Trajectories', 'Model Outputs', 'Forces', 'EMG', 'Model Outputs EMG'"
         )
 
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
     # Ensures that file is a csv file
     file = file.with_suffix(".csv")
+
+    n_head = []
+    n_subhead = []
 
     # ----Check for blank lines. In current Polars (0.17.2) line breaks do not match when starting with blank line
     offset_blank_ini = 0
@@ -646,6 +684,8 @@ def read_vicon_csv_pl2(
                 .astype(float)
                 .transpose("n_var", "axis", "time")
             )
+        else:
+            raise ValueError(f"Section {section} not recognized")
 
         da.name = section
         da.attrs["freq"] = freq
@@ -714,6 +754,12 @@ def read_vicon_csv_pd(
         import pandas as pd
     except:
         raise ImportError("Pandas package not instaled")
+
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
 
     with open(file, mode="rt") as f:
         num_line = 0

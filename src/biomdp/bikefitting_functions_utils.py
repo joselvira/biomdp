@@ -1578,9 +1578,12 @@ def slice_model_bikefitting_xr_cinem(
 # --------------------------------------------
 
 
-def slice_model_bikefitting_xr_EMG(daDatos, num_cortes=12, show=False) -> xr.DataArray:
+def slice_model_bikefitting_xr_EMG(
+    daDatos: xr.DataArray, num_cortes: int = 12, show: bool = False
+) -> xr.DataArray:
     # from detecta import detect_peaks
     # from cortar_repes_ciclicas import detect_onset_aux
+
     print(f"Segmentando {len(daDatos.ID)} archivos.")
     daL = stsp(
         data=daDatos.sel(side="L"),
@@ -1742,6 +1745,11 @@ def calculate_descrip_anthropo_global(daData, daDataNorm):
 
     print("ATTENTION! THIS VERSION IS CURRENTLY BASED ON NORMALIZED DATA")
 
+    # Anatomical distances, measured in 180º position of the crank.
+    HJC = daDataNorm.sel(side=["L", "R"], n_var="HJC", AngBielaInRepe=180)
+    KJC = daDataNorm.sel(side=["L", "R"], n_var="KJC", AngBielaInRepe=180)
+    AJC = daDataNorm.sel(side=["L", "R"], n_var="AJC", AngBielaInRepe=180)
+
     if "LengthMuslo" in daData.n_var:
         muslo = (
             daDataNorm.sel(n_var="LengthMuslo", AngBielaInRepe=180, axis="x")
@@ -1749,10 +1757,6 @@ def calculate_descrip_anthropo_global(daData, daDataNorm):
             .mean("phase")
         )
     else:
-        # Distancias anatómicas, se mide en posición 180º de biela
-        HJC = daDataNorm.sel(side=["L", "R"], n_var="HJC", AngBielaInRepe=180)
-        KJC = daDataNorm.sel(side=["L", "R"], n_var="KJC", AngBielaInRepe=180)
-        AJC = daDataNorm.sel(side=["L", "R"], n_var="AJC", AngBielaInRepe=180)
         muslo = (
             np.sqrt(
                 (HJC.sel(axis="x") - KJC.sel(axis="x")) ** 2

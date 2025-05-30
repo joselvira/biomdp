@@ -9,13 +9,17 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.5.5"
-__date__ = "08/03/2025"
+__version__ = "v.1.6.0"
+__date__ = "22/05/2025"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    22/05/2025, v.1.6.0
+        - Included function to load Vicon CSV files and convert them to parquet.
+        - Some types adjustments.
+
     08/03/2025, v.1.5.5
         - Adapted to biomdp with translations.
         - Derived from trata_fuerzas_saltos.py
@@ -217,7 +221,9 @@ def create_standard_jump_events(daData: xr.DataArray) -> xr.DataArray:
     ).copy()
 
 
-def assign_subcategories_xr(da: xr.DataArray, n_project: str = None) -> xr.DataArray:
+def assign_subcategories_xr(
+    da: xr.DataArray, n_project: str | None = None
+) -> xr.DataArray:
 
     if len(da.ID.to_series().iloc[0].split("_")) == 5:
         da = da.assign_coords(
@@ -356,7 +362,7 @@ def integrate_full(daData: xr.DataArray, daEvents: xr.DataArray) -> xr.DataArray
 
 
 def df_to_da(
-    dfData: pl.DataFrame,
+    dfData: pl.DataFrame | pd.DataFrame,
     merge_2_plats: int = 1,
     n_project: str | None = None,
     show: bool = False,
@@ -457,12 +463,12 @@ def split_dim_repe(daData: xr.DataArray) -> xr.DataArray:
 
 # Versión con nombres repe originales
 def split_dim_repe_logsheet(
-    daData: xr.DataArray, log_sheet: pd.DataFrame = None
+    daData: xr.DataArray, log_sheet: pd.DataFrame | None = None
 ) -> xr.DataArray:
     # Traduce desde ID a dimensión repe respetando el número de la repe original de la hoja de registro
     if log_sheet is None:
-        print("You must specify the Dataframe with the log sheet")
-        return
+        raise ValueError("You must specify the Dataframe with the log sheet")
+
     h_r = log_sheet.iloc[:, 1:].dropna(how="all")
 
     rep0 = []
@@ -698,9 +704,62 @@ def read_kistler_c3d(
     return da
 
 
+def from_vicon_csv_to_parquet(
+    path: str | Path,
+    sections: List[str] | None = None,
+    n_vars_load: List[str] | None = None,
+) -> None:
+    from biomdp.io.read_vicon_csv import read_vicon_csv
+
+    if isinstance(path, str):
+        path = Path(path)
+
+    if sections is None:
+        sections = ["Trajectories", "Model Outputs", "Forces", "EMG"]
+
+    file_list = sorted(list(path.glob("*.csv")))  # "**/*.csv"
+    file_list = [x for x in file_list if "error" not in x.name]
+    # file_list.sort()
+
+    print("Loading files...")
+    timer_carga = time.perf_counter()
+
+    error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
+    num_processed_files = 0
+    for n, file in enumerate(file_list):
+        print(f"Loading file: {n}/{len(file_list)} {file.name}")
+        try:
+            dfFull = []
+            for sec in sections:
+                try:
+                    dfFull.append(read_vicon_csv(file, section=sec, raw=True))
+                except:
+                    pass
+            dfProvis = pl.concat(dfFull, how="horizontal")
+            dfProvis.write_parquet(file.with_suffix(".parquet"))
+
+            # daProvis.isel(ID=0, n_var=0, axis=-1).plot.line(x='time')
+            num_processed_files += 1
+
+        except Exception as err:  # Si falla anota un error y continua
+            print("\nATTENTION. Unable to process " + file.name, err, "\n")
+            error_files.append(f"{file.name}  {str(err)}")
+            continue
+
+    print(
+        f"Loaded {num_processed_files} files from {len(file_list)} in {time.perf_counter() - timer_carga:.3f} s \n"
+    )
+
+    # Si no ha podido cargar algún archivo, lo indica
+    if len(error_files) > 0:
+        print("\nATTENTION: unable to load")
+        for x in range(len(error_files)):
+            print(error_files[x])
+
+
 def load_merge_vicon_csv(
     path: str | Path,
-    section: str | None = None,
+    section: str = "Model Outputs",
     n_vars_load: List[str] | None = None,
     n_project: str | None = None,
     data_type: str | None = None,
@@ -709,12 +768,15 @@ def load_merge_vicon_csv(
 ) -> xr.DataArray:
     from biomdp.io.read_vicon_csv import read_vicon_csv
 
+    if isinstance(path, str):
+        path = Path(path)
+
     file_list = sorted(list(path.glob("**/*.csv")))
     file_list = [x for x in file_list if "error" not in x.name]
     # file_list.sort()
 
     print("Loading files...")
-    timer_carga = time.perf_timer()  # inicia el contador de tiempo
+    timer_carga = time.perf_counter()
 
     daAll = (
         []
@@ -739,7 +801,7 @@ def load_merge_vicon_csv(
             continue
 
     print(
-        f"Loaded {num_processed_files} files from {len(file_list)} in {time.perf_timer() - timer_carga:.3f} s \n"
+        f"Loaded {num_processed_files} files from {len(file_list)} in {time.perf_counter() - timer_carga:.3f} s \n"
     )
 
     # Si no ha podido cargar algún archivo, lo indica
@@ -762,7 +824,7 @@ def load_merge_vicon_csv(
 def load_merge_vicon_csv_logsheet(
     path,
     log_sheet=None,
-    section=None,
+    section: str = "Model Outputs",
     n_vars_load=None,
     n_project=None,
     data_type=None,
@@ -773,19 +835,16 @@ def load_merge_vicon_csv_logsheet(
     from biomdp.io.read_vicon_csv import read_vicon_csv
 
     if log_sheet is None:
-        print("You must specify the Dataframe with the log sheet")
-        return
+        raise ValueError("You must specify the Dataframe with the log sheet")
+
     h_r = log_sheet.iloc[:, 1:].dropna(how="all")
     # file_list = sorted(list(path.glob('**/*.csv')))#incluye los que haya en subcarpetas
     # file_list = [x for x in file_list if 'error' not in  x.name] #selecciona archivos
     # file_list.sort()
 
     print("Loading files...")
-    timer_carga = time.time()  # inicia el contador de tiempo
-
-    daAll = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
+    timer_carga = time.time()
+    daAll = []
     error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
     num_processed_files = 0
 
@@ -805,6 +864,11 @@ def load_merge_vicon_csv_logsheet(
                         daAll.append(daProvis)
                         # daProvis.isel(ID=0, n_var=0, axis=-1).plot.line(x='time')
                         num_processed_files += 1
+                        """
+                        read_vicon_csv(
+                            file, section='Forces', n_vars_load=n_vars_load
+                        )
+                        """
 
                     except Exception as err:  # Si falla anota un error y continua
                         print(
@@ -846,20 +910,18 @@ def load_merge_vicon_c3d_logsheet(
     from biomdp.io.read_vicon_c3d import read_vicon_c3d
 
     if log_sheet is None:
-        print("You must specify the Dataframe with the log sheet")
-        return
+        raise ValueError("You must specify the Dataframe with the log sheet")
+
     h_r = log_sheet.iloc[:, 1:].dropna(how="all")
     # file_list = sorted(list(path.glob('**/*.csv')))#incluye los que haya en subcarpetas
     # file_list = [x for x in file_list if 'error' not in  x.name] #selecciona archivos
     # file_list.sort()
 
     print("Loading files...")
-    timer_carga = time.time()  # inicia el contador de tiempo
+    timer_carga = time.time()
 
-    daAll = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
-    error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
+    daAll = []
+    error_files = []
     num_processed_files = 0
 
     for S in h_r.index:
@@ -918,11 +980,12 @@ def load_merge_vicon_c3d_logsheet(
 
 
 def load_merge_bioware_pl(
-    path: Union[Path, str],
-    n_vars_load: Union[str, List[str]] = None,
-    n_project: str = None,
-    data_type: str = None,
+    path: Path | str,
+    n_vars_load: List[str] | None = None,
+    n_project: str | None = None,
+    data_type: str | None = None,
     lin_header: int = 17,
+    n_col_time: str = "abs time",
     merge_2_plats: int = 1,
     show: bool = False,
 ) -> xr.DataArray:
@@ -962,11 +1025,16 @@ def load_merge_bioware_pl(
     dfTodosArchivos : pandas DataFrame
         DESCRIPTION.
 
-    """
-    from biomdp.io.read_kistler_txt import read_kistler_txt_pl
+    Note: since BioWare Version 5.6.1.0 time column changed from "abs time (s)" to "abs time"
 
-    if data_type is None:
-        data_type = float
+    """
+    from biomdp.io.read_kistler_txt import read_kistler_txt
+
+    if isinstance(path, str):
+        path = Path(path)
+
+    # if data_type is None:
+    #     data_type = float
 
     file_list = sorted(
         list(path.glob("**/*.txt"))
@@ -974,7 +1042,7 @@ def load_merge_bioware_pl(
     file_list = [x for x in file_list if "error" not in x.name]  # selecciona archivos
 
     if n_vars_load is None:  # si no vienen impuestas las columnas a cargar
-        n_vars_load = ["abs time (s)"]  # , 'Fx', 'Fy', 'Fz']
+        n_vars_load = [n_col_time]  # , 'Fx', 'Fy', 'Fz']
         if merge_2_plats != 2:  # in [0,1]:
             n_vars_load += ["Fx", "Fy", "Fz"]  # ['Fx.1', 'Fy.1', 'Fz.1']
             if merge_2_plats != 1:
@@ -991,7 +1059,7 @@ def load_merge_bioware_pl(
             ]  # ['Fx.1', 'Fy.1', 'Fz.1']
 
     print("\nLoading files...")
-    timerCarga = time.perf_counter()  # inicia el contador de tiempo
+    timerCarga = time.perf_counter()
 
     num_loaded_files = 0
     dfData = (
@@ -1002,9 +1070,15 @@ def load_merge_bioware_pl(
     for nf, file in enumerate(file_list):
         print(f"Loading file num. {nf}/{len(file_list)}: {file.name}")
         try:
-            timerSub = time.perf_counter()  # inicia el contador de tiempo
+            timerSub = time.perf_counter()
 
-            dfProvis = read_kistler_txt_pl(file, lin_header, n_vars_load, raw=True)
+            dfProvis = read_kistler_txt(file, lin_header, n_vars_load, raw=True)
+
+            particip = "X"
+            tipo = "X"
+            subtipo = "X"
+            if n_project is None:
+                n_project = "projectX"
 
             if len(file.stem.split("_")) == 5:
                 n_project = file.stem.split("_")[0] if n_project is None else n_project
@@ -1020,11 +1094,9 @@ def load_merge_bioware_pl(
                 particip = file.stem.split("_")[0]
                 tipo = file.stem.split("_")[-2]
                 subtipo = "X"
-            if n_project is None:
-                n_project = "EstudioX"
 
             repe = str(int(file.stem.split("_")[-1]))  # int(file.stem.split('.')[0][-1]
-            ID = f"{n_project}_{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_project}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
+            ID = f"{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_project}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
 
             # freq = np.round(1/(dfProvis['time'][1]-dfProvis['time'][0]),1)
 
@@ -1068,16 +1140,14 @@ def load_merge_bioware_pl(
         for x in range(len(error_files)):
             print(error_files[x])
 
-    if isinstance(
-        data_type, str
-    ):  # si se ha definido algún tipo de datos, por defecto es 'float64'
+    if data_type is not None:
         cast = pl.Float32() if data_type == "float32" else pl.Float64()
         dfData = dfData.select(
             # pl.col(['n_project', 'tipo', 'subtipo', 'ID', 'repe']),
             pl.exclude(n_vars_load),
             pl.col(n_vars_load).cast(cast),
         )
-    dfData = dfData.rename({"abs time (s)": "time"})  # , 'Fx':'x', 'Fy':'y', 'Fz':'z'})
+    dfData = dfData.rename({n_col_time: "time"})  # , 'Fx':'x', 'Fy':'y', 'Fz':'z'})
 
     daAll = df_to_da(dfData, merge_2_plats=merge_2_plats, n_project=n_project)
 
@@ -1187,8 +1257,8 @@ def load_merge_bioware_pd(
     """
     from biomdp.io.read_kistler_txt import read_kistler_txt
 
-    if data_type is None:
-        data_type = float
+    # if data_type is None:
+    #     data_type = float
 
     file_list = sorted(
         list(path.glob("**/*.txt"))
@@ -1213,7 +1283,7 @@ def load_merge_bioware_pd(
             ]
 
     print("\nLoading files...")
-    timerCarga = time.perf_counter()  # inicia el contador de tiempo
+    timerCarga = time.perf_counter()
 
     num_loaded_files = 0
     dfData = (
@@ -1224,9 +1294,15 @@ def load_merge_bioware_pd(
     for nf, file in enumerate(file_list):
         print(f"Loading file num. {nf}/{len(file_list)}: {file.name}")
         try:
-            timerSub = time.perf_counter()  # inicia el contador de tiempo
+            timerSub = time.perf_counter()
 
             dfProvis = read_kistler_txt(file, lin_header, n_vars_load)
+
+            particip = "X"
+            tipo = "X"
+            subtipo = "X"
+            if n_project is None:
+                n_project = "projectX"
 
             if len(file.stem.split("_")) == 5:
                 n_project = file.stem.split("_")[0] if n_project is None else n_project
@@ -1242,8 +1318,6 @@ def load_merge_bioware_pd(
                 particip = file.stem.split("_")[0]
                 tipo = file.stem.split("_")[-2]
                 subtipo = "X"
-            if n_project is None:
-                n_project = "EstudioX"
 
             repe = str(int(file.stem.split("_")[-1]))  # int(file.stem.split('.')[0][-1]
             ID = f"{particip}_{tipo}_{subtipo}_{repe}"  # f'{n_project}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
@@ -1286,9 +1360,7 @@ def load_merge_bioware_pd(
         for x in range(len(error_files)):
             print(error_files[x])
 
-    if isinstance(
-        data_type, str
-    ):  # si se ha definido algún tipo de datos, por defecto es 'float64'
+    if data_type is not None:
         dfData = dfData.astype(data_type)
 
     dfData = dfData.rename(
@@ -1365,12 +1437,16 @@ def load_merge_bioware_c3d(
     assign_subcat: bool = True,
     show: bool = False,
 ) -> xr.DataArray:
+
     # from read_kistler_c3d import read_kistler_c3d_xr
     from biomdp.io import read_kistler_c3d as rkc3d
 
+    if isinstance(path, str):
+        path = Path(path)
+
     # path = Path(r'F:\Investigacion\Proyectos\Saltos\PotenciaDJ\Registros\2023PotenciaDJ\S01')
-    if data_type is None:
-        data_type = float
+    # if data_type is None:
+    #     data_type = 'float64'
 
     file_list = sorted(
         list(path.glob("*.c3d"))
@@ -1388,7 +1464,7 @@ def load_merge_bioware_c3d(
     """
 
     print("\nLoading files...")
-    timerCarga = time.perf_counter()  # inicia el contador de tiempo
+    timerCarga = time.perf_counter()
 
     num_loaded_files = 0
     daAll = []
@@ -1396,7 +1472,7 @@ def load_merge_bioware_c3d(
     for nf, file in enumerate(file_list):
         print(f"Loading file num. {nf+1}/{len(file_list)}: {file.name}")
         try:
-            timerSub = time.perf_counter()  # inicia el contador de tiempo
+            timerSub = time.perf_counter()
 
             """
             #Asigna etiquetas de categorías                   
@@ -1420,7 +1496,7 @@ def load_merge_bioware_c3d(
             repe = str(int(file.stem.split('_')[-1])) #int(file.stem.split('.')[0][-1]
             ID = f'{estudio}_{particip}_{tipo}_{subtipo}_{repe}' #f'{estudio}_{file.stem.split("_")[0]}_{tipo}_{subtipo}'
             """
-            daProvis = rkc3d.read_kistler_c3d_xr(file).expand_dims(
+            daProvis = rkc3d.read_kistler_c3d(file).expand_dims(
                 {"ID": ["_".join(file.stem.split("_"))]}, axis=0
             )  # Añade columna ID
 
@@ -1473,6 +1549,9 @@ def load_merge_bioware_c3d(
 def load_preprocessed(
     work_path: str | Path, n_preprocessed_file: str, jump_test: str
 ) -> xr.DataArray:
+    if isinstance(work_path, str):
+        work_path = Path(work_path)
+
     if Path((work_path / (n_preprocessed_file)).with_suffix(".nc")).is_file():
         tpo = time.time()
         daData = xr.load_dataarray(
@@ -1535,8 +1614,8 @@ def fix_zero_adjustment(daData: xr.DataArray) -> xr.DataArray:
 def check_similar_ini_end(
     daData: xr.DataArray,
     margin: float | int = 20,
-    window: int | None = None,
-    returns: str = None,
+    window: int | float | None = None,
+    returns: str | None = None,
     show: bool = False,
 ) -> xr.DataArray:
     """Better than with .where for shorter records, filled with nan.
@@ -1547,15 +1626,15 @@ def check_similar_ini_end(
     window: duration of the window at the end to check. It can be passed in seconds (float)
              or in no. of frames (int).
     """
+    if "freq" not in daData.attrs:
+        raise ValueError("daData must have 'freq' attribute defined")
 
     if window is None:
-        window = [int(0.5 * daData.freq), int(0.5 * daData.freq)]
-    elif isinstance(
-        window, int
-    ):  # si se se envía un entero se asume que en nº de datos
-        window = [window, window]
-    elif isinstance(window, float):  # si se se envía un flozt se asume que en segundos
-        window = [int(window * daData.freq), int(window * daData.freq)]
+        _window = [int(0.5 * daData.freq), int(0.5 * daData.freq)]
+    elif isinstance(window, int):  # if int assumes num. of data
+        _window = [window, window]
+    elif isinstance(window, float):  # if float assumes in seconds
+        _window = [int(window * daData.freq), int(window * daData.freq)]
 
     def _resta_ini_end_aux(data, margin, ventana0, ventana1, returns, ID):
         resta = np.nan
@@ -1576,8 +1655,8 @@ def check_similar_ini_end(
         _resta_ini_end_aux,
         daDatosZ,
         margin,
-        window[0],
-        window[1],
+        _window[0],
+        _window[1],
         returns,
         daData.ID,
         input_core_dims=[["time"], [], [], [], [], []],
@@ -1710,12 +1789,23 @@ def check_flat_window(
             elif returns == "continuous":
                 do_not_comply = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
                 if len(do_not_comply.ID) > 0:
-                    do_not_comply.plot.line(x="time", alpha=0.5, add_legend=False)
-                    plt.title(
+                    if "repe" in do_not_comply.coords:
+                        do_not_comply.plot.line(
+                            x="time",
+                            col="repe",
+                            alpha=0.5,
+                            add_legend=False,
+                            sharey=False,
+                        )
+                    else:
+                        do_not_comply.plot.line(
+                            x="time", alpha=0.5, add_legend=False, sharey=False
+                        )
+                    plt.suptitle(
                         f"Graph with the {len(do_not_comply)} that do not meet the criterion '{kind}' < {threshold}",
                         fontsize=10,
                     )
-                    graphs_events(daRecortes.sel(ID=do_not_comply.ID), sharey=True)
+                    graphs_events(daRecortes.sel(ID=do_not_comply.ID), sharey=False)
                 else:
                     print(r"\nAll records meet the criterion")
 
@@ -1784,16 +1874,18 @@ def check_flat_window(
             print(f"Returned {len(daCorrectos.ID)} records continuous.")
             return daData.loc[dict(ID=daData.ID.isin(daCorrectos.ID))]
 
-    print(r"It seems that the type of data to be returned has not been specified.")
+    raise ValueError(
+        r"It seems that the type of data to be returned has not been specified."
+    )
 
 
 def guess_iniend_analysis(
     daData: xr.DataArray,
     daEvents: xr.DataArray,
-    window=[1.5, 1.5],
-    jump_test="CMJ",
-    threshold=20.0,
-    show=False,
+    window: List[float] | float = [1.5, 1.5],
+    jump_test: str = "CMJ",
+    threshold: float = 20.0,
+    show: bool = False,
 ) -> xr.DataArray:
     """
     Attempts to estimate the start and end of the analysis from the center of the flight.
@@ -1801,12 +1893,12 @@ def guess_iniend_analysis(
     if not isinstance(
         window, list
     ):  # si se aporta un solo valor, considera que la mitad es para el inicio y la otra para el final
-        window = np.array([window, window])
+        _window = np.array([window, window])
     else:
-        window = np.array(window)
+        _window = np.array(window)
 
     # Transforma a escala de fotogramas
-    window = window * daData.freq
+    _window = _window * daData.freq
 
     if jump_test == "DJ2P":
         # Busca primer aterrizaje provisional
@@ -1817,7 +1909,7 @@ def guess_iniend_analysis(
                 # Busca primer aterrizaje
                 aterr = detect_onset(
                     -data,
-                    threshold=-threshold,
+                    threshold=int(-threshold),
                     n_above=int(0.05 * daData.freq),
                     show=show,
                 )[0, 0]
@@ -1843,11 +1935,11 @@ def guess_iniend_analysis(
         ).sel(event="aterrizaje")
 
         daEvents.loc[dict(event="iniAnalisis")] = xr.where(
-            (aterr1 - window[0]) >= 0, aterr1 - window[0], 0
+            (aterr1 - _window[0]) >= 0, aterr1 - _window[0], 0
         )  # .astype(int)
         daEvents.loc[dict(event="finAnalisis")] = xr.where(
-            (aterr2 + window[1]) < len(daData.time),
-            aterr2 + window[1] - 1,
+            (aterr2 + _window[1]) < len(daData.time),
+            aterr2 + _window[1] - 1,
             len(daData.time) - 1,
         )  # .astype(int)
 
@@ -1861,14 +1953,14 @@ def guess_iniend_analysis(
 
         daEvents.loc[dict(event="iniAnalisis")] = xr.where(
             desp.notnull(),
-            xr.where((desp - window[0]) >= 0, desp - window[0], 0),
+            xr.where((desp - _window[0]) >= 0, desp - _window[0], 0),
             np.nan,
         )
         daEvents.loc[dict(event="finAnalisis")] = xr.where(
             desp.notnull(),
             xr.where(
-                (aterr + window[1] - 1) < len(daData.time),
-                aterr + window[1] - 1,
+                (aterr + _window[1] - 1) < len(daData.time),
+                aterr + _window[1] - 1,
                 len(daData.time) - 1,
             ),
             np.nan,
@@ -1884,7 +1976,7 @@ def guess_iniend_analysis(
 
 
 def calculate_weight(
-    daData: xr.DataArray, weight_window: xr.DataArray = None, show: bool = False
+    daData: xr.DataArray, weight_window: xr.DataArray, show: bool = False
 ) -> xr.DataArray:
     if "axis" in daData.dims:
         daData = daData.sel(axis="z")
@@ -1970,8 +2062,8 @@ def calculate_weight(
 
 def finetune_end(
     daData: xr.DataArray,
-    daEvents: xr.DataArray = None,
-    daWeight: xr.DataArray = None,
+    daEvents: xr.DataArray,
+    daWeight: xr.DataArray,
     window: float = 0.2,
     margin: float = 0.005,
     kind: str = "opt",
@@ -2147,7 +2239,7 @@ def finetune_end(
         evIni = "despegue"
         evFin = "finAnalisis"
     else:
-        raise (f"Calculation method '{kind}' not implemented")
+        raise ValueError(f"Calculation method '{kind}' not implemented")
 
     daPesoReturn = xr.apply_ufunc(
         f_calculo,
@@ -2173,8 +2265,8 @@ def finetune_end(
 
 def finetune_weight(
     daData: xr.DataArray,
-    daEvents: xr.DataArray = None,
-    daWeight: xr.DataArray = None,
+    daEvents: xr.DataArray,
+    daWeight: xr.DataArray,
     margin: float = 0.005,
     kind: str = "opt",
     show: bool = False,
@@ -2391,6 +2483,7 @@ def finetune_weight(
             delta_peso = 1
             tend_pes = []
             v = np.full(len(data), 20.0)
+            v0 = v
             for i in range(1000):
                 v0 = _integra(data, t, pes) / (pes / 9.8)
                 v1 = _integra(data, t, pes + delta_peso) / (pes + delta_peso / 9.8)
@@ -2625,7 +2718,10 @@ def finetune_weight(
 
 
 def detect_takeoff_landing(
-    daData: xr.DataArray, jump_test: str, threshold: float = 10.0, show: bool = False
+    daData: xr.DataArray,
+    jump_test: str | None,
+    threshold: float = 10.0,
+    show: bool = False,
 ) -> xr.DataArray:
     if "axis" in daData.dims:
         daData = daData.sel(axis="z")
@@ -2805,8 +2901,8 @@ def detect_takeoff_landing_cusum(
 
 def detect_ini_mov(
     daData: xr.DataArray,
-    daWeight: xr.DataArray = None,
-    daEvents: xr.DataArray = None,
+    daWeight: xr.DataArray,
+    daEvents: xr.DataArray,
     jump_test: str = "CMJ",
     SDx: int = 5,
     threshold: float = 10.0,
@@ -2853,7 +2949,7 @@ def detect_ini_mov(
             threshold=-(weight - weight_threshold),
             n_above=int(win_down * daData.freq),
             threshold2=-(weight - weight_threshold) * 1.2,
-            n_above2=int(win_down * daData.freq) * 0.5,
+            n_above2=int(win_down * daData.freq * 0.5),
             show=show,
         )
         if ini1.size != 0:
@@ -3173,8 +3269,8 @@ def detect_ini_mov(
 
 def detect_end_mov(
     daData: xr.DataArray,
-    daWeight: xr.DataArray = None,
-    daEvents: xr.DataArray = None,
+    daWeight: xr.DataArray | None = None,
+    daEvents: xr.DataArray | None = None,
     jump_test: str = "CMJ",
     kind: str = "force",
     SDx: int = 2,
@@ -4027,27 +4123,31 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
 
 def graphs_events(
     daData: xr.DataArray,
-    daEvents: xr.DataArray = None,
-    daWeight: xr.DataArray = None,
+    daEvents: xr.DataArray | None = None,
+    daWeight: xr.DataArray | None = None,
     num_per_block: int = 4,
     show_in_console: bool = True,
     adjust_iniend: bool = False,
     sharey: bool = False,
-    work_path: Path | str = None,
-    n_file_graph_global: str = None,
+    work_path: Path | str | None = None,
+    n_file_graph_global: str | None = None,
 ) -> None:
     """
     num_per_block is used to adjust the number of graphs per sheet. If the data
     have repe dimension, num_per_block indicates the number of rows per sheet with repeat columns.
-    If they do not have repe, each sheet has num_per_block x num_per_block plots."""
-    timerGraf = time.perf_counter()  # inicia el contador de tiempo
+    If they do not have repe, each sheet has num_per_block x num_per_block plots.
+    """
+    # if isinstance(work_path, str):
+    #     work_path = Path(work_path)
+
+    timerGraf = time.perf_counter()
     print("\nCreating graphs...")
 
     # import seaborn as sns
 
     # Si no se incluye nombre archivo no guarda el pdf
-    if n_file_graph_global != None:
-        if not isinstance(work_path, Path):
+    if n_file_graph_global is not None and work_path is not None:
+        if isinstance(work_path, str):
             work_path = Path(work_path)
         nompdf = (work_path / n_file_graph_global).with_suffix(".pdf")
         pdf_pages = PdfPages(nompdf)
@@ -4063,7 +4163,7 @@ def graphs_events(
     ):  # por si se envía un da filtrado por eje
         daWeight = daWeight.sel(axis="z")
 
-    if adjust_iniend:
+    if adjust_iniend and daEvents is not None:
         ini = daEvents.isel(event=daEvents.argmin(dim="event"))
         daData = trim_analysis_window(
             daData, daEvents.sel(event=["iniAnalisis", "finAnalisis"])
@@ -4074,25 +4174,26 @@ def graphs_events(
     # Por si no hay dimensión 'repe'
     if "repe" in daData.dims:  # dfDatos.columns:
         fils_cols = dict(row="ID", col="repe")
-    else:
-        fils_cols = dict(col="ID", col_wrap=num_per_block)
-
-    if "repe" in daData.dims:
         distribuidor = num_per_block
     else:
+        fils_cols = dict(col="ID", col_wrap=num_per_block)
         distribuidor = num_per_block**2
+
+    # if "repe" in daData.dims:
+    #     distribuidor = num_per_block
+    # else:
+    #     distribuidor = num_per_block**2
 
     # daData.drop_vars('tipo').plot.line(x='time',col='ID')
     # daData.to_pandas().T.plot()
     for n in range(0, len(daData.ID), distribuidor):
         dax = daData.isel(ID=slice(n, n + distribuidor))
-
         g = dax.plot.line(
             x="time", alpha=0.8, aspect=1.5, sharey=sharey, **fils_cols
         )  # , lw=1)
         _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents)
 
-        if n_file_graph_global is not None:
+        if n_file_graph_global is not None and work_path is not None:
             pdf_pages.savefig(g.fig)
 
         print(f"Graphs Completed {n} at {n + distribuidor} of {len(daData.ID)}")
@@ -4227,7 +4328,7 @@ def graphs_all_variables(
 
     # daData.loc[dict(variable='P')] = daData.loc[dict(variable='P')] / daWeight.sel(stat='media')
 
-    timerGraf = time.time()  # inicia el contador de tiempo
+    timerGraf = time.time()
     print("\nCreating graphs...")
 
     # import seaborn as sns
@@ -4301,7 +4402,7 @@ def graphs_weight_check(
     """
     allowed_window: time in seconds ahead and ahead and behind iniPeso and endPeso
     """
-    timer_graf = time.time()  # inicia el contador de tiempo
+    timer_graf = time.time()
     print("\nCreating graphs...")
 
     # import seaborn as sns
@@ -4621,7 +4722,7 @@ def graphs_weight_check(
 
 # TODO: REPLACE WITH slice_time_series_phases.trim_window
 def trim_analysis_window(
-    daData: xr.DataArray, daEvents: xr.DataArray = None, window=None
+    daData: xr.DataArray | xr.Dataset, daEvents: xr.DataArray, window=None
 ) -> xr.DataArray:
     """
     If a value is passed to window, only one event should be passed.
@@ -4748,21 +4849,24 @@ def adjust_offsetFz_flight_min(
 
 def adjust_offsetFz(
     daData: xr.DataArray,
-    jump_test: str = None,
+    jump_test: str | None = None,
     threshold: float = 20.0,
     pct_window: int = 5,
     kind: str = "flight",
     show: bool = False,
 ) -> xr.DataArray:
     """
-    "The offset voltage of the unloaded force platform was determined by finding the 0.4 s
-    moving average during the flight phase with the smallest standard deviation."
-    Street, G., McMillan, S., Board, W., Rasmussen, M., & Heneghan, J. M. (2001). Sources of Error in Determining Countermovement Jump Height with the Impulse Method. Journal of Applied Biomechanics, 17(1), 43-54. https://doi.org/10.1123/jab.17.1.43
-
-    Better to apply it before filtering
+    Apply in case of erroneous force plate offset.
+    Better to apply it before filtering.
 
     kind: one of "mean", "flight", "threshold"
+
+    Reference: "The offset voltage of the unloaded force platform was determined by finding the 0.4 s
+    moving average during the flight phase with the smallest standard deviation."
+    Street, G., McMillan, S., Board, W., Rasmussen, M., & Heneghan, J. M. (2001).
+    Sources of Error in Determining Countermovement Jump Height with the Impulse Method. Journal of Applied Biomechanics, 17(1), 43-54. https://doi.org/10.1123/jab.17.1.43
     """
+
     if kind not in ["mean", "flight", "threshold"]:
         raise ValueError(r"kind must be one of 'mean', 'flight' or 'threshold'")
 
@@ -4832,7 +4936,9 @@ def adjust_offsetFz(
                 )
                 * pct_window
                 / 100
-            ).astype(np.int32)
+            ).astype(
+                np.int32
+            )  # TODO: CHECK FOR NAN
             vuelo.loc[dict(event="despegue")] += recorte_ventana
             vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
 
@@ -5019,7 +5125,7 @@ def adjust_offset_s(
 
 def reset_Fz_flight(
     daData: xr.DataArray,
-    jump_test: str = None,
+    jump_test: str | None = None,
     threshold: float = 20.0,
     pct_window: int = 5,
     show: bool = False,
@@ -5928,7 +6034,7 @@ if __name__ == "__main__":
     # TEST AS CLASS
     # =============================================================================
 
-    """work_path = Path(r"src\datasets")
+    r"""work_path = Path(r"src\datasets")
     file = work_path / "kistler_CMJ_1plate.txt"
     daCMJ = (
         read_kistler_txt(file)
