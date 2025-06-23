@@ -804,7 +804,7 @@ def calculate_angles_segments(dsRlG, verbose=False) -> xr.Dataset:
 
 def calculate_angles_joints(
     dsRlG: xr.Dataset,
-    daTrajec: xr.DataArray | None = None,
+    daTrajec: xr.DataArray,
     complete_model: bool = False,
     verbose: bool = False,
 ) -> xr.Dataset:

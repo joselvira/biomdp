@@ -29,17 +29,14 @@ Updates:
 
 """
 
-from typing import List, Any
-import numpy as np
-
-import pandas as pd
-import xarray as xr
-
 # import polars as pl
-
 import time
 from pathlib import Path
+from typing import Any, List
 
+import numpy as np
+import pandas as pd
+import xarray as xr
 
 # =============================================================================
 # %% Functions
@@ -180,7 +177,6 @@ def read_kistler_txt_pl(
                 da.attrs["units"] = "N"
 
             elif magnitude == "cop":
-
                 try:
                     x = df.select(pl.col("^*Ax.*$")).to_numpy()
                     y = df.select(pl.col("^*Ay.*$")).to_numpy()
@@ -228,7 +224,6 @@ def read_kistler_txt_pd(
     raw: bool = False,
     magnitude: str = "force",
 ) -> xr.DataArray | pd.DataFrame | None:
-
     if isinstance(file, str):
         file = Path(file)
 
@@ -480,7 +475,6 @@ def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
 # %% TESTS
 # =============================================================================
 if __name__ == "__main__":
-
     # from biomdp.io.read_kistler_txt import read_kistler_c3d_xr, read_kistler_ezc3d_xr
 
     work_path = Path(r"src\datasets")
@@ -522,7 +516,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
 
     def test_performance():
@@ -530,7 +524,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
 
     def test_performance():
@@ -538,5 +532,5 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
