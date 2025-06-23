@@ -58,21 +58,21 @@ Updates:
     09/06/2022, v0.0.1
                 - 
 """
+import os
+import sys
+import time
+from pathlib import Path
 from typing import List
-import pandas as pd
-import numpy as np
-import xarray as xr
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import xarray as xr
 from matplotlib.backends.backend_pdf import PdfPages  # to save plots in pdf format
 from matplotlib.lines import (
     Line2D,
 )  # to control legend lines fotmat
-import seaborn as sns
-from pathlib import Path
-import time
-
-import os
-import sys
 
 # from biomdp.io.read_vicon_csv import read_vicon_csv, read_vicon_csv
 # from biomdp.io.read_vicon_c3d import read_vicon_c3d
@@ -366,7 +366,6 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
 
     # Separate sides version
     if "side" in daData.coords:
-
         # PELVIS
         # datos_model=np.zeros((len(daDatos.time), 3))
         try:
@@ -394,8 +393,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
 
             dsRlG["Pelvis_LR"] = RlG
 
-        except:
-            print("Unable to calculate segment PELVIS")
+        except Exception as e:
+            print(f"Unable to calculate segment PELVIS. {e}")
 
         # modelado['nombre'].append('AngSegPELVIS_LR')
         # modelado['datos'].append(datos_model)
@@ -417,8 +416,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Muslo_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment MUSLO_L")
+        except Exception as e:
+            print(f"Unable to calculate segment MUSLO_L. {e}")
 
         # ----MUSLO_R
         try:
@@ -435,8 +434,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Muslo_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment MUSLO_R")
+        except Exception as e:
+            print(f"Unable to calculate segment MUSLO_R. {e}")
 
         # ----PIERNA_L
         try:
@@ -454,8 +453,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
 
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment PIERNA_L")
+        except Exception as e:
+            print(f"Unable to calculate segment PIERNA_L. {e}")
 
         # ----PIERNA_R
         try:
@@ -472,8 +471,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Pierna_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment PIERNA_R")
+        except Exception as e:
+            print(f"Unable to calculate segment PIERNA_R. {e}")
 
         # ----RETROPIE_L
         if "Meta" in daData.n_var:
@@ -485,7 +484,6 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             )
 
         try:
-
             origen = daData.sel(n_var="TalonInf", side="L")
             y = daMeta.sel(side="L") - daData.sel(n_var="TalonSup", side="L")
             vprovis = daData.sel(n_var="TalonSup", side="L") - daData.sel(
@@ -499,8 +497,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Retropie_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment RETROPIE_L")
+        except Exception as e:
+            print(f"Unable to calculate segment RETROPIE_L. {e}")
 
         # ----RETROPIE_R
         try:
@@ -517,8 +515,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Retropie_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment RETROPIE_R")
+        except Exception as e:
+            print(f"Unable to calculate segment RETROPIE_R. {e}")
 
         # =============================================================================
         # Modelo parte superior
@@ -540,8 +538,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
                 dsRlG["Lumbar_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-            except:
-                print("Unable to calculate segment LUMBAR")
+            except Exception as e:
+                print(f"Unable to calculate segment LUMBAR. {e}")
 
             # ----TORAX_LR
             try:
@@ -560,8 +558,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
                 dsRlG["Torax_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-            except:
-                print("Unable to calculate segment TORAX")
+            except Exception as e:
+                print(f"Unable to calculate segment TORAX. {e}")
 
             # ----CABEZA_LR
             try:
@@ -579,8 +577,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
                 dsRlG["Cabeza_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-            except:
-                print("Unable to calculate segment CABEZA")
+            except Exception as e:
+                print(f"Unable to calculate segment CABEZA. {e}")
 
         dsRlG = dsRlG.drop_vars(["n_var", "side"])
 
@@ -606,8 +604,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
 
             dsRlG["Pelvis_LR"] = RlG
 
-        except:
-            print("Unable to calculate segment PELVIS")
+        except Exception as e:
+            print(f"Unable to calculate segment PELVIS. {e}")
 
         # modelado['nombre'].append('AngSegPELVIS_LR')
         # modelado['datos'].append(datos_model)
@@ -627,8 +625,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Muslo_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment MUSLO_L")
+        except Exception as e:
+            print(f"Unable to calculate segment MUSLO_L. {e}")
 
         # ----MUSLO_R
         try:
@@ -643,8 +641,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Muslo_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment MUSLO_R")
+        except Exception as e:
+            print(f"Unable to calculate segment MUSLO_R. {e}")
 
         # ----PIERNA_L
         try:
@@ -660,8 +658,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
 
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment PIERNA_L")
+        except Exception as e:
+            print(f"Unable to calculate segment PIERNA_L. {e}")
 
         # ----PIERNA_R
         try:
@@ -676,8 +674,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Pierna_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment PIERNA_R")
+        except Exception as e:
+            print(f"Unable to calculate segment PIERNA_R. {e}")
 
         # ----RETROPIE_L
         try:
@@ -692,8 +690,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Retropie_L"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment RETROPIE_L")
+        except Exception as e:
+            print(f"Unable to calculate segment RETROPIE_L.{e}")
 
         # ----RETROPIE_R
         try:
@@ -708,8 +706,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
             dsRlG["Retropie_R"] = RlG
             # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-        except:
-            print("Unable to calculate segment RETROPIE_R")
+        except Exception as e:
+            print(f"Unable to calculate segment RETROPIE_R. {e}")
 
         # =============================================================================
         # Modelo parte superior
@@ -728,8 +726,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
                 dsRlG["Lumbar_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-            except:
-                print("Unable to calculate segment LUMBAR")
+            except Exception as e:
+                print(f"Unable to calculate segment LUMBAR. {e}")
 
             # ----TORAX_LR
             try:
@@ -746,8 +744,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
                 dsRlG["Torax_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-            except:
-                print("Unable to calculate segment TORAX")
+            except Exception as e:
+                print(f"Unable to calculate segment TORAX. {e}")
 
             # ----CABEZA_LR
             try:
@@ -765,8 +763,8 @@ def calculate_bases(daData: xr.DataArray, complete_model: bool = False) -> xr.Da
                 dsRlG["Cabeza_LR"] = RlG
                 # datos_model.plot.line(x='time', col='ID', col_wrap=4, hue='axis')
 
-            except:
-                print("Unable to calculate segment CABEZA")
+            except Exception as e:
+                print(f"Unable to calculate segment CABEZA. {e}")
 
         dsRlG = dsRlG.drop_vars(["n_var"])
 
@@ -806,7 +804,7 @@ def calculate_angles_segments(dsRlG, verbose=False) -> xr.Dataset:
 
 def calculate_angles_joints(
     dsRlG: xr.Dataset,
-    daTrajec: xr.DataArray,
+    daTrajec: xr.DataArray | None = None,
     complete_model: bool = False,
     verbose: bool = False,
 ) -> xr.Dataset:
@@ -883,8 +881,8 @@ def calculate_angles_joints(
                             vectorize=True
                             )
             """
-        except:
-            print("No se ha podido calcular el ángulo", modeled_name)
+        except Exception as e:
+            print(f"No se ha podido calcular el ángulo {modeled_name}. {e}")
 
     # ----Correcciones signos específicas
     # HIP (# flex +, abd +, rot ext +)
@@ -938,8 +936,8 @@ def calculate_angles_joints(
             )
 
             # dsAngles[modeled_name].plot.line(x='time', row='ID', hue='axis')
-        except:
-            print("No se ha podido calcular el ángulo", modeled_name)
+        except Exception as e:
+            print(f"No se ha podido calcular el ángulo {modeled_name}. {e}")
 
         # ----T6
         modeled_name = "AngArtT6_LR"
@@ -958,8 +956,8 @@ def calculate_angles_joints(
             )
 
             # dsAngles[modeled_name].plot.line(x='time', row='ID', hue='axis')
-        except:
-            print("No se ha podido calcular el ángulo", modeled_name)
+        except Exception as e:
+            print(f"No se ha podido calcular el ángulo {modeled_name}. {e}")
 
         # ----ELBOW_L
         modeled_name = "AngArtElbow_L"
@@ -978,8 +976,8 @@ def calculate_angles_joints(
             )
 
             # dsAngles[modeled_name].plot.line(x='time', row='ID', hue='axis')
-        except:
-            print("No se ha podido calcular el ángulo", modeled_name)
+        except Exception as e:
+            print(f"No se ha podido calcular el ángulo {modeled_name}. {e}")
 
         # ----ELBOW_R
         modeled_name = "AngArtElbow_R"
@@ -998,8 +996,8 @@ def calculate_angles_joints(
             )
 
             # dsAngles[modeled_name].plot.line(x='time', row='ID', hue='axis')
-        except:
-            print("No se ha podido calcular el ángulo", modeled_name)
+        except Exception as e:
+            print(f"No se ha podido calcular el ángulo {modeled_name}. {e}")
 
     '''
     #----HIP_L
@@ -1238,7 +1236,9 @@ def calculate_angles_from_trajec(
 
     if tipo in ["artic", "all"]:
         print("\nCalculando ángulos articulares...")
-        dsAngArtics = calculate_angles_joints(dsRlG, complete_model, verbose=verbose)
+        dsAngArtics = calculate_angles_joints(
+            dsRlG, complete_model=complete_model, verbose=verbose
+        )
     # dsAngArtics['AngArtHip_L'].plot.line(x='time', row='ID', hue='axis')
 
     if tipo == "all":
@@ -1273,8 +1273,8 @@ def adjust_labels_side_end(daData) -> xr.DataArray:
     n_var_new = [f"{i}_LR" if i in N_VARS_BILATERAL else i for i in labels]
 
     # Ajusta las etiquetas a formato lados L, R
-    n_var_new = [f'{i.split("Left_")[-1]}_L' if "Left" in i else i for i in n_var_new]
-    n_var_new = [f'{i.split("Right_")[-1]}_R' if "Right" in i else i for i in n_var_new]
+    n_var_new = [f"{i.split('Left_')[-1]}_L" if "Left" in i else i for i in n_var_new]
+    n_var_new = [f"{i.split('Right_')[-1]}_R" if "Right" in i else i for i in n_var_new]
     n_var_new = [
         i[1:] + "_L" if i[0] == "L" and i[0:6] != "Length" and i != "L1_LR" else i
         for i in n_var_new
@@ -1499,10 +1499,10 @@ def load_variables_nexus_force(vicon=None, n_plate=None) -> xr.DataArray:
     _, _, freqForce, outputIDs, _, _ = vicon.GetDeviceDetails(deviceID)
 
     # Read channels names
-    cols = [
-        vicon.GetDeviceOutputDetails(deviceID, outputIDs[i])
-        for i in range(len(outputIDs))
-    ]
+    # cols = [
+    #     vicon.GetDeviceOutputDetails(deviceID, outputIDs[i])
+    #     for i in range(len(outputIDs))
+    # ]
 
     # Load platform forces
     ejes = []
@@ -1667,7 +1667,7 @@ def write_variables_in_nexus_forces(da: xr.DataArray, vicon=None) -> None:
     # activa solo en la región de interés del trial
     exists[region_of_interest[0] : region_of_interest[1] + 1] = True
 
-    full_model_output_list = vicon.GetModelOutputNames(n_subject)
+    # full_model_output_list = vicon.GetModelOutputNames(n_subject)
 
     x2 = da.time.data[
         :: int(da.freq / da.freq_ref)
@@ -1706,7 +1706,7 @@ def write_variables_in_nexus_emg(da: xr.DataArray, vicon=None) -> None:
     # active only in the trial's region of interest
     exists[region_of_interest[0] : region_of_interest[1] + 1] = True
 
-    full_model_output_list = vicon.GetModelOutputNames(n_subject)
+    # full_model_output_list = vicon.GetModelOutputNames(n_subject)
 
     x2 = da.time.data[
         :: int(da.freq / da.freq_ref)
@@ -1901,7 +1901,8 @@ def split_trajectories_sides(daData) -> xr.DataArray:
                .transpose('ID', 'n_var', 'side', 'axis', 'time')
                )"""
     daData = xr.concat(
-        [L, R], pd.Index(["L", "R"], name="side")  # compat='no_conflicts'
+        [L, R],
+        pd.Index(["L", "R"], name="side"),  # compat='no_conflicts'
     )  # .transpose('ID', 'n_var', 'side', 'axis', 'time')
     # daData.isel(ID=0, axis=0).sel(n_var='AngBiela').plot.line(x='time')
 
@@ -1923,11 +1924,11 @@ def load_csv_generic_pl_xr(
     print("\nLoading files...")
     timerCarga = time.perf_counter()
     num_processed_files = 0
-    dfTodos = []
+    # dfTodos = []
     daTodos = []
     error_files = []
     for nf, file in enumerate(file_list[:]):
-        print(f"Loading file num. {nf+1} / {len(file_list)}: {file.name}")
+        print(f"Loading file num. {nf + 1} / {len(file_list)}: {file.name}")
         try:
             timerSub = time.perf_counter()
 
@@ -1939,7 +1940,7 @@ def load_csv_generic_pl_xr(
             ).expand_dims(
                 {
                     "ID": [
-                        f"{file.parent.parts[-2].replace('_','')}_{'_'.join(file.stem.split('-'))}"
+                        f"{file.parent.parts[-2].replace('_', '')}_{'_'.join(file.stem.split('-'))}"
                     ]
                 },
                 axis=0,
@@ -1964,7 +1965,7 @@ def load_csv_generic_pl_xr(
     # dfTodos = pl.concat(dfTodos)
 
     print(
-        f"Loaded {num_processed_files} files in {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Loaded {num_processed_files} files in {time.perf_counter() - timerCarga:.3f} s \n"
     )
 
     # Inform errors
@@ -1983,11 +1984,11 @@ def load_c3d_generic_xr(file_list, n_vars_load=None, section=None) -> xr.DataArr
     timerCarga = time.perf_counter()
 
     num_processed_files = 0
-    dfTodos = []
+    # dfTodos = []
     daTodos = []
     error_files = []
     for nf, file in enumerate(file_list[:]):
-        print(f"Loading file nº {nf+1} / {len(file_list)}: {file.name}")
+        print(f"Loading file nº {nf + 1} / {len(file_list)}: {file.name}")
         try:
             timerSub = time.perf_counter()
 
@@ -1996,7 +1997,7 @@ def load_c3d_generic_xr(file_list, n_vars_load=None, section=None) -> xr.DataArr
             ).expand_dims(
                 {
                     "ID": [
-                        f"{file.parent.parts[-2].replace('_','')}_{'_'.join(file.stem.split('-'))}"
+                        f"{file.parent.parts[-2].replace('_', '')}_{'_'.join(file.stem.split('-'))}"
                     ]
                 },
                 axis=0,
@@ -2019,7 +2020,7 @@ def load_c3d_generic_xr(file_list, n_vars_load=None, section=None) -> xr.DataArr
             continue
 
     print(
-        f"Cargados {num_processed_files} archivos en {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Cargados {num_processed_files} archivos en {time.perf_counter() - timerCarga:.3f} s \n"
     )
 
     # Inform errors
@@ -2287,9 +2288,9 @@ def load_preprocess_csv_cinem(
         "ID", "n_var", "side", "axis", "time"
     )
     try:
-        daTodos.loc[
-            dict(n_var=["HJC", "KJC", "AJC"])
-        ] /= 10  # pasa las posiciones de los ejes a cm
+        daTodos.loc[dict(n_var=["HJC", "KJC", "AJC"])] /= (
+            10  # pasa las posiciones de los ejes a cm
+        )
     except:
         pass
     # daTodos.isel(ID=0).sel(n_var='AngBiela')
@@ -2762,7 +2763,7 @@ def load_preprocess_c3d_EMG(
                 reader = c3d.Reader(handle)
 
                 freqEMG = reader.analog_rate
-                n_var = reader.analog_labels
+                # n_var = reader.analog_labels
 
                 analog = []
                 for i, (_, _, a) in enumerate(reader.read_frames()):

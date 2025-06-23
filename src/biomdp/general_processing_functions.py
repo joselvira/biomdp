@@ -44,15 +44,12 @@ Updates:
 
 """
 
+import time
 from typing import List
 
 import numpy as np
-import xarray as xr
-
 import scipy.integrate as integrate
-
-import time
-
+import xarray as xr
 
 # =============================================================================
 # %% Functins
@@ -121,8 +118,11 @@ def integrate_window(
                 dat = integrate.cumulative_trapezoid(
                     data[ini:fin] - offset, t[ini:fin], initial=0
                 )[-1]
-            except:
-                # print(f'Fallo al integrar en {ID}')
+            except Exception as e:
+                if ID is None:
+                    print(f"Error integrating in {ID}. {e}")
+                else:
+                    print(f"Error integrating. {e}")
                 dat = np.nan
             return dat
 
@@ -162,8 +162,8 @@ def integrate_window(
                     data[ini:fin] - peso, time[ini:fin], initial=0
                 )
                 # plt.plot(dat)
-            except:
-                print("Error calculando la integral")
+            except Exception as e:
+                print(f"Error integrating. {e}")
                 pass  # dat = np.full(len(data), np.nan)
             return dat
 
@@ -319,7 +319,7 @@ def process_EMG(
 ) -> xr.DataArray:
     from biomdp.filter_butter import filter_butter, filter_butter_bandpass
 
-    if fr == None:
+    if fr is None:
         fr = daEMG.freq
     # Filtro band-pass
     daEMG_proces = filter_butter_bandpass(
@@ -481,8 +481,8 @@ def _cross_correl_noisy_aux(datos1, datos2, ID=None):
     """
     from scipy import signal
 
-    if ID is not None:
-        print(ID)
+    # if ID is not None:
+    #     print(ID)
 
     ccorr = np.full(max(len(datos1), len(datos2)), np.nan)
 
@@ -510,12 +510,51 @@ def _cross_correl_noisy_aux(datos1, datos2, ID=None):
     )
     c = c[int(len(c) / 2) :]
     ccorr[: len(c)] = c
-    desfase = int(np.ceil(np.argmax(ccorr) - (len(ccorr)) / 2) + 1)
+    # desfase = int(np.ceil(np.argmax(ccorr) - (len(ccorr)) / 2) + 1)
 
     return ccorr  # [int(len(ccorr) / 2) :]
 
 
-def _nanargmax(data: np.array, ID) -> float:
+def cross_correl_xr(
+    da1: xr.DataArray, da2: xr.DataArray, func=_cross_correl_simple_aux
+) -> xr.DataArray:
+    """
+    Apply the specified cross-correlation function to dataarrays
+    """
+    if "ID" in da1.coords:
+        id = da1.ID
+    else:
+        id = None
+
+    daCrosscorr = xr.apply_ufunc(
+        func,
+        da2,
+        da1,
+        id,
+        input_core_dims=[
+            ["time"],
+            ["time"],
+            [],
+            # [],
+            # [],
+        ],
+        output_core_dims=[["lag"]],  # datos que devuelve
+        exclude_dims=set(
+            (
+                "lag",
+                "time",
+            )
+        ),
+        vectorize=True,
+        dask="parallelized",
+        keep_attrs=False,
+        # kwargs=args_func_cortes,
+    ).dropna(dim="lag", how="all")
+    daCrosscorr = daCrosscorr.assign_coords(lag=range(len(daCrosscorr.lag)))
+    return daCrosscorr
+
+
+def _nanargmax(data: np.ndarray, ID) -> float:
     if np.count_nonzero(~np.isnan(data)) == 0:
         return np.array(np.nan)
     # if np.isnan(data).all():
@@ -525,8 +564,9 @@ def _nanargmax(data: np.array, ID) -> float:
     return float(np.nanargmax(data))
 
 
-def nanargmax_xr(da: xr.DataArray, dim: str = None) -> xr.DataArray:
+def nanargmax_xr(da: xr.DataArray, dim: str | None = None) -> xr.DataArray:
     """
+    Replace with .idxmax() and .idxmin() ??
     data = da[0,0]
     """
     if dim is None:
@@ -583,40 +623,6 @@ def nanargmin_xr(da: xr.DataArray, dim: str = None) -> xr.DataArray:
     return daResult
 
 
-def cross_correl_xr(
-    da1: xr.DataArray, da2: xr.DataArray, func=_cross_correl_simple_aux
-) -> xr.DataArray:
-    """
-    Apply the specified cross-correlation function to dataarra
-    """
-    daCrosscorr = xr.apply_ufunc(
-        func,
-        da2,
-        da1,
-        da1["ID"],
-        input_core_dims=[
-            ["time"],
-            ["time"],
-            [],
-            # [],
-            # [],
-        ],
-        output_core_dims=[["lag"]],  # datos que devuelve
-        exclude_dims=set(
-            (
-                "lag",
-                "time",
-            )
-        ),
-        vectorize=True,
-        dask="parallelized",
-        keep_attrs=False,
-        # kwargs=args_func_cortes,
-    ).dropna(dim="lag", how="all")
-    daCrosscorr = daCrosscorr.assign_coords(lag=range(len(daCrosscorr.lag)))
-    return daCrosscorr
-
-
 def round_to_nearest_even_2_decimal(number: float) -> float:
     """Rounds a float to the nearest even number with 2 decimal places"""
     rounded = np.round(number * 50) / 50  # Round to the nearest 0.02
@@ -633,18 +639,16 @@ if __name__ == "__main__":
     # %%---- Create a sample
     # =============================================================================
 
+    # from scipy.signal import butter, filtfilt
+    from pathlib import Path
+
+    import matplotlib.pyplot as plt
     import numpy as np
 
     # import pandas as pd
     import xarray as xr
 
-    # from scipy.signal import butter, filtfilt
-    from pathlib import Path
-
-    import matplotlib.pyplot as plt
-
     # import seaborn as sns
-
     from biomdp.create_time_series import create_time_series_xr
 
     rnd_seed = np.random.seed(

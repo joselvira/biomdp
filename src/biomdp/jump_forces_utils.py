@@ -9,13 +9,23 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.6.0"
-__date__ = "22/05/2025"
+__version__ = "v.1.6.2"
+__date__ = "14/06/2025"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    14/06/2025, v.1.6.2
+        - Fixed show plot when repe not in dims in check_flat_window
+        - The graphs_events function includes filling colored areas.
+        - Included discardable parameter in functions load_merge_bioware_pl,
+          load_merge_bioware_pd, and load_merge_bioware_c3d.
+
+    04/06/2025, v.1.6.1
+        - Fixed graphs_weight_check when trimming, the end is daData.time.size,
+          not daEvents.endAnalysis.
+
     22/05/2025, v.1.6.0
         - Included function to load Vicon CSV files and convert them to parquet.
         - Some types adjustments.
@@ -164,24 +174,21 @@ Updates:
 """
 
 
-from typing import Optional, Union, List
-import numpy as np
-import pandas as pd
-import xarray as xr
-import polars as pl
-import scipy.integrate as integrate
+# import sys
+import time
+from pathlib import Path
+from typing import List
 
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import polars as pl
+import scipy.integrate as integrate
+import xarray as xr
+from detecta import detect_onset
 from matplotlib.backends.backend_pdf import PdfPages  # to save graphs in pdf
-import time
-
-from pathlib import Path
-import sys
 
 import biomdp.biomec_xarray_accessor  # accessor biomxr
-
-from detecta import detect_onset
-
 
 # =============================================================================
 # ---- VARIABLES
@@ -224,7 +231,11 @@ def create_standard_jump_events(daData: xr.DataArray) -> xr.DataArray:
 def assign_subcategories_xr(
     da: xr.DataArray, n_project: str | None = None
 ) -> xr.DataArray:
-
+    """
+    da= da.set_index(ID=['estudio', 'particip', 'tipo', 'subtipo'])
+    da.sel(tipo='SJ')
+    da.ID
+    """
     if len(da.ID.to_series().iloc[0].split("_")) == 5:
         da = da.assign_coords(
             estudio=(
@@ -474,8 +485,9 @@ def split_dim_repe_logsheet(
     rep0 = []
     rep1 = []
     rep2 = []
+    jump_tests = list(set(["_".join(col.split("_")[:-1]) for col in h_r.columns]))
     for S in h_r.index:
-        for t in ["CMJ_2", "SJ_0L", "SJ_100L", "SJ_100S"]:
+        for t in jump_tests:
             for r in h_r.filter(regex=t).loc[S]:
                 # print(daData.sel(ID=daData.ID.str.contains(f'{S}_{t}_{r}')).ID.data)
                 da = daData.sel(ID=daData.ID.str.contains(f"{S}_{t}_{r}"))
@@ -636,7 +648,7 @@ def load_bioware_pl(
     n_vars_load: List[str] | None = None,
     to_dataarray: bool = False,
 ):  # -> pl.DataFrame | xr.DataArray:
-    print("Redirecting to biomdp.io.read_kistler_txt function")
+    print("Deprecated. Redirecting to biomdp.io.read_kistler_txt function")
     from biomdp.io.read_kistler_txt import read_kistler_txt_pl
 
     """
@@ -694,7 +706,7 @@ def load_bioware_pl(
 def read_kistler_c3d(
     file: str | Path, n_vars_load: List[str] | None = None, engine: str = "ezc3d"
 ) -> xr.DataArray:
-    print("Redirecting to biomdp.io.read_kistler_c3d function")
+    print("Deprecated. Redirecting to biomdp.io.read_kistler_c3d function")
     from biomdp.io.read_kistler_c3d import read_kistler_c3d
 
     # from read_vicon_c3d import read_vicon_c3d_xr, read_vicon_c3d_xr_global
@@ -778,9 +790,7 @@ def load_merge_vicon_csv(
     print("Loading files...")
     timer_carga = time.perf_counter()
 
-    daAll = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
+    daAll = []  # guarda los dataframes que va leyendo en formato lista y al final los concatena
     error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
     num_processed_files = 0
     for n, file in enumerate(file_list):
@@ -847,9 +857,10 @@ def load_merge_vicon_csv_logsheet(
     daAll = []
     error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
     num_processed_files = 0
+    jump_tests = list(set(["_".join(col.split("_")[:-1]) for col in h_r.columns]))
 
     for S in h_r.index:
-        for t in ["CMJ_2", "SJ_0L", "SJ_100L", "SJ_100S"]:
+        for t in jump_tests:
             for r in h_r.filter(regex=t).loc[S]:
                 if r is not np.nan:
                     file = Path((path / f"{S}_{t}_{r}").with_suffix(".csv"))
@@ -923,9 +934,10 @@ def load_merge_vicon_c3d_logsheet(
     daAll = []
     error_files = []
     num_processed_files = 0
+    jump_tests = list(set(["_".join(col.split("_")[:-1]) for col in h_r.columns]))
 
     for S in h_r.index:
-        for t in ["CMJ_2", "SJ_0L", "SJ_100L", "SJ_100S"]:
+        for t in jump_tests:
             for r in h_r.filter(regex=t).loc[S]:
                 if r is not np.nan:
                     file = Path((path / f"{S}_{t}_{r}").with_suffix(".c3d"))
@@ -983,6 +995,7 @@ def load_merge_bioware_pl(
     path: Path | str,
     n_vars_load: List[str] | None = None,
     n_project: str | None = None,
+    discardables: list[str] | None = None,
     data_type: str | None = None,
     lin_header: int = 17,
     n_col_time: str = "abs time",
@@ -998,6 +1011,9 @@ def load_merge_bioware_pl(
         DESCRIPTION. The default is None.
     n_project : string, optional
         DESCRIPTION. The name of the study.
+    discardable : list of strings
+        DESCRIPTION. List of strings ccontaining the complete paths of the files
+        to be discarded.
     data_type:
         Conversión al tipo de datos indicado. Por defecto es None, que quiere
         decir que se mantiene el tipo original ('float64')
@@ -1040,6 +1056,11 @@ def load_merge_bioware_pl(
         list(path.glob("**/*.txt"))
     )  #'**/*.txt' incluye los que haya en subcarpetas
     file_list = [x for x in file_list if "error" not in x.name]  # selecciona archivos
+    if discardables is not None:
+        # discardables como ruta completa
+        file_list = [
+            s for s in file_list if not any(Path(xs) == s for xs in discardables)
+        ]
 
     if n_vars_load is None:  # si no vienen impuestas las columnas a cargar
         n_vars_load = [n_col_time]  # , 'Fx', 'Fy', 'Fz']
@@ -1062,9 +1083,7 @@ def load_merge_bioware_pl(
     timerCarga = time.perf_counter()
 
     num_loaded_files = 0
-    dfData = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
+    dfData = []  # guarda los dataframes que va leyendo en formato lista y al final los concatena
     daAll = []
     error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
     for nf, file in enumerate(file_list):
@@ -1131,7 +1150,7 @@ def load_merge_bioware_pl(
     dfData = pl.concat(dfData)
 
     print(
-        f"Loaded {num_loaded_files} files in {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Loaded {num_loaded_files} files in {time.perf_counter() - timerCarga:.3f} s \n"
     )
 
     # Si no ha podido cargar algún archivo, lo indica
@@ -1213,6 +1232,7 @@ def load_merge_bioware_pd(
     path,
     n_vars_load=None,
     n_project=None,
+    discardables: list[str] | None = None,
     data_type=None,
     lin_header=17,
     merge_2_plats=1,
@@ -1264,6 +1284,11 @@ def load_merge_bioware_pd(
         list(path.glob("**/*.txt"))
     )  #'**/*.txt' incluye los que haya en subcarpetas
     file_list = [x for x in file_list if "error" not in x.name]  # selecciona archivos
+    if discardables is not None:
+        # discardables como ruta completa
+        file_list = [
+            s for s in file_list if not any(Path(xs) == s for xs in discardables)
+        ]
 
     if n_vars_load is None:  # si no vienen impuestas las columnas a cargar
         n_vars_load = ["abs time (s)"]  # , 'Fx', 'Fy', 'Fz']
@@ -1286,9 +1311,7 @@ def load_merge_bioware_pd(
     timerCarga = time.perf_counter()
 
     num_loaded_files = 0
-    dfData = (
-        []
-    )  # guarda los dataframes que va leyendo en formato lista y al final los concatena
+    dfData = []  # guarda los dataframes que va leyendo en formato lista y al final los concatena
     daAll = []
     error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
     for nf, file in enumerate(file_list):
@@ -1351,7 +1374,7 @@ def load_merge_bioware_pd(
     dfData = pd.concat(dfData)
 
     print(
-        f"Loaded {num_loaded_files} files in {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Loaded {num_loaded_files} files in {time.perf_counter() - timerCarga:.3f} s \n"
     )
 
     # Si no ha podido cargar algún archivo, lo indica
@@ -1431,13 +1454,13 @@ def load_merge_bioware_c3d(
     path: str | Path,
     n_vars_load: List[str] | None = None,
     n_project: str | None = None,
+    discardables: list[str] | None = None,
     data_type: str | None = None,
     split_plats: bool = False,
     merge_2_plats: int = 1,
     assign_subcat: bool = True,
     show: bool = False,
 ) -> xr.DataArray:
-
     # from read_kistler_c3d import read_kistler_c3d_xr
     from biomdp.io import read_kistler_c3d as rkc3d
 
@@ -1452,6 +1475,11 @@ def load_merge_bioware_c3d(
         list(path.glob("*.c3d"))
     )  #'**/*.txt' incluye los que haya en subcarpetas
     file_list = [x for x in file_list if "error" not in x.name]  # selecciona archivos
+    if discardables is not None:
+        # discardables como ruta completa
+        file_list = [
+            s for s in file_list if not any(Path(xs) == s for xs in discardables)
+        ]
 
     """if n_vars_load is None: #si no vienen impuestas las columnas a cargar
         n_vars_load = ['abs time (s)'] #, 'Fx', 'Fy', 'Fz']
@@ -1470,7 +1498,7 @@ def load_merge_bioware_c3d(
     daAll = []
     error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
     for nf, file in enumerate(file_list):
-        print(f"Loading file num. {nf+1}/{len(file_list)}: {file.name}")
+        print(f"Loading file num. {nf + 1}/{len(file_list)}: {file.name}")
         try:
             timerSub = time.perf_counter()
 
@@ -1518,7 +1546,7 @@ def load_merge_bioware_c3d(
     daAll = xr.concat(daAll, dim="ID")
 
     print(
-        f"Loaded {num_loaded_files} files in {time.perf_counter()-timerCarga:.3f} s \n"
+        f"Loaded {num_loaded_files} files in {time.perf_counter() - timerCarga:.3f} s \n"
     )
 
     # Si no ha podido cargar algún archivo, lo indica
@@ -1721,7 +1749,7 @@ def check_similar_ini_end(
 def check_flat_window(
     daData: xr.DataArray,
     daEvent: xr.DataArray,
-    threshold: Union[float, int] = 30,
+    threshold: float | int = 30,
     allowed_window: float = 0.1,
     window: float = 0.5,
     returns: str = "discrete",
@@ -1789,7 +1817,7 @@ def check_flat_window(
             elif returns == "continuous":
                 do_not_comply = daDatosZ.loc[dict(ID=~daDatosZ.ID.isin(daCorrectos.ID))]
                 if len(do_not_comply.ID) > 0:
-                    if "repe" in do_not_comply.coords:
+                    if "repe" in do_not_comply.dims:
                         do_not_comply.plot.line(
                             x="time",
                             col="repe",
@@ -1799,12 +1827,16 @@ def check_flat_window(
                         )
                     else:
                         do_not_comply.plot.line(
-                            x="time", alpha=0.5, add_legend=False, sharey=False
+                            x="time",
+                            alpha=0.5,
+                            add_legend=False,  # sharey=False
                         )
+
                     plt.suptitle(
                         f"Graph with the {len(do_not_comply)} that do not meet the criterion '{kind}' < {threshold}",
                         fontsize=10,
                     )
+
                     graphs_events(daRecortes.sel(ID=do_not_comply.ID), sharey=False)
                 else:
                     print(r"\nAll records meet the criterion")
@@ -1865,7 +1897,7 @@ def check_flat_window(
                     )
                     graphs_events(daRecortes.sel(ID=do_not_comply.ID), sharey=True)
                 else:
-                    print(r"\nAll records meet the criterion")
+                    print("\nAll records meet the criterion")
 
         if returns == "discrete":
             print(f"Returned the {len(daDelta)} values {returns}")
@@ -2029,7 +2061,7 @@ def calculate_weight(
         for h, ax in enumerate(g.axs):  # extrae cada fila
             for i in range(len(ax)):  # extrae cada axis (gráfica)
                 if (
-                    g.name_dicts[h, i] == None
+                    g.name_dicts[h, i] is None
                 ):  # en los cuadros finales que sobran de la cuadrícula se sale
                     break
                 try:
@@ -2055,8 +2087,10 @@ def calculate_weight(
                         )
                     # Líneas peso
                     # ax[i].hlines(daWeight.sel(ID=idn, stat='media').data, xmin=daData.time[0], xmax=daData.time[-1], colors=col, lw=1, ls='--', alpha=0.6)
-                except:
-                    print("Error drawing weight in", g.name_dicts[h, i], h, i)
+                except Exception as e:
+                    print(
+                        f"Error drawing weight in {g.name_dicts[h, i]}, {h}, {i}. {e}"
+                    )
     return daWeight
 
 
@@ -2129,8 +2163,8 @@ def finetune_end(
                     break
             # plt.plot(tend_pes)
 
-        except:
-            print("No se encontró")
+        except Exception as e:
+            print(f"No se encontró. {e}")
             return np.asarray([np.nan, np.nan])
 
         if show:
@@ -2196,8 +2230,8 @@ def finetune_end(
                 itera += 1
                 # print('iters=', itera, 'peso=', pes, 'v=', v[-1])
 
-        except:
-            print("No se encontró")
+        except Exception as e:
+            print(f"No se encontró. {e}")
             return np.asarray([np.nan, np.nan])
 
         if show:
@@ -2305,7 +2339,7 @@ def finetune_weight(
         plt.text(
             0.02,
             0.9,
-            f"delta with mean weight={weight-pes:.3f}",
+            f"delta with mean weight={weight - pes:.3f}",
             horizontalalignment="left",
             fontsize="small",
             color="r",
@@ -2372,8 +2406,8 @@ def finetune_weight(
             plt.show()
             """
 
-        except:
-            print("No se encontró")
+        except Exception as e:
+            print(f"No se encontró. {e}")
             return np.asarray([np.nan, np.nan])
 
         if show:
@@ -2385,7 +2419,7 @@ def finetune_weight(
             plt.text(
                 0.02,
                 0.9,
-                f"delta with mean weight={weight-pes:.3f}",
+                f"delta with mean weight={weight - pes:.3f}",
                 horizontalalignment="left",
                 fontsize="small",
                 color="r",
@@ -2431,8 +2465,8 @@ def finetune_weight(
                 pes += 0.05
                 itera += 1
                 # print('iters=', itera, 'weight=', pes, 'v=', v[-1])
-        except:
-            print("No se encontró")
+        except Exception as e:
+            print(f"No se encontró. {e}")
             return np.asarray([np.nan, np.nan])
 
         if show:
@@ -2493,8 +2527,8 @@ def finetune_weight(
                     break
             # plt.plot(tend_pes)
 
-        except:
-            print("No se encontró")
+        except Exception as e:
+            print(f"No se encontró. {e}")
             return np.asarray([np.nan, np.nan])
 
         if show:
@@ -2577,8 +2611,8 @@ def finetune_weight(
                 itera += 1
                 # print('iters=', itera, 'weight=', pes, 'v=', v[-1])
 
-        except:
-            print("No se encontró")
+        except Exception as e:
+            print(f"No se encontró. {e}")
             return np.asarray([np.nan, np.nan])
 
         if show:
@@ -2622,8 +2656,8 @@ def finetune_weight(
             fin = int(fin)
             pes = data[ini:fin].mean()
 
-        except:
-            print("Error calculating mean weight")
+        except Exception as e:
+            print(f"Error calculating mean weight. {e}")
             return np.asarray([np.nan, np.nan])
 
         if show:
@@ -2640,7 +2674,7 @@ def finetune_weight(
             plt.text(
                 0.02,
                 0.9,
-                f"delta with mean weight={weight-pes:.3f}",
+                f"delta with mean weight={weight - pes:.3f}",
                 horizontalalignment="left",
                 fontsize="small",
                 color="r",
@@ -2746,6 +2780,7 @@ def detect_takeoff_landing(
                         "No two takeoffs/landings found on file",
                         coords,
                     )
+                    plt.plot(data)
                     return np.array([np.nan, np.nan])
             # if jump_test == 'CMJ':
             #     ind=ind[0] #coge el primer bloque que encuentra
@@ -2823,7 +2858,7 @@ def detect_takeoff_landing(
             return ind.astype(float)
 
         """
-        data = daData.sel(ID='PRE_07-RubenToledoPozuelo_SJ_0', repe=1).data
+        data = daData.sel(ID='25-S10_CMJ_2_001').data
         data = daData[0,0].data
         args_func_cortes = dict(threshold=-threshold, n_above=50, show=True)
         """
@@ -2837,7 +2872,7 @@ def detect_takeoff_landing(
             # exclude_dims=set(('time',)),
             vectorize=True,
             kwargs=dict(
-                threshold=-threshold, n_above=int(0.01 * daData.freq), show=show
+                threshold=-threshold, n_above=int(0.1 * daData.freq), show=show
             ),
         ).assign_coords(event=["despegue", "aterrizaje"])
     # Comprobaciones
@@ -2937,8 +2972,8 @@ def detect_ini_mov(
             # print(ID)
             iinianalisis = int(iinianalisis)
             idespegue = int(idespegue)
-        except:
-            print("No hay evento iniAnalisis o despegue")
+        except Exception as e:
+            print(f"No hay evento iniAnalisis o despegue. {e}")
             return np.nan
 
         dat = data[iinianalisis:idespegue]
@@ -3311,7 +3346,8 @@ def detect_end_mov(
                 dif, threshold=0.00005, n_above=int(0.05 * daData.freq), show=show
             )
             fin = finAn - fin[0, 0] + 1  # +1 para coger el que ya ha superado el umbral
-        except:
+        except Exception as e:
+            print(e)
             fin = finAn  # len(data[~np.isnan(data)]) #por si no encuentra el criterio
 
         return float(fin)
@@ -3332,7 +3368,8 @@ def detect_end_mov(
                 finAn - fin[-1, 0] + 1
             )  # +1 para coger el que ya ha superado el umbral
             # fin[0,0] o fin[1,1] ?????
-        except:
+        except Exception as e:
+            print(e)
             fin = finAn  # len(data[~np.isnan(data)]) #por si no encuentra el criterio
         return float(fin)
 
@@ -3501,8 +3538,8 @@ def detect_maxFz(
 
 def detect_minFz(
     daData: xr.DataArray,
-    daWeight: xr.DataArray = None,
-    daEvents: xr.DataArray = None,
+    daWeight: xr.DataArray | None = None,
+    daEvents: xr.DataArray | None = None,
     jump_test: str = "CMJ",
     threshold: float = 10.0,
     show: bool = False,
@@ -3555,7 +3592,7 @@ def detect_minFz(
                 if ini >= fin:  # puede pasar en SJ bien hechos
                     ind = ini
                 else:
-                    ind = float(np.argmin(data[ini:fin]) + ini)
+                    ind = np.argmin(data[ini:fin]) + ini
                     # plt.plot(data[ini:fin])
                     # plt.plot(int(ind-ini), data[int(ind)] ,'o')
                     # plt.show()
@@ -3563,7 +3600,8 @@ def detect_minFz(
                 # data[int(ind)-1:int(ind)+2] #data[ind]
             except:
                 ind = np.nan  # por si no encuentra el criterio
-            return np.array([ind])
+                # return np.nan
+            return np.array([ind]).astype("float")
 
         """       
         data = daData[0,0].data
@@ -3936,8 +3974,8 @@ def detect_final_zero(daData: xr.DataArray, threshold: float = 100) -> xr.DataAr
 
 def detect_standard_events(
     daData: xr.DataArray,
-    daWeight: xr.DataArray = None,
-    daEvents: xr.DataArray = None,
+    daWeight: xr.DataArray | None = None,
+    daEvents: xr.DataArray | None = None,
     jump_test: str = "CMJ",
     kind_end_mov: str = "force",
     threshold: float = 30.0,
@@ -4032,6 +4070,8 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
     for h, ax in enumerate(g.axs):  # .axes): #extrae cada fila
         for i in range(len(ax)):  # extrae cada axis (gráfica)
             dimensiones = g.name_dicts[h, i]
+            freq = g.data.freq
+
             if (
                 dimensiones is None
             ):  # para cuando quedan huecos al final de la cuadrícula
@@ -4044,7 +4084,9 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
                     str(g.data.loc[g.name_dicts[h, i]].ID.data)
                 )  # pone el nombre completo porque a veces lo recorta
 
-            if daWeight is not None:  # isinstance(daWeight, xr.DataArray):
+            if (
+                daWeight is not None and g.data.name == "Forces"
+            ):  # isinstance(daWeight, xr.DataArray):
                 # Pasar pesos solamente cuando se grafiquen fuerzas absolutas
                 ax[i].axhline(
                     daWeight.sel(dimensiones).sel(stat="media").data,
@@ -4056,6 +4098,62 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
                 )
 
             if isinstance(daEvents, xr.DataArray):
+                # Fill areas
+                if g.data.name in ["Forces", "BW"]:
+                    if g.data.name == "BW":
+                        weight = 1.0
+                    else:
+                        weight = daWeight.sel(dimensiones).sel(stat="media").data
+                    Fz = g.data.sel(dimensiones)
+                    t = np.arange(len(Fz)) / freq
+                    # Imp neg descent
+                    ini = int(daEvents.sel(dimensiones).sel(event="iniMov").data)
+                    end = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
+                    ax[i].fill_between(
+                        t[ini:end], weight, Fz[ini:end], color=colr["iniMov"], alpha=0.5
+                    )
+                    # Imp posit descent
+                    ini = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
+                    end = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
+                    ax[i].fill_between(
+                        t[ini:end],
+                        weight,
+                        Fz[ini:end],
+                        color=colr["iniImpPos"],
+                        alpha=0.5,
+                    )
+                    # Imp posit ascent
+                    ini = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
+                    end = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)
+                    ax[i].fill_between(
+                        t[ini:end],
+                        weight,
+                        Fz[ini:end],
+                        color=colr["maxFlex"],
+                        alpha=0.5,
+                    )
+                    # Imp negat ascent
+                    ini = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)
+                    end = int(daEvents.sel(dimensiones).sel(event="despegue").data)
+                    ax[i].fill_between(
+                        t[ini:end],
+                        weight,
+                        Fz[ini:end],
+                        color=colr["finImpPos"],
+                        alpha=0.5,
+                    )
+                    # Flight
+                    ini = int(daEvents.sel(dimensiones).sel(event="despegue").data)
+                    end = int(daEvents.sel(dimensiones).sel(event="aterrizaje").data)
+                    ax[i].fill_between(
+                        t[ini:end],
+                        weight,
+                        Fz[ini:end],
+                        color=colr["despegue"],
+                        alpha=0.5,
+                    )
+
+                # Draw vertical lines
                 for ev in daEvents.sel(dimensiones):  # .event:
                     # print(ev.data)
                     if (
@@ -4164,7 +4262,7 @@ def graphs_events(
         daWeight = daWeight.sel(axis="z")
 
     if adjust_iniend and daEvents is not None:
-        ini = daEvents.isel(event=daEvents.argmin(dim="event"))
+        # ini = daEvents.isel(event=daEvents.argmin(dim="event"))
         daData = trim_analysis_window(
             daData, daEvents.sel(event=["iniAnalisis", "finAnalisis"])
         )
@@ -4186,6 +4284,7 @@ def graphs_events(
 
     # daData.drop_vars('tipo').plot.line(x='time',col='ID')
     # daData.to_pandas().T.plot()
+
     for n in range(0, len(daData.ID), distribuidor):
         dax = daData.isel(ID=slice(n, n + distribuidor))
         g = dax.plot.line(
@@ -4306,7 +4405,7 @@ def graphs_all_variables(
     num_per_block: int = 4,
     show_in_console: bool = True,
     adjust_iniend: bool = False,
-    work_path: Union[Path, str] = None,
+    work_path: Path | str = None,
     n_file_graph_global: str = None,
 ) -> None:
     """
@@ -4334,7 +4433,7 @@ def graphs_all_variables(
     # import seaborn as sns
 
     # Si no se incluye nombre archivo no guarda el pdf
-    if n_file_graph_global != None:
+    if n_file_graph_global is not None:
         if not isinstance(work_path, Path):
             work_path = Path(work_path)
         nompdf = (work_path / n_file_graph_global).with_suffix(".pdf")
@@ -4388,16 +4487,16 @@ def graphs_all_variables(
 
 def graphs_weight_check(
     daData: xr.DataArray,
-    daEvents: xr.DataArray = None,
-    dsWeights: xr.Dataset = None,
-    daWeight: xr.DataArray = None,
+    daEvents: xr.DataArray,
+    dsWeights: xr.Dataset | None = None,
+    daWeight: xr.DataArray | None = None,
     threshold_weight_diff: float = 20,
-    daWeight_mean: xr.DataArray = None,
+    daWeight_mean: xr.DataArray | None = None,
     allowed_window: float = 0.3,
     num_per_block: int = 4,
     show_in_console: bool = True,
-    work_path: Union[Path, str] = None,
-    n_file_graph_global: str = None,
+    work_path: Path | str | None = None,
+    n_file_graph_global: str | None = None,
 ) -> None:
     """
     allowed_window: time in seconds ahead and ahead and behind iniPeso and endPeso
@@ -4408,8 +4507,8 @@ def graphs_weight_check(
     # import seaborn as sns
 
     # Si no se incluye nombre archivo no guarda el pdf
-    if n_file_graph_global != None:
-        if not isinstance(work_path, Path):
+    if n_file_graph_global != None and work_path is not None:
+        if isinstance(work_path, str):
             work_path = Path(work_path)
         nompdf = (work_path / n_file_graph_global).with_suffix(".pdf")
         pdf_pages = PdfPages(nompdf)
@@ -4510,28 +4609,29 @@ def graphs_weight_check(
                                  transform=ax[i].transData)
     """
 
-    window = daEvents.sel(event=["iniPeso", "finPeso"]).copy()
-    window.loc[dict(event="iniPeso")] = xr.where(
-        window.loc[dict(event="iniPeso")] - allowed_window > 0,
-        window.loc[dict(event="iniPeso")] - allowed_window,
+    daWindow = daEvents.sel(event=["iniPeso", "finPeso"]).copy()
+    daWindow.loc[dict(event="iniPeso")] = xr.where(
+        daWindow.loc[dict(event="iniPeso")] - allowed_window > 0,
+        daWindow.loc[dict(event="iniPeso")] - allowed_window,
         0,
-    )  # window.loc[dict(event='iniPeso')] - allowed_window
-    window.loc[dict(event="finPeso")] = xr.where(
-        window.loc[dict(event="finPeso")] + allowed_window
-        < daEvents.loc[dict(event="finAnalisis")],
-        window.loc[dict(event="finPeso")] + allowed_window,
-        daEvents.loc[dict(event="finAnalisis")],
-    )  # window.loc[dict(event='finPeso')] + allowed_window
+    )  # daWindow.loc[dict(event='iniPeso')] - allowed_window
+    daWindow.loc[dict(event="finPeso")] = xr.where(
+        daWindow.loc[dict(event="finPeso")] + allowed_window
+        < daData.time.size,  # daEvents.loc[dict(event="finAnalisis")],
+        daWindow.loc[dict(event="finPeso")] + allowed_window,
+        daData.time.size,  # daEvents.loc[dict(event="finAnalisis")],
+    )  # daWindow.loc[dict(event='finPeso')] + allowed_window
     # #TODO: ESTO NO SE AJUSTA BIEN CUANDO LA VENTANA ESTÁ CERCA DE CERO Y SALE NEGATIVO
-    # window = xr.where(window.loc[dict(event='iniPeso')] < 0, window - window.loc[dict(event='iniPeso')], window)
-    # window = xr.where(window.loc[dict(event='finPeso')] > len(daData.time), window - (window.loc[dict(event='finPeso')] - len(daData.time)), window)
+    # daWindow = xr.where(daWindow.loc[dict(event='iniPeso')] < 0, daWindow - daWindow.loc[dict(event='iniPeso')], daWindow)
+    # daWindow = xr.where(daWindow.loc[dict(event='finPeso')] > len(daData.time), daWindow - (daWindow.loc[dict(event='finPeso')] - len(daData.time)), daWindow)
 
-    daDat = trim_analysis_window(daData, window)
-    daEvents = daEvents - window.loc[dict(event="iniPeso")]
+    # daWindow.loc[dict(event=["iniPeso", "finPeso"])] = [19000,19500]
+    daDat = trim_analysis_window(daData, daWindow)
+    daEvents = daEvents - daWindow.loc[dict(event="iniPeso")]
 
-    # window = window - window.sel(event='iniPeso') #+ 0.5*daData.freq
-    # window.loc[dict(event='iniPeso')] = window.loc[dict(event='iniPeso')] + allowed_window*daDat.freq
-    # window.loc[dict(event='finPeso')] = window.loc[dict(event='finPeso')] - allowed_window*daDat.freq
+    # daWindow = daWindow - daWindow.sel(event='iniPeso') #+ 0.5*daData.freq
+    # daWindow.loc[dict(event='iniPeso')] = daWindow.loc[dict(event='iniPeso')] + allowed_window*daDat.freq
+    # daWindow.loc[dict(event='finPeso')] = daWindow.loc[dict(event='finPeso')] - allowed_window*daDat.freq
 
     """
     for n in range(0,len(daData.ID), distribuidor):
@@ -4628,7 +4728,7 @@ def graphs_weight_check(
                         plt.text(
                             0.5,
                             0.9,
-                            f'REVIEW (delta={weight-dsWeights["media"].sel(coords_graph):.1f} N)',
+                            f"REVIEW (delta={weight - dsWeights['media'].sel(coords_graph):.1f} N)",
                             ha="center",
                             va="center",
                             rotation="horizontal",
@@ -4701,7 +4801,10 @@ def graphs_weight_check(
             sharey=False,
             **fils_cols,
         )  # , lw=1)
-        g.map(_completa_graf_xr, "ID", "repe", "time", color=0)
+        if "repe" in dax.dims:
+            g.map(_completa_graf_xr, "ID", "repe", "time", color=0)
+        else:
+            g.map(_completa_graf_xr, "ID", "time", color=0)
         # _completa_graf_xr(g, daEvents.sel(event=['iniPeso', 'finPeso']), daWeight, daWeight_mean)
 
         if n_file_graph_global is not None:
@@ -4854,12 +4957,15 @@ def adjust_offsetFz(
     pct_window: int = 5,
     kind: str = "flight",
     show: bool = False,
+    show_detail: bool = False,
 ) -> xr.DataArray:
     """
     Apply in case of erroneous force plate offset.
     Better to apply it before filtering.
 
     kind: one of "mean", "flight", "threshold"
+    show: show grid of plots
+    show_detail: show evey single detection plot
 
     Reference: "The offset voltage of the unloaded force platform was determined by finding the 0.4 s
     moving average during the flight phase with the smallest standard deviation."
@@ -4903,13 +5009,15 @@ def adjust_offsetFz(
                         daReturn.where(daReturn < threshold).plot.line(
                             x="time", col="ID", col_wrap=4
                         )
+        else:
+            raise NotImplementedError("'mean' adjustment only for 'DJ2PApart' test")
 
     if kind == "flight":  # sin comprobar
         # Ajusta buscando los vuelos concretamente
         if jump_test == "DJ2P":
             # busca despegue y aterrizaje provisionales
             vuelo = detect_takeoff_landing(
-                daReturn, jump_test, threshold=threshold, show=show
+                daReturn, jump_test, threshold=threshold, show=show_detail
             )
             recorte_ventana = (
                 (
@@ -4926,7 +5034,7 @@ def adjust_offsetFz(
         else:
             # busca despegue y aterrizaje provisionales
             vuelo = detect_takeoff_landing(
-                daReturn, jump_test, threshold=threshold, show=show
+                daReturn, jump_test, threshold=threshold, show=show_detail
             )
             # reduces the window a little to avoid possible bounces from filtering
             recorte_ventana = (
@@ -4936,14 +5044,13 @@ def adjust_offsetFz(
                 )
                 * pct_window
                 / 100
-            ).astype(
-                np.int32
-            )  # TODO: CHECK FOR NAN
+            ).astype(np.int32)  # TODO: CHECK FOR NAN
             vuelo.loc[dict(event="despegue")] += recorte_ventana
             vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
 
             offset_flight = trim_analysis_window(daReturn, vuelo).mean(dim="time")
             # trim_analysis_window(daData, vuelo).sel(axis='x').plot.line(x='time', col='ID', col_wrap=4)
+            # offset_flight.plot()
             # offset_flight.sel(axis='z').plot.line(col='ID', col_wrap=4, hue='repe')
             # daData -= offset_flight
         daReturn = daReturn - offset_flight
@@ -5313,8 +5420,8 @@ def calculate_variables(
                 data[ini:fin] - weight, time[ini:fin], initial=0
             )
             # plt.plot(dat)
-        except:
-            print("Error calculando la integral")
+        except Exception as e:
+            print(f"Error calculando la integral. {e}")
             pass  # dat = np.full(len(data), np.nan)
         return dat
 
@@ -5948,14 +6055,12 @@ class jump_forces_utils:
 # %% PRUEBAS
 # =============================================================================
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
 
     import numpy as np
     import pandas as pd
     import xarray as xr
-
-    from pathlib import Path
-
-    import sys
 
     from biomdp.filter_butter import filter_butter
     from biomdp.io import read_kistler_txt
@@ -6051,3 +6156,5 @@ if __name__ == "__main__":
     cmj.calculate_weight(window=[-1500, -1000], show=True)
     cmj.weight.sel(ID="01", trial="1")
     """
+
+# %%
