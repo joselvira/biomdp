@@ -9,13 +9,20 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.6.2"
-__date__ = "14/06/2025"
+__version__ = "v.1.7.0"
+__date__ = "10/07/2025"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    08/07/2025, v.1.7.0    
+        - Included parameter 'avoid_file_name' and 'discardables' in 
+          load_merge_vicon_csv_logsheet and load_merge_vicon_c3d_logsheet.
+        - Adjusted adjust_offsetFz to round the split_window to the nearest integer.
+        - Fixed graphs_events to not plot empty datasets.
+        - graphs_events adapted to 'preacsj' test.
+        
     14/06/2025, v.1.6.2
         - Fixed show plot when repe not in dims in check_flat_window
         - The graphs_events function includes filling colored areas.
@@ -485,7 +492,9 @@ def split_dim_repe_logsheet(
     rep0 = []
     rep1 = []
     rep2 = []
-    jump_tests = list(set(["_".join(col.split("_")[:-1]) for col in h_r.columns]))
+    jump_tests = sorted(
+        list(set(["_".join(col.split("_")[:-1]) for col in h_r.columns]))
+    )
     for S in h_r.index:
         for t in jump_tests:
             for r in h_r.filter(regex=t).loc[S]:
@@ -496,6 +505,7 @@ def split_dim_repe_logsheet(
                     reID = "_".join(
                         da.ID.data[0].split("_")[0:-1]
                     )  # ['_'.join(n.split('_')[0:-1]) for n in list(da.ID.data)]
+                    print(r, reID)
                     if da.ID.str.endswith(reps.iloc[0]):  # len(da.ID) >0:
                         rep0.append(da.assign_coords(ID=[reID]))
                     elif da.ID.str.endswith(reps.iloc[1]):  # len(da.ID) >1:
@@ -526,6 +536,10 @@ def split_dim_repe_logsheet(
     rep1 = xr.concat(rep1, dim="ID").drop_vars("repe")
     rep2 = xr.concat(rep2, dim="ID").drop_vars("repe")
 
+    df = pd.DataFrame(rep2.ID.data)
+    df.duplicated().sum()
+    df[df.duplicated(keep=False)]
+
     daData = xr.concat([rep0, rep1, rep2], dim="repe").assign_coords(repe=[0, 1, 2])
 
     try:
@@ -538,8 +552,8 @@ def split_dim_repe_logsheet(
             daData = daData.transpose(
                 "ID", "n_var", "repe", "axis", "time"
             )  # si no es EMG
-    except:
-        print("Dimensions could not be sorted.")
+    except Exception as e:
+        print(f"Dimensions could not be sorted. {e}")
 
     return daData
 
@@ -836,6 +850,8 @@ def load_merge_vicon_csv_logsheet(
     log_sheet=None,
     section: str = "Model Outputs",
     n_vars_load=None,
+    avoid_file_name=None,
+    discardables: list[str] | None = None,
     n_project=None,
     data_type=None,
     show=False,
@@ -848,9 +864,22 @@ def load_merge_vicon_csv_logsheet(
         raise ValueError("You must specify the Dataframe with the log sheet")
 
     h_r = log_sheet.iloc[:, 1:].dropna(how="all")
-    # file_list = sorted(list(path.glob('**/*.csv')))#incluye los que haya en subcarpetas
-    # file_list = [x for x in file_list if 'error' not in  x.name] #selecciona archivos
-    # file_list.sort()
+
+    file_list = sorted(
+        list(path.glob("**/*.csv"))
+    )  # incluye los que haya en subcarpetas
+
+    if avoid_file_name is not None:
+        file_list = [
+            f
+            for f in file_list
+            if not any(noun in f.as_posix() for noun in avoid_file_name)
+        ]
+    if discardables is not None:
+        # discardables como ruta completa
+        file_list = [
+            s for s in file_list if not any(Path(xs) == s for xs in discardables)
+        ]
 
     print("Loading files...")
     timer_carga = time.time()
@@ -863,7 +892,12 @@ def load_merge_vicon_csv_logsheet(
         for t in jump_tests:
             for r in h_r.filter(regex=t).loc[S]:
                 if r is not np.nan:
-                    file = Path((path / f"{S}_{t}_{r}").with_suffix(".csv"))
+                    # file = Path((path / f"{S}_{t}_{r}").with_suffix(".csv"))
+                    try:
+                        file = [x for x in file_list if file_name in x.stem][0]
+                    except IndexError:
+                        print(f"File {file_name} not found")
+                        continue
                     print(f"Loading section {section}, file: {file.name}")
                     # print(f'{S}_{t}_{r}', f'{S}_{t}_{r}' in [x.stem for x in file_list])
                     try:
@@ -913,20 +947,36 @@ def load_merge_vicon_c3d_logsheet(
     log_sheet=None,
     section=None,
     n_vars_load=None,
+    avoid_file_name=None,
+    discardables: list[str] | None = None,
     data_type=None,
     n_project=None,
     engine="ezc3d",
     show=False,
 ) -> xr.DataArray:
+    """
+    descrive function"""
     from biomdp.io.read_vicon_c3d import read_vicon_c3d
 
     if log_sheet is None:
         raise ValueError("You must specify the Dataframe with the log sheet")
 
     h_r = log_sheet.iloc[:, 1:].dropna(how="all")
-    # file_list = sorted(list(path.glob('**/*.csv')))#incluye los que haya en subcarpetas
-    # file_list = [x for x in file_list if 'error' not in  x.name] #selecciona archivos
-    # file_list.sort()
+    file_list = sorted(
+        list(path.glob("**/*.c3d"))
+    )  # incluye los que haya en subcarpetas
+
+    if avoid_file_name is not None:
+        file_list = [
+            f
+            for f in file_list
+            if not any(noun in f.as_posix() for noun in avoid_file_name)
+        ]
+    if discardables is not None:
+        # discardables como ruta completa
+        file_list = [
+            s for s in file_list if not any(Path(xs) == s for xs in discardables)
+        ]
 
     print("Loading files...")
     timer_carga = time.time()
@@ -940,7 +990,13 @@ def load_merge_vicon_c3d_logsheet(
         for t in jump_tests:
             for r in h_r.filter(regex=t).loc[S]:
                 if r is not np.nan:
-                    file = Path((path / f"{S}_{t}_{r}").with_suffix(".c3d"))
+                    file_name = f"{S}_{t}_{r}"
+                    try:
+                        file = [x for x in file_list if file_name in x.stem][0]
+                    except IndexError:
+                        print(f"File {file_name} not found")
+                        continue
+
                     print(f"Loading section {section}, file: {file.name}")
                     # print(f'{S}_{t}_{r}', f'{S}_{t}_{r}' in [x.stem for x in file_list])
                     try:
@@ -1607,9 +1663,9 @@ def fix_zero_adjustment(daData: xr.DataArray) -> xr.DataArray:
                 n_above=int(0.2 * daData.freq),
                 show=False,
             )
-            recorte_ventana = int((ind[0, 1] - ind[0, 0]) * 10 / 100)
-            ind[0, 0] += recorte_ventana
-            ind[0, 1] -= recorte_ventana
+            split_window = int((ind[0, 1] - ind[0, 0]) * 10 / 100)
+            ind[0, 0] += split_window
+            ind[0, 1] -= split_window
             weight = dat[ind[0, 0] : ind[0, 1]].mean()
             dat -= weight
         except:
@@ -4066,7 +4122,7 @@ colr = {
 }
 
 
-def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
+def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') -> None:
     for h, ax in enumerate(g.axs):  # .axes): #extrae cada fila
         for i in range(len(ax)):  # extrae cada axis (gráfica)
             dimensiones = g.name_dicts[h, i]
@@ -4075,6 +4131,8 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
             if (
                 dimensiones is None
             ):  # para cuando quedan huecos al final de la cuadrícula
+                continue
+            if g.data.sel(g.name_dicts[h, i]).isnull().all():
                 continue
             # print(dimensiones)
             # plt.plot(g.data.sel(g.name_dicts[h, i]))
@@ -4098,6 +4156,7 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
                 )
 
             if isinstance(daEvents, xr.DataArray):
+                daEvents.isel(ID=0).to_dataframe()
                 # Fill areas
                 if g.data.name in ["Forces", "BW"]:
                     if g.data.name == "BW":
@@ -4107,51 +4166,70 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents) -> None:
                     Fz = g.data.sel(dimensiones)
                     t = np.arange(len(Fz)) / freq
                     # Imp neg descent
-                    ini = int(daEvents.sel(dimensiones).sel(event="iniMov").data)
-                    end = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
-                    ax[i].fill_between(
-                        t[ini:end], weight, Fz[ini:end], color=colr["iniMov"], alpha=0.5
-                    )
+                    if not any(daEvents.sel(dimensiones).sel(event=["iniMov", "iniImpPos"]).isnull()):
+                        ini = int(daEvents.sel(dimensiones).sel(event="iniMov").data)
+                        end = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
+                        ax[i].fill_between(
+                            t[ini:end], weight, Fz[ini:end], color=colr["iniMov"], alpha=0.5
+                        )
                     # Imp posit descent
-                    ini = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
-                    end = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
-                    ax[i].fill_between(
-                        t[ini:end],
-                        weight,
-                        Fz[ini:end],
-                        color=colr["iniImpPos"],
-                        alpha=0.5,
-                    )
+                    if not any(daEvents.sel(dimensiones).sel(event=["iniImpPos", "maxFlex"]).isnull()):
+                        ini = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
+                        end = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
+                        ax[i].fill_between(
+                            t[ini:end],
+                            weight,
+                            Fz[ini:end],
+                            color=colr["iniImpPos"],
+                            alpha=0.5,
+                        )
                     # Imp posit ascent
-                    ini = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
-                    end = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)
-                    ax[i].fill_between(
-                        t[ini:end],
-                        weight,
-                        Fz[ini:end],
-                        color=colr["maxFlex"],
-                        alpha=0.5,
-                    )
+                    if test=='preacsj':
+                        if not any(daEvents.sel(dimensiones).sel(event=["iniImpPos", "finImpPos"]).isnull()):
+                            ini = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
+                            end = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)                        
+                            ax[i].fill_between(
+                                t[ini:end],
+                                weight,
+                                Fz[ini:end],
+                                color=colr["maxFlex"],
+                                alpha=0.5,
+                            )
+                    elif test=='generic':
+                        if not any(daEvents.sel(dimensiones).sel(event=["maxFlex", "finImpPos"]).isnull()):
+                            ini = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
+                            end = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)                        
+                            ax[i].fill_between(
+                                t[ini:end],
+                                weight,
+                                Fz[ini:end],
+                                color=colr["maxFlex"],
+                                alpha=0.5,
+                            )
+                        
                     # Imp negat ascent
-                    ini = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)
-                    end = int(daEvents.sel(dimensiones).sel(event="despegue").data)
-                    ax[i].fill_between(
-                        t[ini:end],
-                        weight,
-                        Fz[ini:end],
-                        color=colr["finImpPos"],
-                        alpha=0.5,
-                    )
+                    if not any(daEvents.sel(dimensiones).sel(event=["finImpPos", "despegue"]).isnull()):
+                        ini = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)
+                        end = int(daEvents.sel(dimensiones).sel(event="despegue").data)
+                        ax[i].fill_between(
+                            t[ini:end],
+                            weight,
+                            Fz[ini:end],
+                            color=colr["finImpPos"],
+                            alpha=0.5,
+                        )
                     # Flight
-                    ini = int(daEvents.sel(dimensiones).sel(event="despegue").data)
-                    end = int(daEvents.sel(dimensiones).sel(event="aterrizaje").data)
-                    ax[i].fill_between(
-                        t[ini:end],
-                        weight,
-                        Fz[ini:end],
-                        color=colr["despegue"],
-                        alpha=0.5,
-                    )
+                    if not any(daEvents.sel(dimensiones).sel(event=["despegue", "aterrizaje"]).isnull()):
+                        ini = int(daEvents.sel(dimensiones).sel(event="despegue").data)
+                        end = int(daEvents.sel(dimensiones).sel(event="aterrizaje").data)
+                        ax[i].fill_between(
+                            t[ini:end],
+                            weight,
+                            Fz[ini:end],
+                            color=colr["despegue"],
+                            alpha=0.5,
+                        )
+                    
 
                 # Draw vertical lines
                 for ev in daEvents.sel(dimensiones):  # .event:
@@ -4227,6 +4305,7 @@ def graphs_events(
     show_in_console: bool = True,
     adjust_iniend: bool = False,
     sharey: bool = False,
+    test: str = "generic",
     work_path: Path | str | None = None,
     n_file_graph_global: str | None = None,
 ) -> None:
@@ -4290,7 +4369,7 @@ def graphs_events(
         g = dax.plot.line(
             x="time", alpha=0.8, aspect=1.5, sharey=sharey, **fils_cols
         )  # , lw=1)
-        _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents)
+        _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test=test)
 
         if n_file_graph_global is not None and work_path is not None:
             pdf_pages.savefig(g.fig)
@@ -5019,16 +5098,16 @@ def adjust_offsetFz(
             vuelo = detect_takeoff_landing(
                 daReturn, jump_test, threshold=threshold, show=show_detail
             )
-            recorte_ventana = (
+            split_window = (
                 (
                     vuelo.loc[dict(event="aterrizaje")]
                     - vuelo.loc[dict(event="despegue")]
                 )
                 * pct_window
                 / 100
-            ).astype(np.int32)
-            vuelo.loc[dict(event="despegue")] += recorte_ventana
-            vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
+            ).round()  # astype(np.int32)
+            vuelo.loc[dict(event="despegue")] += split_window
+            vuelo.loc[dict(event="aterrizaje")] -= split_window
             offset_flight = trim_analysis_window(daReturn, vuelo).mean(dim="time")
 
         else:
@@ -5037,16 +5116,16 @@ def adjust_offsetFz(
                 daReturn, jump_test, threshold=threshold, show=show_detail
             )
             # reduces the window a little to avoid possible bounces from filtering
-            recorte_ventana = (
+            split_window = (
                 (
                     vuelo.loc[dict(event="aterrizaje")]
                     - vuelo.loc[dict(event="despegue")]
                 )
                 * pct_window
                 / 100
-            ).astype(np.int32)  # TODO: CHECK FOR NAN
-            vuelo.loc[dict(event="despegue")] += recorte_ventana
-            vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
+            ).round()  # .astype(np.int32)  # TODO: CHECK FOR NAN
+            vuelo.loc[dict(event="despegue")] += split_window
+            vuelo.loc[dict(event="aterrizaje")] -= split_window
 
             offset_flight = trim_analysis_window(daReturn, vuelo).mean(dim="time")
             # trim_analysis_window(daData, vuelo).sel(axis='x').plot.line(x='time', col='ID', col_wrap=4)
@@ -5150,13 +5229,13 @@ def adjust_offsetFz_flight_conventional(
         vuelo = detect_takeoff_landing(
             daData, jump_test, threshold=threshold
         )  # , show=show)
-        recorte_ventana = (
+        split_window = (
             (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
             * pct_window
             / 100
         ).astype("int32")
-        vuelo.loc[dict(event="despegue")] += recorte_ventana
-        vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
+        vuelo.loc[dict(event="despegue")] += split_window
+        vuelo.loc[dict(event="aterrizaje")] -= split_window
         offset_flight = trim_analysis_window(daData, vuelo).mean(dim="time")
 
     else:
@@ -5165,13 +5244,13 @@ def adjust_offsetFz_flight_conventional(
             daData, jump_test, threshold=threshold
         )  # , show=show)
         # reduces the window a little to avoid possible bounces from filtering
-        recorte_ventana = (
+        split_window = (
             (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
             * pct_window
             / 100
         ).astype("int32")
-        vuelo.loc[dict(event="despegue")] += recorte_ventana
-        vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
+        vuelo.loc[dict(event="despegue")] += split_window
+        vuelo.loc[dict(event="aterrizaje")] -= split_window
 
         offset_flight = trim_analysis_window(daData, vuelo).mean(dim="time")
         # trim_analysis_window(daData, vuelo).sel(axis='x').plot.line(x='time', col='ID', col_wrap=4)
@@ -5274,8 +5353,8 @@ def reset_Fz_flight(
             # kwargs=dict(threshold=-threshold, n_above=int(0.1*daData.freq), show=show)
         ).drop_vars("event")
 
-    else:  # si no es DJ2PApart
-        daReturn = daData.where(daData > threshold, 0.0)
+    else:  # if not DJ2PApart. Keeps nans
+        daReturn = daData.where(daData.isnull(), daData.where(daData > threshold, 0.0))
 
     if show:
         if "plat" in daData.dims:
@@ -5336,13 +5415,13 @@ def reset_F_flight_axis(
 
     vuelo = detect_takeoff_landing(daDatosZ, jump_test, threshold=threshold)
     # reduces the window a little to avoid possible bounces from filtering
-    recorte_ventana = (
+    split_window = (
         (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
         * pct_window
         / 100
     ).astype("int32")
-    vuelo.loc[dict(event="despegue")] += recorte_ventana
-    vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
+    vuelo.loc[dict(event="despegue")] += split_window
+    vuelo.loc[dict(event="aterrizaje")] -= split_window
 
     with xr.set_options(keep_attrs=True):
         daData = xr.where(
@@ -5373,13 +5452,13 @@ def reset_F_flight_axis_convencional(
 
     vuelo = detect_takeoff_landing(daDatosZ, jump_test, threshold=threshold)
     # reduces the window a little to avoid possible bounces from filtering
-    recorte_ventana = (
+    split_window = (
         (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
         * pct_window
         / 100
     ).astype("int32")
-    vuelo.loc[dict(event="despegue")] += recorte_ventana
-    vuelo.loc[dict(event="aterrizaje")] -= recorte_ventana
+    vuelo.loc[dict(event="despegue")] += split_window
+    vuelo.loc[dict(event="aterrizaje")] -= split_window
 
     with xr.set_options(keep_attrs=True):
         daData = xr.where(
