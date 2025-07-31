@@ -897,7 +897,9 @@ def read_vicon_csv_pd(
     if n_vars_load:
         dfReturn = dfReturn.loc[:, n_vars_load]
 
-    if to_dataarray:
+    if not raw:
+
+
         # if section == 'Devices':
         #    dfReturn.columns = dfReturn.columns.droplevel(1)
 

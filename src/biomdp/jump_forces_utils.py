@@ -9,13 +9,19 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.7.0"
-__date__ = "10/07/2025"
+__version__ = "v.1.7.1"
+__date__ = "29/07/2025"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+
+    29/07/2025, v.1.7.1
+        - In non "DJ2P" jumps, adjusted the parameter 'n_above' to
+          int(0.01 * daData.freq) in detect_takeoff_landing function, to avoid
+          rebounds in the takeoff event.
+
     08/07/2025, v.1.7.0    
         - Included parameter 'avoid_file_name' and 'discardables' in 
           load_merge_vicon_csv_logsheet and load_merge_vicon_c3d_logsheet.
@@ -2928,7 +2934,7 @@ def detect_takeoff_landing(
             # exclude_dims=set(('time',)),
             vectorize=True,
             kwargs=dict(
-                threshold=-threshold, n_above=int(0.1 * daData.freq), show=show
+                threshold=-threshold, n_above=int(0.01 * daData.freq), show=show
             ),
         ).assign_coords(event=["despegue", "aterrizaje"])
     # Comprobaciones
@@ -4122,7 +4128,7 @@ colr = {
 }
 
 
-def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') -> None:
+def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") -> None:
     for h, ax in enumerate(g.axs):  # .axes): #extrae cada fila
         for i in range(len(ax)):  # extrae cada axis (gráfica)
             dimensiones = g.name_dicts[h, i]
@@ -4158,22 +4164,35 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') 
             if isinstance(daEvents, xr.DataArray):
                 daEvents.isel(ID=0).to_dataframe()
                 # Fill areas
-                if g.data.name in ["Forces", "BW"]:
+                if g.data.name in ["Forces", "BW"] and daWeight is not None:
                     if g.data.name == "BW":
                         weight = 1.0
                     else:
                         weight = daWeight.sel(dimensiones).sel(stat="media").data
+
                     Fz = g.data.sel(dimensiones)
                     t = np.arange(len(Fz)) / freq
                     # Imp neg descent
-                    if not any(daEvents.sel(dimensiones).sel(event=["iniMov", "iniImpPos"]).isnull()):
+                    if not any(
+                        daEvents.sel(dimensiones)
+                        .sel(event=["iniMov", "iniImpPos"])
+                        .isnull()
+                    ):
                         ini = int(daEvents.sel(dimensiones).sel(event="iniMov").data)
                         end = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
                         ax[i].fill_between(
-                            t[ini:end], weight, Fz[ini:end], color=colr["iniMov"], alpha=0.5
+                            t[ini:end],
+                            weight,
+                            Fz[ini:end],
+                            color=colr["iniMov"],
+                            alpha=0.5,
                         )
                     # Imp posit descent
-                    if not any(daEvents.sel(dimensiones).sel(event=["iniImpPos", "maxFlex"]).isnull()):
+                    if not any(
+                        daEvents.sel(dimensiones)
+                        .sel(event=["iniImpPos", "maxFlex"])
+                        .isnull()
+                    ):
                         ini = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
                         end = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
                         ax[i].fill_between(
@@ -4184,10 +4203,18 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') 
                             alpha=0.5,
                         )
                     # Imp posit ascent
-                    if test=='preacsj':
-                        if not any(daEvents.sel(dimensiones).sel(event=["iniImpPos", "finImpPos"]).isnull()):
-                            ini = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
-                            end = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)                        
+                    if test == "preacsj":
+                        if not any(
+                            daEvents.sel(dimensiones)
+                            .sel(event=["iniImpPos", "finImpPos"])
+                            .isnull()
+                        ):
+                            ini = int(
+                                daEvents.sel(dimensiones).sel(event="iniImpPos").data
+                            )
+                            end = int(
+                                daEvents.sel(dimensiones).sel(event="finImpPos").data
+                            )
                             ax[i].fill_between(
                                 t[ini:end],
                                 weight,
@@ -4195,10 +4222,18 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') 
                                 color=colr["maxFlex"],
                                 alpha=0.5,
                             )
-                    elif test=='generic':
-                        if not any(daEvents.sel(dimensiones).sel(event=["maxFlex", "finImpPos"]).isnull()):
-                            ini = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
-                            end = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)                        
+                    elif test == "generic":
+                        if not any(
+                            daEvents.sel(dimensiones)
+                            .sel(event=["maxFlex", "finImpPos"])
+                            .isnull()
+                        ):
+                            ini = int(
+                                daEvents.sel(dimensiones).sel(event="maxFlex").data
+                            )
+                            end = int(
+                                daEvents.sel(dimensiones).sel(event="finImpPos").data
+                            )
                             ax[i].fill_between(
                                 t[ini:end],
                                 weight,
@@ -4206,9 +4241,13 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') 
                                 color=colr["maxFlex"],
                                 alpha=0.5,
                             )
-                        
+
                     # Imp negat ascent
-                    if not any(daEvents.sel(dimensiones).sel(event=["finImpPos", "despegue"]).isnull()):
+                    if not any(
+                        daEvents.sel(dimensiones)
+                        .sel(event=["finImpPos", "despegue"])
+                        .isnull()
+                    ):
                         ini = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)
                         end = int(daEvents.sel(dimensiones).sel(event="despegue").data)
                         ax[i].fill_between(
@@ -4219,9 +4258,15 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') 
                             alpha=0.5,
                         )
                     # Flight
-                    if not any(daEvents.sel(dimensiones).sel(event=["despegue", "aterrizaje"]).isnull()):
+                    if not any(
+                        daEvents.sel(dimensiones)
+                        .sel(event=["despegue", "aterrizaje"])
+                        .isnull()
+                    ):
                         ini = int(daEvents.sel(dimensiones).sel(event="despegue").data)
-                        end = int(daEvents.sel(dimensiones).sel(event="aterrizaje").data)
+                        end = int(
+                            daEvents.sel(dimensiones).sel(event="aterrizaje").data
+                        )
                         ax[i].fill_between(
                             t[ini:end],
                             weight,
@@ -4229,7 +4274,6 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test='generic') 
                             color=colr["despegue"],
                             alpha=0.5,
                         )
-                    
 
                 # Draw vertical lines
                 for ev in daEvents.sel(dimensiones):  # .event:
@@ -5323,8 +5367,8 @@ def reset_Fz_flight(
     if jump_test == "DJ2PApart":
         # Para plataforma auxiliar en DJ2Plats. Pone a cero después del despegue inicial
         vuelo = detect_takeoff_landing(
-            daData, jump_test, threshold=threshold
-        )  # , show=show)
+            daData, jump_test, threshold=threshold, show=show
+        )
 
         def _detect_onset_aux(data, vuel, ID):
             if np.count_nonzero(~np.isnan(data)) == 0:
