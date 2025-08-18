@@ -98,13 +98,13 @@ def read_kistler_c3d_c3d(
         raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
     import warnings  # to remove 'no points found' warnings
 
-    timer = time.perf_counter()
+    # timer = time.perf_counter()
 
     # se asegura de que la extensión es c3d
     file = file.with_suffix(".c3d")
 
     try:
-        timerSub = time.perf_counter()
+        # timerSub = time.perf_counter()
         # print(f'Loading file: {file.name}')
 
         with warnings.catch_warnings():
@@ -163,13 +163,13 @@ def read_kistler_ezc3d(
             "Module ezc3d not installed.\nInstall with pip install ezc3d or conda install -c conda-forge ezc3d"
         )
 
-    timer = time.perf_counter()
+    # timer = time.perf_counter()
 
     # se asegura de que la extensión es c3d
     file = file.with_suffix(".c3d")
 
     try:
-        timerSub = time.perf_counter()
+        # timerSub = time.perf_counter()
         # print(f'Loading file: {file.name}')
 
         acq = ezc3d.c3d(file.as_posix())  # , extract_forceplat_data=True)

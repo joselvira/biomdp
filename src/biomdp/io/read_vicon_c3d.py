@@ -10,11 +10,14 @@ Created on Fry Sep 15 16:36:37 2023
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v0.2.0"
-__date__ = "26/04/2025"
+__version__ = "v0.3.0"
+__date__ = "18/08/2025"
 
 """
 Updates:
+    18/08/2025, v0.3.0
+        - Added engine moveck_bridge_btk as 'mbbtk' (in development).
+
     26/04/2025, v0.2.1
             - Added function read_vicon_c3d_c3d_pose2sim (to explore).
 
@@ -72,9 +75,12 @@ def read_vicon_c3d(
 
     elif engine == "ezc3d":
         da = read_vicon_ezc3d(file, section, n_vars_load, coincidence)
+    
+    elif engine == "mbbtk":
+        da = read_vicon_mbbtk(file, section, n_vars_load, coincidence)
 
     else:
-        raise Exception(f"Engine {engine} not implemented.\nTry 'c3d' or 'ezc3d'")
+        raise Exception(f"Engine {engine} not implemented.\nTry 'c3d', 'ezc3d' or 'mbbtk'")
 
     return da
 
@@ -366,11 +372,9 @@ def read_vicon_ezc3d(
             'Section header not found, try "Trajectories", "Model Outputs", "Forces" or "EMG"'
         )
         return
-
-    timer = time.perf_counter()  # inicia el contador de tiempo
-
+    
     try:
-        timerSub = time.perf_counter()  # inicia el contador de tiempo
+        # timerSub = time.perf_counter()  # inicia el contador de tiempo
         # print(f'Loading section {section}, file: {file.name}')
 
         acq = ezc3d.c3d(file.as_posix())
@@ -479,20 +483,21 @@ def read_vicon_ezc3d(
                     da.attrs["units"] = "N"
                     # da.time.attrs['units']='s'
                     # da.plot.line(x='time', col='axis', hue='n_var')
-                except:
+
+                except Exception as err:
                     da = xr.DataArray()
-                    raise Exception("Not available force data in file")
+                    raise Exception(f"Not available force data in file, {err}")
 
             # EMG
             elif section == "EMG":
                 if da.n_var.str.contains("EMG").any():
                     da = da.sel(n_var=da.n_var.str.contains("EMG"))
-                    da.attrs["units"] = "mV"
+                    da.attrs["units"] = "V"
                     # da.n_var.sortby('n_var')
                     # da.plot.line(x='time', col='n_var', col_wrap=3)
                 else:
                     da = xr.DataArray()
-                    raise Exception("No EMG data in file")
+                    raise Exception("No EMG data found in file")
 
         da.time.attrs["units"] = "s"
         da.name = section
@@ -507,6 +512,255 @@ def read_vicon_ezc3d(
         da = da.sel(n_var=n_vars_load)
 
     return da  # daTrajec, daModels, daForce, daEMG
+
+
+
+def read_vicon_mbbtk(
+    file: str | Path,
+    section: str | None = None,
+    n_vars_load: List[str] | None = None,
+    coincidence: str = "similar",
+) -> xr.DataArray:
+    """
+    IN DEVELOPMENT
+    Reads a Vicon C3D file using the moveck_bridge_btk library.
+
+    Args:
+        file (str or Path): Path to the C3D file.
+        section (str, optional): Section of data to load. Defaults to None.
+        n_vars_load (List[str], optional): List of variables to load. Defaults to None.
+        coincidence (str, optional): Method to match variables names. Defaults to "similar".
+
+    Returns:
+        xr.DataArray: A DataArray containing the loaded data.
+
+    Raises:
+        ImportError: If the moveck_bridge_btk module is not installed.
+
+    """
+
+    try:
+        import moveck_bridge_btk as btk
+    except:
+        raise ImportError(
+            "Module moveck_bridge_btk not installed.\nInstall with pip install moveck_bridge_btk"
+        )
+
+    if isinstance(file, str):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found")
+
+    if section not in [
+        "Trajectories",
+        "Model Outputs",
+        "Forces",
+        "EMG",
+    ]:
+        raise Exception(
+            'Section header not found, try "Trajectories", "Model Outputs", "Forces" or "EMG"'
+        )
+        return
+
+   
+    try:
+        # timerSub = time.perf_counter()  # inicia el contador de tiempo
+        # print(f'Loading section {section}, file: {file.name}')
+
+        h = btk.btkReadAcquisition(file.as_posix())
+
+        # Trajectiories and Modeled outputs
+        if section =="Trajectories":
+            
+            [markers, markersInfo] = btk.btkGetMarkers(h)
+            freq = markersInfo["frequency"]
+            
+            labels = [n for n in markers if '*' not in n]
+            data=[]
+            data.append([markers[s] for s in labels])
+            data = np.concatenate(data)
+            
+            coords = {
+                "n_var": labels,
+                "time": np.arange(data.shape[1]) / freq,
+                "axis": ["x", "y", "z"],                
+            }
+            da = (
+                xr.DataArray(
+                    data,  # =np.expand_dims(data, axis=0),
+                    dims=coords.keys(),
+                    coords=coords,
+                    name="Trajectories",
+                    attrs={
+                        "freq": freq,
+                        "units": markersInfo["units"]['ALLMARKERS'],
+                    },
+                )
+                .transpose("n_var", "axis", "time")
+                .dropna("time", how="all")  # para quitar los ceros cuando no hay dato
+            )
+            
+
+        # Model outputs
+        elif section == "Model Outputs":
+            raise Exception("Not implemented")
+            """
+            # Reads the same as markers???
+            [points, pointsInfo] = btk.btkGetPoints(h)
+            freq = btk.btkGetPointFrequency(h)
+            
+            labels = [n for n in points if '*' not in n]
+            data=[]
+            data.append([points[s] for s in labels])
+            data = np.concatenate(data)
+            
+            coords = {
+                "n_var": labels,
+                "time": np.arange(data.shape[1]) / freq,
+                "axis": ["x", "y", "z"],                
+            }
+            da = (
+                xr.DataArray(
+                    data,  # =np.expand_dims(data, axis=0),
+                    dims=coords.keys(),
+                    coords=coords,
+                    name="Trajectories",
+                    attrs={
+                        "freq": freq,
+                        "units": pointsInfo["units"]['ALL'],
+                    },
+                )
+                .transpose("n_var", "axis", "time")
+                .dropna("time", how="all")  # para quitar los ceros cuando no hay dato
+            )
+            """
+
+        # Analogs
+        elif section in ["Forces", "EMG", 'EMGpl']:
+            [analogs_values, analog_infos] = btk.btkGetAnalogs(h)
+            freq = btk.btkGetAnalogFrequency(h)
+                        
+            # Forces
+            if section == "Forces":
+                labels = [n for n in analogs_values if 'Force.' in n or n.startswith('F') and 'Foot' not in n]
+                units = analog_infos['units'][labels[0]]
+                data=[]
+                data.append([analogs_values[s] for s in labels])
+                data = np.concatenate(data)
+
+                coords = {
+                "n_var": labels,
+                "time": np.arange(data.shape[-1]) / freq,
+                }
+                da = xr.DataArray(
+                    data=data,
+                    dims=coords.keys(),
+                    coords=coords,                    
+                )
+
+                try:
+                    # da = da.sel(n_var=da.n_var.str.startswith('F')) #'Force') #.sel(n_var=da_analog.n_var.str.contains('Force'))
+                    if len(da.n_var) == 3:  # 1 platform
+                        x = da.isel(n_var=0)
+                        y = da.isel(n_var=1)
+                        z = da.isel(n_var=2)
+                        da = (
+                            xr.concat([x, y, z], dim="axis")
+                            .assign_coords(n_var="plat1")
+                            .assign_coords(axis=["x", "y", "z"])
+                            .expand_dims({"n_var": 1})
+                        )
+                    elif len(da.n_var) == 6:  # 2 platforms
+                        x = da.sel(n_var=da.n_var.str.contains('Fx')).assign_coords(
+                            n_var=["plat1", "plat2"]
+                        )
+                        y = da.sel(n_var=da.n_var.str.contains('Fy')).assign_coords(
+                            n_var=["plat1", "plat2"]
+                        )
+                        z = da.sel(n_var=da.n_var.str.contains('Fz')).assign_coords(
+                            n_var=["plat1", "plat2"]
+                        )
+                        
+                        da = (
+                            xr.concat([x, y, z], dim="axis")
+                            # .assign_coords(n_var=['plat1', 'plat2'])
+                            .assign_coords(axis=["x", "y", "z"])
+                        )
+                        da.attrs["units"] = "N"
+                    elif len(da.n_var) == 8:  # Bioware 1 plat
+                        da.attrs["description"] = "Data from Bioware 1 plat"
+                    else:
+                        raise Exception("The number of Force variables is not 3 or 6")
+                    da.attrs["freq"] = freq
+                    da.attrs["units"] = units
+                    # da.time.attrs['units']='s'
+                    # da.plot.line(x='time', col='axis', hue='n_var')
+                except Exception as err:
+
+                    da = xr.DataArray()
+                    raise Exception(f"Not available force data in file, {err}")
+
+            # EMG            
+            elif section == 'EMG':
+                labels = [n for n in analogs_values if 'EMG' in n]
+                units = analog_infos['units'][labels[0]]
+                data=[]
+                data.append([analogs_values[s] for s in labels])
+                data = np.concatenate(data)
+
+                coords = {                    
+                    "n_var": labels,
+                    "time": np.arange(data.shape[-1]) / freq,                    
+                }
+                da = xr.DataArray(
+                    data=data,
+                    dims=coords.keys(),
+                    coords=coords,
+                    attrs={"freq": freq, "units": units},
+                )
+
+                # Polars version (not much faster)
+                """
+                dfData = pl.from_dict(analogs_values)
+                dfData = dfData.select(pl.col("^EMG.*$"))
+                if len(dfData.columns) == 0:
+                    raise Exception("No EMG data found in file")
+
+                data = dfData.to_numpy()
+
+                coords = {                    
+                    "time": np.arange(data.shape[0]) / freq,
+                    "n_var": dfData.columns,
+                }
+                da = xr.DataArray(
+                    data=data,
+                    dims=coords.keys(),
+                    coords=coords,
+                    attrs={"freq": freq, "units": analog_infos['units'][dfData.columns[0]]},
+                )      
+                """
+
+           
+                          
+                
+
+        btk.btkCloseAcquisition(h)
+        
+        da.time.attrs["units"] = "s"
+        da.name = section
+
+        # print('Tiempo {0:.3f} s \n'.format(time.perf_counter()-timerSub))
+
+    except Exception as err:
+        da = xr.DataArray()
+        raise Exception(f"\nATTENTION. Unable to process {file.name}, {err}\n")
+
+
+    if n_vars_load is not None and "n_var" in da.coords:
+        da = da.sel(n_var=n_vars_load)
+
+    return da
 
 
 def read_vicon_c3d_xr_global(
@@ -852,7 +1106,15 @@ if __name__ == "__main__":
     )
 
     def test_performance():
-        result = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
+        result = read_vicon_c3d(file, section="Model Outputs", engine="ezc3d")
+        return result
+
+    print(
+        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=10):.4f} s'
+    )
+
+    def test_performance():
+        result = read_vicon_c3d(file, section="Model Outputs", engine="mbbtk")
         return result
 
     print(
@@ -863,12 +1125,25 @@ if __name__ == "__main__":
     file = ruta_archivo / "SaltosS13_SJ_100S_03.c3d"
     daTrajec = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
     daTrajec.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
+    
+    daTrajec_ezc3d = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
+    daTrajec_mbbtk = read_vicon_c3d(file, section="Trajectories", engine="mbbtk")
+
+    daTrajec_ezc3d == daTrajec_mbbtk
 
     daTrajec = read_vicon_c3d(
         file,
         section="Trajectories",
         n_vars_load=["LPSI", "LASIMID", "RASIMID", "RPSI"],
         engine="ezc3d",
+    )
+    daTrajec.plot.line(x="time", col="n_var")
+
+    daTrajec = read_vicon_c3d(
+        file,
+        section="Trajectories",
+        n_vars_load=["LPSI", "LASIMID", "RASIMID", "RPSI"],
+        engine="mbbtk",
     )
     daTrajec.plot.line(x="time", col="n_var")
 
@@ -899,6 +1174,10 @@ if __name__ == "__main__":
     daForce = read_vicon_c3d(file, section="Forces", engine="ezc3d")
     daForce.plot.line(x="time", col="n_var", col_wrap=3)
 
+    daForce2 = read_vicon_c3d(file, section="Forces", engine="mbbtk")
+    daForce2.plot.line(x="time", col="n_var", col_wrap=3)
+    daForce.equals(daForce2)
+
     daEMG = read_vicon_c3d(
         file,
         section="EMG",
@@ -913,6 +1192,15 @@ if __name__ == "__main__":
     )
     daEMG.plot.line(x="time", col="n_var", col_wrap=3)
 
+    daEMG2 = read_vicon_c3d(
+        file,
+        section="EMG",
+        n_vars_load=["EMG1.v", "EMG2.v", "EMG3.v", "EMG4.v", "EMG5.v", "EMG6.v"],
+        engine="mbbtk",
+    )
+    daEMG2.plot.line(x="time", col="n_var", col_wrap=3)
+    daEMG.equals(daEMG2)
+    
     [daTrajec, daModels] = read_vicon_c3d_xr_global(
         file, section=["Trajectories", "Model Outputs"]
     )
@@ -934,9 +1222,12 @@ if __name__ == "__main__":
     daModels.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
 
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
-    file = ruta_archivo / "SillaRuedas-s1905.c3d"
+    file = ruta_archivo / "PCFutbol-1poa.c3d"
     daForce = read_vicon_c3d(file, section="Forces")
     daForce.plot.line(x="time", col="n_var", col_wrap=3)
+    daForce = read_vicon_c3d(file, section="Forces", engine='mbbtk')
+    daForce.plot.line(x="time", col="n_var", col_wrap=3)
+    daForce.equals(daForce2)
 
     daEMG = read_vicon_c3d(
         file,
@@ -947,6 +1238,9 @@ if __name__ == "__main__":
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "Pablo_FIN.c3d"
     daModels = read_vicon_c3d(file, section="Model Outputs")
+    daModels2 = read_vicon_c3d(file, section="Model Outputs", engine='mbbtk')
+    daTraj = read_vicon_c3d(file, section="Trajectories", engine='mbbtk')
+    daModels.equals(daModels2)
     daModels.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
     daForce = read_vicon_c3d(file, section="Forces")
     daForce.plot.line(x="time", col="n_var", col_wrap=3)
@@ -957,15 +1251,16 @@ if __name__ == "__main__":
         n_vars_load=["EMG1", "EMG2", "EMG3", "EMG4", "EMG5", "EMG6"],
     )
 
-    # ---- Compara con ezc3d
+    # ---- Compara engines
 
     ruta_archivo = Path(r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D")
     file = ruta_archivo / "SaltosS13_SJ_100S_03.c3d"
 
     import timeit
+    section='EMG'
 
     def test_perf():
-        result = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
+        result = read_vicon_c3d(file, section=section, engine="ezc3d")
         return result
 
     print(
@@ -973,9 +1268,20 @@ if __name__ == "__main__":
     )
 
     def test_perf():
-        result = read_vicon_c3d(file, section="Trajectories", engine="c3d")
+        result = read_vicon_c3d(file, section=section, engine="mbbtk")
         return result
 
     print(
         f'{timeit.timeit("test_perf()", setup="from __main__ import test_perf", number=50):.4f} s'
     )
+
+    def test_perf():
+        result = read_vicon_c3d(file, section=section, engine="c3d")
+        return result
+
+    print(
+        f'{timeit.timeit("test_perf()", setup="from __main__ import test_perf", number=50):.4f} s'
+    )
+
+
+    
