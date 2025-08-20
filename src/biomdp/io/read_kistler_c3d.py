@@ -14,11 +14,14 @@ Bioware's .c3d exports only sensor data separately,
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.2.0"
-__date__ = "25/03/2025"
+__version__ = "0.2.1"
+__date__ = "20/08/2025"
 
 """
 Updates:
+    20/08/2025, v0.2.1
+        - Incuded comment to export to c3d properly frequencies from Bioware.
+
     25/03/2025, v0.2.0
         - Incuded general function to distribute according to "engine".
 
@@ -37,16 +40,14 @@ Updates:
             
 """
 
+import time
+from pathlib import Path
 from typing import List
+
 import numpy as np
 
 # import pandas as pd
 import xarray as xr
-
-
-import time
-from pathlib import Path
-
 
 # =============================================================================
 # %% Functions
@@ -60,16 +61,13 @@ def read_kistler_c3d(
     engine: str = "ezc3d",
     raw: bool = False,
 ) -> xr.DataArray:
-
     if not file.exists():
         raise FileNotFoundError(f"File {file} not found")
 
     if engine == "c3d":
-
         da = read_kistler_c3d_c3d(file)
 
     elif engine == "ezc3d":
-
         da = read_kistler_ezc3d(file)
 
     else:
@@ -154,7 +152,10 @@ def read_kistler_ezc3d(
     file: str | Path,
 ):
     """
-    DOES NOT SEEM TO LOAD THE COMPLETE TIME SERIES
+    IMPORTANT when exporting from Bioware to c3d, select:
+                    Base video frame rate: 1000
+                    Measurements per frame: 1
+    otherwise reading is not complete
     """
     try:
         import ezc3d
@@ -301,10 +302,10 @@ def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
 # %% TESTS
 # =============================================================================
 if __name__ == "__main__":
-
     # from biomdp.io.read_kistler_c3d import read_kistler_c3d_xr
 
     work_path = Path(r"src\datasets")
+
     file = work_path / "kistler_CMJ_1plate.c3d"
     daForce = read_kistler_c3d(file, engine="c3d")
     daForce.isel(plate=0).plot.line(x="time")  # , col="plate")
@@ -332,3 +333,31 @@ if __name__ == "__main__":
     daForce2.plot.line(x="time", col="plate")
 
     daForce2.equals(daForce.isel(time=slice(None, daForce2.time.size)))
+
+    ####################
+    # Exporting in Bioware, select video frame frequency properly to work with ezc3d
+    file = Path(
+        r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D\Bioware_S09_DJ_30_001_rate1-10.c3d"
+    )
+    daForce = read_kistler_c3d(file, engine="ezc3d")
+    daForce.plot.line(x="time", col="plate")
+
+    file = Path(
+        r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D\Bioware_S09_DJ_30_001_rate1000-1000.c3d"
+    )
+    daForce2 = read_kistler_c3d(file, engine="ezc3d")
+    daForce2.plot.line(x="time", col="plate")
+
+    file = Path(
+        r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D\Bioware_S09_DJ_30_001_rate1-1.c3d"
+    )
+    daForce3 = read_kistler_c3d(file, engine="ezc3d")
+    daForce3.plot.line(x="time", col="plate")
+
+    # This option works ok: Base video frame rate: 1000
+    #                       Measurements per frame: 1
+    file = Path(
+        r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D\Bioware_S09_DJ_30_001_rate100-1.c3d"
+    )
+    daForce4 = read_kistler_c3d(file, engine="ezc3d")
+    daForce4.plot.line(x="time", col="plate")
