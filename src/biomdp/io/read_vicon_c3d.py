@@ -172,6 +172,14 @@ def read_vicon_c3d_c3d(
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
+    """
+    In c3d version 0.5.2, to avoid in16 error modify c3d.py file:
+        Uncomment line 1530 (end_frame = param.uint32_value)
+        Comment lines 1531 y 1532 (words = param.uint16_array
+                                   end_frame = words[0] + words[1] * 65536
+                                   )
+    """
+
     try:
         import c3d
     except:
@@ -1121,10 +1129,12 @@ if __name__ == "__main__":
     daTrajec = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
     daTrajec.isel(n_var=slice(6)).plot.line(x="time", col="n_var", col_wrap=3)
 
+    daTrajec_c3d = read_vicon_c3d(file, section="Trajectories", engine="c3d")
     daTrajec_ezc3d = read_vicon_c3d(file, section="Trajectories", engine="ezc3d")
     daTrajec_mbbtk = read_vicon_c3d(file, section="Trajectories", engine="mbbtk")
 
     daTrajec_ezc3d == daTrajec_mbbtk
+    daTrajec_c3d == daTrajec_mbbtk
 
     daTrajec = read_vicon_c3d(
         file,
@@ -1251,7 +1261,15 @@ if __name__ == "__main__":
 
     import timeit
 
-    section = "EMG"
+    section = "Trajectories"
+
+    def test_perf():
+        result = read_vicon_c3d(file, section=section, engine="c3d")
+        return result
+
+    print(
+        f"{timeit.timeit('test_perf()', setup='from __main__ import test_perf', number=50):.4f} s"
+    )
 
     def test_perf():
         result = read_vicon_c3d(file, section=section, engine="ezc3d")
@@ -1263,14 +1281,6 @@ if __name__ == "__main__":
 
     def test_perf():
         result = read_vicon_c3d(file, section=section, engine="mbbtk")
-        return result
-
-    print(
-        f"{timeit.timeit('test_perf()', setup='from __main__ import test_perf', number=50):.4f} s"
-    )
-
-    def test_perf():
-        result = read_vicon_c3d(file, section=section, engine="c3d")
         return result
 
     print(
