@@ -202,10 +202,10 @@ def read_vicon_c3d_c3d(
         )
         return
 
-    timer = time.perf_counter()  # inicia el contador de tiempo
+    # timer = time.perf_counter()  # inicia el contador de tiempo
 
     try:
-        timerSub = time.perf_counter()  # inicia el contador de tiempo
+        # timerSub = time.perf_counter()  # inicia el contador de tiempo
         # print(f'Loading section {section}, file: {file.name}')
 
         with warnings.catch_warnings():
@@ -337,7 +337,7 @@ def read_vicon_c3d_c3d(
         da.time.attrs["units"] = "s"
         da.name = section
 
-        # print('Tiempo {0:.3f} s \n'.format(time.perf_counter()-timerSub))
+        # print('Time {0:.3f} s \n'.format(time.perf_counter()-timerSub))
 
     except Exception as err:
         da = xr.DataArray()

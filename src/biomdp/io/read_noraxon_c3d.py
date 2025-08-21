@@ -23,17 +23,15 @@ Updates:
             
 """
 
-from typing import List
+import time
 import warnings  # para quitar warnings de no encontrar points
+from pathlib import Path
+from typing import List
 
 import numpy as np
 
 # import pandas as pd
 import xarray as xr
-
-import time
-from pathlib import Path
-
 
 # import sys
 # sys.path.append('F:\Programacion\Python\Mios\Functions')
@@ -66,29 +64,31 @@ def read_noraxon_c3d_c3d_xr(
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
-
     try:
         import c3d
     except:
         raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
 
-    if section not in [
-        "Trajectories",
-        "Model Outputs",
-        "EMG",
-    ]:  # not ('Trajectories' in section or 'Model Outputs'in section or 'Forces' in section or 'EMG'in section):
+    if (
+        section
+        not in [
+            "Trajectories",
+            "Model Outputs",
+            "EMG",
+        ]
+    ):  # not ('Trajectories' in section or 'Model Outputs'in section or 'Forces' in section or 'EMG'in section):
         raise Exception(
             'Section header not found, try "Trajectories", "Model outputs" or "EMG"'
         )
         return
 
-    timer = time.perf_counter()  # inicia el contador de tiempo
+    # timer = time.perf_counter()  # inicia el contador de tiempo
 
     # se asegura de que la extensión es c3d
     file = file.with_suffix(".c3d")
 
     try:
-        timerSub = time.perf_counter()  # inicia el contador de tiempo
+        # timerSub = time.perf_counter()  # inicia el contador de tiempo
         # print(f'Loading section {section}, file: {file.name}')
 
         with warnings.catch_warnings():
@@ -189,7 +189,6 @@ def read_noraxon_ezc3d_xr(
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
-
     print("This function has not been tested yet.")
 
     try:
@@ -199,11 +198,14 @@ def read_noraxon_ezc3d_xr(
             "Module ezc3d not installed.\nInstall with pip install ezc3d or conda install -c conda-forge ezc3d"
         )
 
-    if section not in [
-        "Trajectories",
-        "Model Outputs",
-        "EMG",
-    ]:  # not ('Trajectories' in section or 'Model Outputs'in section or 'Forces' in section or 'EMG'in section):
+    if (
+        section
+        not in [
+            "Trajectories",
+            "Model Outputs",
+            "EMG",
+        ]
+    ):  # not ('Trajectories' in section or 'Model Outputs'in section or 'Forces' in section or 'EMG'in section):
         raise Exception(
             'Section header not found, try "Trajectories", "Model outputs" or "EMG"'
         )
@@ -358,7 +360,6 @@ def read_noraxon_ezc3d_xr(
 # %% MAIN
 # =============================================================================
 if __name__ == "__main__":
-
     file = Path(
         r"F:\Investigacion\Proyectos\Tesis\TesisCoralPodologa\Registros\PilotoNoraxon\S000\2024-03-08-10-46_PO_S000_MA_001.c3d"
     )

@@ -320,7 +320,7 @@ if __name__ == "__main__":
     daForce = compute_forces_axes(daForce)
     daForce.plot.line(x="time", col="plate")
 
-    # With ezc3d does not read the entire file???
+    # With ezc3d does not read the entire file??? Exporting in Bioware, select video frame frequency properly to work with ezc3d
     daForce2 = read_kistler_c3d(file, engine="ezc3d", raw=True)
     daForce2.plot.line(x="time")
 
@@ -335,7 +335,7 @@ if __name__ == "__main__":
     daForce2.equals(daForce.isel(time=slice(None, daForce2.time.size)))
 
     ####################
-    # Exporting in Bioware, select video frame frequency properly to work with ezc3d
+    # TESTS: Exporting in Bioware, select video frame frequency properly to work with ezc3d
     file = Path(
         r"F:\Programacion\Python\Mios\ViconNexus\C3D\ArchivosC3D\Bioware_S09_DJ_30_001_rate1-10.c3d"
     )
