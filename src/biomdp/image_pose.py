@@ -19,12 +19,15 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.4.1"
-__date__ = "20/05/2025"
+__version__ = "v.1.4.2"
+__date__ = "22/08/2025"
 
 
 """
 Updates:
+    22/08/2025, v1.4.2
+        - Included parameters 'device' and 'backend' in process_video function.
+
     20/05/2025, v1.4.1
         - Fixed bub in rtmlib version of process_image_from_video.
           It also allows to pass a pose_tracker previously created to avoid
@@ -90,17 +93,15 @@ Updates:
     
 """
 
-from typing import List
+# import seaborn as sns
+import time
 import warnings
+from pathlib import Path
+from typing import List
 
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt
-
-# import seaborn as sns
-
-import time
-from pathlib import Path
 
 try:
     import cv2
@@ -240,7 +241,6 @@ N_MARKERS_RTMLIB26 = [
 def draw_model_on_image(
     rgb_image: np.ndarray, _daMarkers: xr.DataArray, radius: int = 3, lw: int = 1
 ) -> np.ndarray:
-
     modified_image = rgb_image.copy()
     h, w, c = rgb_image.shape
 
@@ -250,7 +250,6 @@ def draw_model_on_image(
     for marker1, marker2 in MODEL_STICK_UNIONS:
         try:
             if marker1 in _daMarkers.marker and marker2 in _daMarkers.marker:
-
                 x1 = int(_daMarkers.isel(ID=0).sel(marker=marker1, axis="x"))
                 y1 = int(_daMarkers.isel(ID=0).sel(marker=marker1, axis="y"))
                 x2 = int(_daMarkers.isel(ID=0).sel(marker=marker2, axis="x"))
@@ -312,11 +311,11 @@ def draw_landmarks_on_image(rgb_image, detection_result, radius=2):
 
         from mediapipe import solutions
         from mediapipe.framework.formats import landmark_pb2
+        from mediapipe.python.solutions.drawing_utils import DrawingSpec
 
         # from mediapipe.tasks import python
         # from mediapipe.tasks.python import vision
         from mediapipe.python.solutions.pose import PoseLandmark
-        from mediapipe.python.solutions.drawing_utils import DrawingSpec
 
     except:
         raise ImportError(
@@ -610,7 +609,6 @@ def process_video_deprecated(
             min_tracking_confidence=0.7,
             model_complexity=1,
         ) as pose:
-
             # Convert the BGR image to RGB and process it with MediaPipe Pose.
             results = pose.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
@@ -915,7 +913,7 @@ def process_video_deprecated(
         header=False,
     )
     print(
-        f"File saved {(file.parent / (file.stem+'_Objetivo_ang')).with_suffix('.txt')}"
+        f"File saved {(file.parent / (file.stem + '_Objetivo_ang')).with_suffix('.txt')}"
     )
 
     return da_ang_result
@@ -1041,7 +1039,6 @@ def process_image(
 
     try:
         import mediapipe as mp
-
         from mediapipe import solutions
         from mediapipe.framework.formats import landmark_pb2
         from mediapipe.tasks import python
@@ -1171,7 +1168,6 @@ def process_video(
     engine="mediapipe",  # "mediapipe", "rtmlib",
     **kwargs,
 ) -> xr.DataArray:
-
     if engine == "mediapipe":
         daReturn = process_video_mediapipe(
             file=file,
@@ -1257,15 +1253,15 @@ def process_video_rtmlib(
         A DataArray containing the pose landmarks and additional metadata.
     """
     try:
-        from rtmlib import BodyWithFeet, PoseTracker, draw_skeleton, draw_bbox
-        from Sports2D.process import setup_pose_tracker
-        from Pose2Sim.skeletons import HALPE_26
         from Pose2Sim.common import (
-            sort_people_sports2d,
             draw_bounding_box,
             draw_keypts,
             draw_skel,
+            sort_people_sports2d,
         )
+        from Pose2Sim.skeletons import HALPE_26
+        from rtmlib import BodyWithFeet, PoseTracker, draw_bbox, draw_skeleton
+        from Sports2D.process import setup_pose_tracker
     except ImportError:
         raise ImportError(
             "rtmlib, Sports2D or Pose2Sim are not installed. Please install it with 'pip install sports2d Pose2Sim'"  # or 'pip install rtmlib -i https://pypi.org/simple'."
@@ -1275,6 +1271,8 @@ def process_video_rtmlib(
     pose_tracker = None
     tracking = False
     det_frequency = 1
+    backend = "openvino"
+    device = "cpu"
     keypoint_likelihood_threshold = 0.3
     average_likelihood_threshold = 0.5
     keypoint_number_threshold = 0.3
@@ -1287,6 +1285,10 @@ def process_video_rtmlib(
         tracking = kwargs["tracking"]
     if "det_frequency" in kwargs:
         det_frequency = kwargs["det_frequency"]
+    if "backend" in kwargs:
+        backend = kwargs["backend"]
+    if "device" in kwargs:
+        device = kwargs["device"]
     if "keypoint_likelihood_threshold" in kwargs:
         keypoint_likelihood_threshold = kwargs["keypoint_likelihood_threshold"]
     if "average_likelihood_threshold" in kwargs:
@@ -1357,8 +1359,8 @@ def process_video_rtmlib(
         # to_openpose=False,  # True for openpose-style, False for mmpose-style
         mode=mode,  # balanced, performance, lightweight
         tracking=tracking,
-        backend="auto",  # opencv, onnxruntime, openvino
-        device="auto",
+        backend=backend,  # opencv, onnxruntime, openvino
+        device=device,
     )
 
     cap = cv2.VideoCapture(file.as_posix())
@@ -1385,7 +1387,8 @@ def process_video_rtmlib(
             data=np.full((num_frames, len(N_MARKERS_RTMLIB26), 3), np.nan),
             dims=coords.keys(),
             coords=coords,
-        ).expand_dims({"ID": [file.stem]})
+        )
+        .expand_dims({"ID": [file.stem]})
         # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
         .copy()
     )  # .transpose("marker", "axis", "time")
@@ -1424,7 +1427,6 @@ def process_video_rtmlib(
         valid_X, valid_Y, valid_scores = [], [], []
         # valid_X_flipped, valid_angles = [], []
         for person_idx in range(len(keypoints)):
-
             # Retrieve keypoints and scores for the person, remove low-confidence keypoints
             person_X, person_Y = np.where(
                 scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
@@ -1766,7 +1768,8 @@ def process_video_mediapipe(
                 data=np.full((num_frames, len(N_MARKERS), 5), np.nan),
                 dims=coords.keys(),
                 coords=coords,
-            ).expand_dims({"ID": [file.stem]})
+            )
+            .expand_dims({"ID": [file.stem]})
             # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
             .copy()
         )  # .transpose("marker", "axis", "time")
@@ -2093,7 +2096,8 @@ def process_image_from_video(
                 data=np.full((1, len(N_MARKERS), 5), np.nan),
                 dims=coords.keys(),
                 coords=coords,
-            ).expand_dims({"ID": [file.stem]})
+            )
+            .expand_dims({"ID": [file.stem]})
             # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
             .copy()
         )  # .transpose("marker", "axis", "time")
@@ -2147,15 +2151,15 @@ def process_image_from_video(
 
     elif engine == "rtmlib":
         try:
-            from rtmlib import BodyWithFeet, PoseTracker, draw_skeleton, draw_bbox
-            from Sports2D.process import setup_pose_tracker
-            from Pose2Sim.skeletons import HALPE_26
             from Pose2Sim.common import (
-                sort_people_sports2d,
                 draw_bounding_box,
                 draw_keypts,
                 draw_skel,
+                sort_people_sports2d,
             )
+            from Pose2Sim.skeletons import HALPE_26
+            from rtmlib import BodyWithFeet, PoseTracker, draw_bbox, draw_skeleton
+            from Sports2D.process import setup_pose_tracker
         except ImportError:
             raise ImportError(
                 "rtmlib, Sports2D or Pose2Sim are not installed. Please install it with 'pip install sports2d Pose2Sim'"  # or 'pip install rtmlib -i https://pypi.org/simple'."
@@ -2172,7 +2176,8 @@ def process_image_from_video(
                 data=np.full((1, len(N_MARKERS_RTMLIB26), 3), np.nan),
                 dims=coords.keys(),
                 coords=coords,
-            ).expand_dims({"ID": [file.stem]})
+            )
+            .expand_dims({"ID": [file.stem]})
             # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
             .copy()
         )  # .transpose("marker", "axis", "time")
@@ -2274,7 +2279,6 @@ def process_image_from_video(
         valid_X, valid_Y, valid_scores = [], [], []
         # valid_X_flipped, valid_angles = [], []
         for person_idx in range(len(keypoints)):
-
             # Retrieve keypoints and scores for the person, remove low-confidence keypoints
             person_X, person_Y = np.where(
                 scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
@@ -2323,8 +2327,7 @@ def process_image_from_video(
                 for i in range(len(valid_Y))
             ]
             sorted = np.argsort(
-                np.nanmax(prov_Y, axis=1)
-                - np.nanmin(prov_Y, axis=1)
+                np.nanmax(prov_Y, axis=1) - np.nanmin(prov_Y, axis=1)
                 # np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
             )[::-1]
             # sorted = np.argsort(
@@ -2391,7 +2394,6 @@ def process_image_from_video(
     ############################
 
     if show in [True, "colab"]:
-
         if show == True:
             cv2.imshow(
                 file.stem,
@@ -2460,7 +2462,6 @@ def process_image_from_video(
 
 
 def process_video_mixed(file, fv=30, show=False):
-
     t_ini = time.perf_counter()
     print(f"Processing vídeo{file.name}...")
 
@@ -2634,7 +2635,6 @@ def plot_pose_2D(
 # %% TESTS
 # =============================================================================
 if __name__ == "__main__":
-
     # import biomdp.image_pose as impo
 
     work_path = Path(
