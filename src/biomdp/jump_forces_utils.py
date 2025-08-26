@@ -9,14 +9,16 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.7.1"
-__date__ = "29/07/2025"
+__version__ = "v.1.7.2"
+__date__ = "26/08/2025"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
-
+    26/08/2025, v.1.7.2
+        - Added 'verbose' parameter in load_merge_bioware_pl
+    
     29/07/2025, v.1.7.1
         - In non "DJ2P" jumps, adjusted the parameter 'n_above' to
           int(0.01 * daData.freq) in detect_takeoff_landing function, to avoid
@@ -1063,6 +1065,7 @@ def load_merge_bioware_pl(
     n_col_time: str = "abs time",
     merge_2_plats: int = 1,
     show: bool = False,
+    verbose=True,
 ) -> xr.DataArray:
     """
     Parameters
@@ -1090,6 +1093,9 @@ def load_merge_bioware_pl(
         The default is 1.
     show : bool, optional
         DESCRIPTION. The default is False.
+    verbose : bool, optional
+        DESCRIPTION. Shows or not messages about each file reading.
+        The default is True.
 
     Raises
     ------
@@ -1149,7 +1155,8 @@ def load_merge_bioware_pl(
     daAll = []
     error_files = []  # guarda los nombres de archivo que no se pueden abrir y su error
     for nf, file in enumerate(file_list):
-        print(f"Loading file num. {nf}/{len(file_list)}: {file.name}")
+        if verbose:
+            print(f"Loading file num. {nf}/{len(file_list)}: {file.name}")
         try:
             timerSub = time.perf_counter()
 
@@ -1195,8 +1202,9 @@ def load_merge_bioware_pl(
 
             dfData.append(dfProvis)
 
-            print(f"{dfData[-1].shape[0]} filas y {dfData[-1].shape[1]} columnas")
-            print(f"Time {time.perf_counter() - timerSub:.3f} s \n")
+            if verbose:
+                print(f"{dfData[-1].shape[0]} filas y {dfData[-1].shape[1]} columnas")
+                print(f"Time {time.perf_counter() - timerSub:.3f} s \n")
             num_loaded_files += 1
 
         except Exception as err:  # Si falla anota un error y continúa
@@ -3624,7 +3632,7 @@ def detect_minFz(
                     # plt.show()
                 # detect_peaks(data[ini:fin], valley=True, mpd=100, show=True)
                 # data[int(ind)-1:int(ind)+2] #data[ind]
-            except:
+            except Exception as e:
                 ind = np.nan  # por si no encuentra el criterio
             return np.array([ind])
 
@@ -3753,7 +3761,7 @@ def detect_ini_end_impulse(
                 # ind[1] += 1 #+1 para coger el que ya ha pasado por debajo del peso
 
                 # data[ini[1]+1] #peso
-            except:
+            except Exception as e:
                 ind = np.array([np.nan, np.nan])  # por si no encuentra el criterio
             return ind.astype("float")
 
@@ -3796,7 +3804,7 @@ def detect_ini_end_impulse(
                 ind = ini0 + ini1[0]
                 ind[1] += 1  # +1 para coger el que ya ha pasado por debajo del peso
                 # data[ind[0]-1] #peso
-            except:
+            except Exception as e:
                 ind = np.array([np.nan, np.nan])  # por si no encuentra el criterio
             return ind.astype("float")
 
