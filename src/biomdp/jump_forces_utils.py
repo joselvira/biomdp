@@ -767,7 +767,7 @@ def from_vicon_csv_to_parquet(
             for sec in sections:
                 try:
                     dfFull.append(read_vicon_csv(file, section=sec, raw=True))
-                except:
+                except Exception:
                     pass
             dfProvis = pl.concat(dfFull, how="horizontal")
             dfProvis.write_parquet(file.with_suffix(".parquet"))
@@ -1843,6 +1843,8 @@ def check_flat_window(
 
     if "axis" in daData.dims:
         daDatosZ = daData.sel(axis="z")
+        if "axis" in daEvent.dims:
+            daEvent = daEvent.sel(axis="z")
     else:
         daDatosZ = daData
 
