@@ -19,14 +19,14 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.4.2"
-__date__ = "22/08/2025"
+__version__ = "v.1.5.0"
+__date__ = "27/11/2025"
 
 
 """
 Updates:
-    22/08/2025, v1.4.2
-        - Included parameters 'device' and 'backend' in process_video function.
+    27/11/2025, v1.5.0
+        - Included function to mask faces (mask_face_video). TODO: write the modified video.
 
     20/05/2025, v1.4.1
         - Fixed bub in rtmlib version of process_image_from_video.
@@ -1136,7 +1136,7 @@ def procesS_video_modern(
     model_path=None,
     show=False,
 ):
-    print("This function is deprecated. Use procesa_video instead.")
+    print("This function is deprecated. Use process_video instead.")
     return process_video(
         file,
         fv,
@@ -2631,6 +2631,443 @@ def plot_pose_2D(
     return g
 
 
+def mask_face_video(
+    file: str | Path,
+    file_out: str | Path | None = None,
+    min_rad_mask: int = 10,
+    fv: int = 30,
+    n_vars_load: List[str] | None = None,
+    # mode="balanced",
+    # det_frequency: int = 1,
+    # keypoint_likelihood_threshold=0.3,
+    # average_likelihood_threshold=0.5,
+    # keypoint_number_threshold=0.3,
+    tracking: bool = False,
+    num_frame: int | None = None,
+    save_frame_file: bool | Path | None = None,
+    show: bool | str = False,
+    show_every_frames: int = 1,
+    sort_persons_by_size: bool = True,
+    radius: int = 2,
+    verbose: bool = False,
+    **kwargs,
+) -> xr.DataArray:
+    # TODO: write the modified video.
+
+    """
+    Detects face landmarks in a video file using rtmlib and masks them.
+
+    Parameters
+    ----------
+    file : str or Path
+        Path to the video file to be processed.
+    file_out : str or Path or None, optional
+        Path to the output video file, defaults to None.
+    min_rad_mask : int, optional
+        Minimum radius of the mask, defaults to 10.
+    fv : int, optional
+        Frame rate of the video, defaults to 30.
+    n_vars_load : list os str, optional
+        List of variables to load, defaults to None.
+    model_path : str or Path, optional
+        Path to the model file, defaults to None, which uses "pose_landmarker_heavy.task".
+    num_frame : int, optional
+        Number of frames to process, if None, all frames are processed.
+    save_frame_file : bool or Path, optional
+        Defaults to None
+        True: save to the same folder
+        Path: save to the proposed folderto save frames to file.
+    show : bool or str, optional
+        If False, no display is shown. If True, it displays the frames with markers in a local environment.
+        If 'colab', it displays the frames in Google Colab.
+    show_every_frames : int, optional
+        Frame skip number to display.
+
+    Returns
+    -------
+    xarray.DataArray
+        A DataArray containing the pose landmarks and additional metadata.
+    """
+    try:
+        from Pose2Sim.common import (
+            draw_bounding_box,
+            draw_keypts,
+            draw_skel,
+            sort_people_sports2d,
+        )
+        from Pose2Sim.skeletons import HALPE_26  # , COCO_17, FACE_106,
+        from rtmlib import BodyWithFeet  # , PoseTracker, draw_bbox, draw_skeleton
+        from Sports2D.process import setup_pose_tracker
+    except ImportError:
+        raise ImportError(
+            "rtmlib, Sports2D or Pose2Sim are not installed. Please install it with 'pip install sports2d Pose2Sim'"  # or 'pip install rtmlib -i https://pypi.org/simple'."
+        )
+
+    mode = "balanced"
+    pose_tracker = None
+    tracking = False
+    det_frequency = 1
+    backend = "openvino"
+    device = "cpu"
+    keypoint_likelihood_threshold = 0.3
+    average_likelihood_threshold = 0.5
+    keypoint_number_threshold = 0.3
+
+    if "mode" in kwargs:
+        mode = kwargs["mode"]
+    if "pose_tracker" in kwargs:
+        pose_tracker = kwargs["pose_tracker"]
+    if "tracking" in kwargs:
+        tracking = kwargs["tracking"]
+    if "det_frequency" in kwargs:
+        det_frequency = kwargs["det_frequency"]
+    if "backend" in kwargs:
+        backend = kwargs["backend"]
+    if "device" in kwargs:
+        device = kwargs["device"]
+    if "keypoint_likelihood_threshold" in kwargs:
+        keypoint_likelihood_threshold = kwargs["keypoint_likelihood_threshold"]
+    if "average_likelihood_threshold" in kwargs:
+        average_likelihood_threshold = kwargs["average_likelihood_threshold"]
+    if "keypoint_number_threshold" in kwargs:
+        keypoint_number_threshold = kwargs["keypoint_number_threshold"]
+
+    if not isinstance(file, Path):
+        file = Path(file)
+
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} not found.")
+
+    t_ini = time.perf_counter()
+    # print(f"Processing video {file.name}...")
+
+    tracking_mode = "sports2d"
+    person_ordering_method = "highest_likelihood"
+    model_name = "HALPE_26"  # "COCO_17" # "FACE_106" #
+    pose_model_name = "body_with_feet"
+    pose_model = eval(model_name)
+    openpose_skeleton = False  # True for openpose-style, False for mmpose-style
+
+    # fontSize = 0.4
+    # thickness = 1
+    # colors = [
+    #     (255, 0, 0),
+    #     (0, 0, 255),
+    #     (255, 255, 0),
+    #     (255, 0, 255),
+    #     (0, 255, 255),
+    #     (0, 0, 0),
+    #     (255, 255, 255),
+    #     (125, 0, 0),
+    #     (0, 125, 0),
+    #     (0, 0, 125),
+    #     (125, 125, 0),
+    #     (125, 0, 125),
+    #     (0, 125, 125),
+    #     (255, 125, 125),
+    #     (125, 255, 125),
+    #     (125, 125, 255),
+    #     (255, 255, 125),
+    #     (255, 125, 255),
+    #     (125, 255, 255),
+    #     (125, 125, 125),
+    #     (255, 0, 125),
+    #     (255, 125, 0),
+    #     (0, 125, 255),
+    #     (0, 255, 125),
+    #     (125, 0, 255),
+    #     (125, 255, 0),
+    #     (0, 255, 0),
+    # ]
+
+    # body_feet_tracker = PoseTracker(
+    #     BodyWithFeet,
+    #     det_frequency=det_frequency,
+    #     to_openpose=False,  # True for openpose-style, False for mmpose-style
+    #     mode=mode,  # balanced, performance, lightweight
+    #     backend='openvino',  # opencv, onnxruntime, openvino
+    #     device="auto",
+    #     tracking=True,
+    # )
+    pose_tracker = setup_pose_tracker(
+        BodyWithFeet,
+        det_frequency=det_frequency,
+        # to_openpose=False,  # True for openpose-style, False for mmpose-style
+        mode=mode,  # balanced, performance, lightweight
+        tracking=tracking,
+        backend=backend,  # opencv, onnxruntime, openvino
+        device=device,
+    )
+
+    cap = cv2.VideoCapture(file.as_posix())
+    if not cap.isOpened():
+        raise NameError(f"{file} is not a valid video.")
+
+    num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    vid_fps = cap.get(cv2.CAP_PROP_FPS)
+    # print(f"Video fps:{vid_fps}")
+
+    if file_out is None:
+        file_out = (file.parent / (file.stem + "_facemasked")).with_suffix(".avi")
+    writer = cv2.VideoWriter(
+        file_out,
+        cv2.VideoWriter_fourcc(*"XVID"),  # "MJPG"),
+        vid_fps,
+        (int(cap.get(3)), int(cap.get(4))),
+    )
+
+    if num_frame is not None and (num_frame > num_frames or num_frame < 0):
+        raise ValueError(
+            f"num_frame {num_frame} is out of range of video frames (0-{num_frames})"
+        )
+
+    # Precreate Dataarray
+    coords = {
+        "time": np.arange(0, num_frames),  # / fv,
+        "marker": N_MARKERS_RTMLIB26,
+        "axis": ["x", "y", "score"],
+    }
+    daMarkers = (
+        xr.DataArray(
+            data=np.full((num_frames, len(N_MARKERS_RTMLIB26), 3), np.nan),
+            dims=coords.keys(),
+            coords=coords,
+        )
+        .expand_dims({"ID": [file.stem]})
+        # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
+        .copy()
+    )  # .transpose("marker", "axis", "time")
+
+    pTime = 0
+    frame_idx = 0
+
+    while cap.isOpened() and frame_idx < num_frames:
+        if num_frame is not None:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, num_frame)  # restar 1?????
+            frame_idx = num_frame
+
+            if show not in [True, "colab"]:
+                show = True
+
+        success, img = cap.read()
+        if not success:
+            # print(f"Frame {frame} not found")
+            frame_idx += 1
+            continue
+
+        # Reset colors. It is not necessary but it does not seem to slow down
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        h, w = img.shape[:2]
+
+        keypoints, scores = pose_tracker(img)
+
+        # Track poses across frames
+        if "prev_keypoints" not in locals():
+            prev_keypoints = keypoints
+        prev_keypoints, keypoints, scores = sort_people_sports2d(
+            prev_keypoints, keypoints, scores=scores
+        )
+
+        # Process coordinates and compute angles
+        valid_X, valid_Y, valid_scores = [], [], []
+        # valid_X_flipped, valid_angles = [], []
+        for person_idx in range(len(keypoints)):
+            # Retrieve keypoints and scores for the person, remove low-confidence keypoints
+            person_X, person_Y = np.where(
+                scores[person_idx][:, np.newaxis] < keypoint_likelihood_threshold,
+                np.nan,
+                keypoints[person_idx],
+            ).T
+            person_scores = np.where(
+                scores[person_idx] < keypoint_likelihood_threshold,
+                np.nan,
+                scores[person_idx],
+            )
+
+            # Skip person if the fraction of valid detected keypoints is too low
+            enough_good_keypoints = (
+                len(person_scores[~np.isnan(person_scores)])
+                >= len(person_scores) * keypoint_number_threshold
+            )
+            scores_of_good_keypoints = person_scores[~np.isnan(person_scores)]
+            average_score_of_remaining_keypoints_is_enough = (
+                np.nanmean(scores_of_good_keypoints)
+                if len(scores_of_good_keypoints) > 0
+                else 0
+            ) >= average_likelihood_threshold
+            if (
+                not enough_good_keypoints
+                or not average_score_of_remaining_keypoints_is_enough
+            ):
+                person_X = np.full_like(person_X, np.nan)
+                person_Y = np.full_like(person_Y, np.nan)
+                person_scores = np.full_like(person_scores, np.nan)
+
+            valid_X.append(person_X)
+            valid_Y.append(person_Y)
+            valid_scores.append(person_scores)
+
+            # Mask face
+            try:
+                mask_img = np.zeros(img.shape, dtype="uint8")
+                radius = int(
+                    max(
+                        1.1 * (person_X[3] - person_X[4]),
+                        1.1 * (person_X[0] - person_X[3]),
+                        1.1 * (person_X[0] - person_X[4]),
+                        min_rad_mask,
+                    )
+                )
+                cv2.circle(
+                    mask_img,
+                    (
+                        np.mean([person_X[3], person_X[4]]).astype(int),
+                        np.mean([person_Y[3], person_Y[4]]).astype(int),
+                    ),
+                    radius,
+                    (255, 255, 55),
+                    -1,
+                )
+                img_all_blurred = cv2.GaussianBlur(img, (15, 15), 0)
+                img = np.where(mask_img > 0, img_all_blurred, img)
+            except Exception as e:
+                print(
+                    f"Error masking face. Frame {frame_idx}, person {person_idx}: {e}"
+                )
+                pass
+
+        if sort_persons_by_size:
+            # order of persons by size (larger to smaller)
+            sorted = np.argsort(
+                np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
+            )[::-1]
+
+            if sorted[0] != 0:
+                _X = np.take_along_axis(
+                    np.asarray(valid_X), sorted[:, np.newaxis], axis=0
+                )
+                _Y = np.take_along_axis(
+                    np.asarray(valid_Y), sorted[:, np.newaxis], axis=0
+                )
+                _scores = np.take_along_axis(
+                    np.asarray(valid_scores), sorted[:, np.newaxis], axis=0
+                )
+
+                for i in range(len(sorted)):
+                    valid_X[i] = _X[i]
+                    valid_Y[i] = _Y[i]
+                    valid_scores[i] = _scores[i]
+
+        # Calculate fps
+        cTime = time.time()
+        fps = 1 / (cTime - pTime) if cTime != pTime else 0
+
+        # Annotate in the images
+        if show in [True, "colab"]:
+            annotated_image = img.copy()
+
+            if show == True:
+                cv2.imshow(
+                    file.stem,
+                    # annotated_image,
+                    cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+                )
+
+            elif show == "colab":
+                from google.colab.patches import cv2_imshow
+
+                if frame_idx % show_every_frames == 0:
+                    cv2_imshow(
+                        # annotated_image
+                        cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+                    )
+                    # waits for user to press any key
+                    # (this is necessary to avoid Python kernel form crashing)
+                    cv2.waitKey(0)
+
+                    # closing all open windows
+                    cv2.destroyAllWindows()
+
+        else:  # if show== False
+            if frame_idx % show_every_frames == 0:
+                if verbose:
+                    print(f"Frame {frame_idx}/{num_frames} fps: {fps:.2f}")
+
+        # Save the selected num_frame
+        if num_frame is not None and save_frame_file not in [None, False]:
+            if save_frame_file == True:
+                save_frame_file = file.parent
+            elif isinstance(save_frame_file, str):
+                save_frame_file = Path(save_frame_file)
+
+            if isinstance(save_frame_file, Path):
+                if not save_frame_file.is_dir():
+                    save_frame_file.mkdir(parents=True)
+                # save_frame_file = save_frame_file.as_posix()
+            # print(type(save_frame_file), save_frame_file)
+            n_file_saved = (
+                (save_frame_file / f"{file.stem}_fot{num_frame}_rtm").with_suffix(
+                    ".jpg"
+                )
+            ).as_posix()
+            print(num_frame, n_file_saved)
+            saved = cv2.imwrite(
+                n_file_saved,
+                # annotated_image,
+                cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR),
+            )
+
+            if saved:
+                if verbose:
+                    print(f"Saved frame {num_frame}")
+            else:
+                print(f"Error saving file {file} frame {num_frame}")
+
+        # Write modified image
+        writer.write(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+
+        # annotated_image = cv2.resize(annotated_image, (960, 640))
+
+        # Waits for user to press any key
+        if cv2.waitKey(1) in [ord("q"), 27] or num_frame is not None:
+            break
+        # cv2.waitKey(0)
+
+        # Convert to dataarray
+        valid_Y[0] = h - valid_Y[0]  # Invert Y coordinates
+        daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = np.vstack(
+            [valid_X[0], valid_Y[0], person_scores]
+        ).T
+        # = np.vstack([keypoints[0].T, scores[0]]).T
+
+        pTime = cTime
+        frame_idx += 1
+
+    writer.release()
+    cap.release()
+    cv2.destroyAllWindows()
+
+    if verbose:
+        print(f"Video processed in {time.perf_counter() - t_ini:.2f} s")
+
+    # Adjust time coordinate
+    if num_frame is None:
+        daMarkers = daMarkers.assign_coords(time=np.arange(0, num_frames) / fv)
+    else:  # single frame
+        # daMarkers = daMarkers.isel(time=slice(frame - 3, frame + 3)).assign_coords(
+        #     time=np.arange(frame - 3, frame + 3) / fv
+        # )
+        daMarkers = daMarkers.isel(time=frame_idx).assign_coords(time=num_frame / fv)
+
+    if n_vars_load is not None:
+        daMarkers = daMarkers.sel(marker=n_vars_load)
+
+    # Invert y coordinates
+    # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
+
+    return daMarkers
+
+
 # =============================================================================
 # %% TESTS
 # =============================================================================
@@ -2680,3 +3117,49 @@ if __name__ == "__main__":
     )
     daMarkers_frame = split_dim_side(daMarkers_frame)
     plot_pose_2D(daMarkers_frame)
+
+    # %%
+    ruta_archivo = Path("")
+    file = (
+        ruta_archivo
+        / r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\template-ccds-pose-cbio-direccion\data\raw\S_S04_G2_COD_P_ 90_1_1_Front.avi"
+    )
+    daMarkers10 = process_video(
+        file,
+        engine="rtmlib",
+        show=True,
+        fv=300,
+        mode="balanced",
+        det_frequency=10,
+        # keypoint_likelihood_threshold=0.5,
+        # keypoint_number_threshold=0.5,
+        # average_likelihood_threshold=0.5,
+    )
+    plot_pose_2D(daMarkers10)
+
+    # %%
+    ruta_archivo = Path("")
+    file = (
+        ruta_archivo
+        / r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\template-ccds-pose-cbio-direccion\data\raw\S_S04_G2_COD_P_ 90_1_1_Front.avi"
+    )
+    file = (
+        ruta_archivo
+        / r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\Videos\Cortados\COD_S01_G1_A_90_I_1_FRONT.mov"
+    )
+    daMarkers10 = mask_face_video(
+        file,
+        engine="rtmlib",
+        show=True,
+        fv=300,
+        mode="balanced",
+        det_frequency=10,
+        # keypoint_likelihood_threshold=0.5,
+        # keypoint_number_threshold=0.5,
+        # average_likelihood_threshold=0.5,
+    )
+    plot_pose_2D(daMarkers10)
+    import torch
+    import onnxruntime as ort
+
+    print(torch.cuda.is_available(), ort.get_available_providers())
