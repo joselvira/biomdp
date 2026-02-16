@@ -13,7 +13,7 @@ Low or high pass function and bandpass function.
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.6.2"
+__version__ = "1.6.2"
 __date__ = "17/02/2025"
 
 

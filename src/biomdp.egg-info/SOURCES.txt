@@ -8,6 +8,7 @@ src/biomdp/biomec_xarray_accessor.py
 src/biomdp/bland_altman_plot.py
 src/biomdp/create_time_series.py
 src/biomdp/filter_butter.py
+src/biomdp/fotogrammetry.py
 src/biomdp/general_processing_functions.py
 src/biomdp/image_pose.py
 src/biomdp/jump_forces_utils.py
@@ -27,4 +28,6 @@ src/biomdp/io/read_noraxon_csv.py
 src/biomdp/io/read_vicon_c3d.py
 src/biomdp/io/read_vicon_csv.py
 src/datasets/__init__.py
+tests/test_fotogrammetry.py
 tests/test_slice_time_series_phases.py
+tests/test_multicam_dlt.py

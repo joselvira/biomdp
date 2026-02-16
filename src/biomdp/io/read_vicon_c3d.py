@@ -10,11 +10,14 @@ Created on Fry Sep 15 16:36:37 2023
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v0.3.0"
-__date__ = "18/08/2025"
+__version__ = "0.3.1"
+__date__ = "13/12/2025"
 
 """
 Updates:
+    13/12/2025, v0.3.1
+        - Changed default engine to c3d.
+
     18/08/2025, v0.3.0
         - Added engine moveck_bridge_btk as 'mbbtk' (in development).
 
@@ -58,7 +61,7 @@ def read_vicon_c3d(
     section: str | None = None,
     n_vars_load: List[str] | None = None,
     coincidence: str = "similar",
-    engine: str = "ezc3d",
+    engine: str = "c3d",
 ) -> xr.DataArray:
     if isinstance(file, str):
         file = Path(file)

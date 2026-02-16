@@ -12,8 +12,17 @@ Based on xarray.
 # %% LOAD LIBRARIES
 # =============================================================================
 
+from typing import Optional, Union, Any
+
+import numpy as np
+import xarray as xr
+
+import itertools
+
+import matplotlib.pyplot as plt
+
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.4.2.2"
+__version__ = "4.2.2"
 __date__ = "11/03/2025"
 
 
@@ -91,14 +100,9 @@ Updates:
 """
 
 
-from typing import Optional, Union, Any
-
-import numpy as np
-import xarray as xr
-
-import itertools
-
-import matplotlib.pyplot as plt
+# =============================================================================
+# %% FUNCTIONS
+# =============================================================================
 
 
 def detect_onset_detecta_aux(
@@ -686,7 +690,6 @@ def slice_time_series(
             # present. Usefull when graphing cycles
             # TODO: improve vectorizing
             if add_end > 0:  # include_first_next_last:
-
                 # dfph[np.diff(evts)[:-1]-1,:-1]
                 # dfph[135,:-1]
 
@@ -792,7 +795,6 @@ def slice_time_series(
         # ind = np.repeat(range(len(evts) - 1), np.diff(evts))
 
         try:
-
             evts = evts[~np.isnan(evts)].astype(int)
             ind = np.repeat(range(len(evts) - 1), np.diff(evts))
 
@@ -1503,10 +1505,8 @@ class SliceTimeSeriesPhases:
                     + xSD[1] * np.std(data[~np.isnan(data)]),
                 ]
             else:
-                args_func_events["height"] = np.mean(
-                    data[~np.isnan(data)]
-                ) + xSD * np.std(
-                    data[~np.isnan(data)]
+                args_func_events["height"] = (
+                    np.mean(data[~np.isnan(data)]) + xSD * np.std(data[~np.isnan(data)])
                 )  # , where=~np.isnan(data)) + xSD * np.std(data, where=~np.isnan(data))
 
         data = data.copy()
@@ -1896,7 +1896,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
 
     def test_performance():
@@ -1915,7 +1915,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
     slices = test_performance()
 
@@ -1935,7 +1935,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
     slices2 = test_performance()
 
@@ -1955,7 +1955,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
     slices3 = test_performance()
 
@@ -1981,7 +1981,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
     daSliced = test_performance()
     daSliced.sel(n_var="b").plot.line(x="time", col="moment", hue="phase", row="ID")
@@ -2003,7 +2003,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
 
     def test_performance():
@@ -2020,7 +2020,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
 
     # %%Performance tests trim
@@ -2044,7 +2044,7 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
 
     def test_performance():
@@ -2063,5 +2063,5 @@ if __name__ == "__main__":
         return result
 
     print(
-        f'{timeit.timeit("test_performance()", setup="from __main__ import test_performance", number=50):.4f} s'
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
