@@ -8,8 +8,11 @@ Created on Thu Feb 22 16:17:08 2024
 # %% LOAD LIBRARIES
 # =============================================================================
 
+from typing import Any
+import xarray as xr
+
 __author__ = "Jose Luis Lopez Elvira"
-__version__ = "v.0.3.1"
+__version__ = "0.3.1"
 __date__ = "12/03/2025"
 
 
@@ -33,9 +36,6 @@ Updates:
         
     
 """
-
-from typing import Any
-import xarray as xr
 
 
 @xr.register_dataset_accessor("biomxr")
@@ -145,7 +145,6 @@ class DataArrayAccessor:
         show: bool = False,
         ax=None,
     ) -> xr.DataArray:
-
         import numpy as np
         from biomdp.filter_butter import filter_butter
 

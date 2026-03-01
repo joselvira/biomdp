@@ -12,24 +12,33 @@ Based on xarray.
 # %% LOAD LIBRARIES
 # =============================================================================
 
-from typing import Optional, Union, Any
+from typing import Any, Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
-import itertools
-
-import matplotlib.pyplot as plt
-
 __author__ = "Jose L. L. Elvira"
-__version__ = "4.2.2"
-__date__ = "11/03/2025"
+__version__ = "5.0.1"
+__date__ = "18/02/2026"
 
 
 """
 TODO: to make the cuts interpolating so that the phases start right at the criterion?
 
 Updates:
+    01/03/2026, v5.0.1
+        - The argument n_event has been changed to num_event to avoid confusion with
+          the variable n_var. The same for the coordinate num_event in the output DataArray.
+
+    18/02/2026, v5.0.0
+        - Simplified file: removed duplicated SliceTimeSeriesPhases class,
+          broken find_onset_aux, test functions (slice_time_series2,
+          slice_time_series_pl), dead code, and inline tests.
+        - Extracted show_events as standalone function.
+        - Kept polars/pandas alternative slicer implementations inside
+          slice_time_series.
+
     11/03/2025, v4.2.2
         - Adapted to biomdp with translations. 
 
@@ -37,8 +46,8 @@ Updates:
         - Ahora indica error en función cortes auxiliar.
     
     16/06/2024, v4.2.0
-        - Introducido argumento add_to_ini y add_to_end en función slice_time_series (de
-          momento sólo funciona en versión numpy).
+        - Introducido argumento add_to_ini y add_to_end en función
+          slice_time_series (de momento sólo funciona en versión numpy).
         - Optimizada la función numpy, más rapida.
             
     23/04/2024, v4.1.0
@@ -105,8 +114,28 @@ Updates:
 # =============================================================================
 
 
+def show_events(data, events, threshold=None):
+    """
+    Plot data with detected events marked as red circles.
+
+    Parameters
+    ----------
+    data : np.array
+        Array of data.
+    events : np.array
+        Array of indices of the detected events.
+    threshold : float, optional
+        Threshold value to plot as a horizontal dashed line.
+    """
+    plt.plot(data, c="b")
+    plt.plot(events, data[events], "ro")
+    if threshold is not None:
+        plt.hlines(y=threshold, xmin=0, xmax=len(data), color="C1", ls="--", lw=1)
+    plt.show()
+
+
 def detect_onset_detecta_aux(
-    data,  #: Optional[np.array],
+    data: np.array,
     event_ini: int = 0,
     xSD: str | dict | None = None,
     show: bool | None = False,
@@ -146,11 +175,6 @@ def detect_onset_detecta_aux(
             "This function needs Detecta to be installed (https://pypi.org/project/detecta/)"
         )
 
-    # try: #detect_onset returns 2 indexes. If not specified, select the first
-    #     event_ini=args_func_events['event_ini']
-    #     args_func_events.pop('event_ini', None)
-    # except:
-    #     event_ini=0
     if xSD is not None:
         # the threshold is defined by the mean + x times the standard deviation
         if "threshold" in args_func_events:
@@ -159,7 +183,6 @@ def detect_onset_detecta_aux(
             np.mean(data, where=~np.isnan(data))
             + np.std(data, where=~np.isnan(data)) * xSD
         )
-        # print(args_func_events, np.mean(data, where=~np.isnan(data)), np.std(data, where=~np.isnan(data)), xSD)
 
     events = detect_onset(data, **args_func_events)
 
@@ -175,9 +198,7 @@ def detect_onset_detecta_aux(
         events = events[1:]  # removes the last one because it is usually incomplete
 
     if show:
-        SliceTimeSeriesPhases.show_events(
-            data, events, threshold=args_func_events["threshold"]
-        )
+        show_events(data, events, threshold=args_func_events["threshold"])
 
     return events
 
@@ -239,9 +260,7 @@ def find_peaks_aux(
     events, _ = find_peaks(data, **args_func_events)
 
     if show:
-        SliceTimeSeriesPhases.show_events(
-            data, events, threshold=args_func_events["height"]
-        )
+        show_events(data, events, threshold=args_func_events["height"])
 
     return events  # keeps the first value of each data pair
 
@@ -258,8 +277,8 @@ def find_onset_aux(
     """
 
     try:
-        from scipy.signal import find_peaks, detrend
         from scipy import integrate
+        from scipy.signal import detrend, find_peaks
     except:
         raise ImportError("This function needs scipy.signal to be installed")
 
@@ -267,19 +286,19 @@ def find_onset_aux(
     # ---- Detecta onset a partir de detect peaks e integral
     threshold = 80
     daSliced = detect_events(
-        data=daTotal,
-        func_events=SliceTimeSeriesPhases.detect_onset_detecta_aux,
+        data=data,
+        func_events=detect_onset_detecta_aux,
         reference_var=dict(momento="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         **dict(threshold=threshold, show=False),
     )
 
-    data = daTotal[0, 0, 0].values
+    data = data[0, 0, 0].values
     # do = detect_onset(data, **dict(threshold=threshold))
 
-    integ = integrate.cumulative_trapezoid(data - threshold, daTotal.time, initial=0)
+    integ = integrate.cumulative_trapezoid(data - threshold, data.time, initial=0)
     # integDetr = integ
     integDetr = detrend(integ)
     # plt.plot(integDetr)
@@ -288,34 +307,34 @@ def find_onset_aux(
     fp = find_peaks(integDetr, **dict(height=0))[0]
     # do[:7, 1] - fp[:7]
 
-    from biomdp.general_processing_functions import integrate_window, detrend_dim
+    from biomdp.general_processing_functions import detrend_dim, integrate_window
 
     # Integrate the signal
-    daInteg = integrate_window(daTotal - threshold, daOffset=0)  # daTotal.isel(time=0))
+    daInteg = integrate_window(data - threshold, daOffset=0)  # daTotal.isel(time=0))
     # daIntegDetr = daInteg
 
     # Eliminates the tendency
     daIntegDetr = detrend_dim(daInteg, "time")
     (daIntegDetr[2, 0, 0] * 5 + threshold).plot.line(x="time")
-    daTotal[2, 0, 0].plot.line(x="time")
+    data[2, 0, 0].plot.line(x="time")
 
     # Finds cuts
     daSlicedIdx = detect_events(
         data=daIntegDetr,
-        func_events=SliceTimeSeriesPhases.find_peaks_aux,
+        func_events=find_peaks_aux,
         # reference_var=dict(momento="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         **dict(height=-200, show=True),
     )
-    daTotal[2, 0, 0].plot.line(x="time")
+    data[2, 0, 0].plot.line(x="time")
     plt.plot(
-        daSlicedIdx[2, 0, 0] / daTotal.freq,
+        daSlicedIdx[2, 0, 0] / data.freq,
         [threshold] * len(daSlicedIdx[2, 0, 0]),
         "ro",
     )
-    (daSlicedIdx[2, 0, 0] / daTotal.freq).plot(marker="o")
+    (daSlicedIdx[2, 0, 0] / data.freq).plot(marker="o")
 
     daSliced[2, 0, 0]
     daSlicedIdx[2, 0, 0]
@@ -342,9 +361,7 @@ def find_onset_aux(
     events, _ = find_peaks(data, **args_func_events)
 
     if show:
-        SliceTimeSeriesPhases.show_events(
-            data, events, threshold=args_func_events["height"]
-        )
+        show_events(data, events, threshold=args_func_events["height"])
 
     return events  # keeps the first value of each data pair
 
@@ -355,9 +372,8 @@ def detect_events(
     n_dim_time: str = "time",
     reference_var: str | dict | None = None,
     discard_phases_ini: int = 0,
-    n_phases: int | None = None,
+    num_phases: int | None = None,
     discard_phases_end: int = 0,
-    # include_first_next_last: Optional[bool] = False,
     max_phases: int = 100,
     func_events: Any | None = detect_onset_detecta_aux,
     **kwargs_func_events: Optional[dict],
@@ -379,7 +395,7 @@ def detect_events(
         and "n_var" is the variable name.
     discard_phases_ini : int, optional
         How many initial phases to discard. By default it is 0.
-    n_phases : int, optional
+    num_phases : int, optional
         How many phases to keep. If not specified, all are kept.
     discard_phases_end : int, optional
         How many final phases to discard. By default it is 0.
@@ -399,7 +415,7 @@ def detect_events(
 
     # TODO: ADJUST THE FUNCTION TO SUPPORT TRIAL-SPECIFIC THRESHOLDS
     # TODO: OPTIMIZE WHEN THERE IS reference_var THAT LOOKS FOR SLICES ONLY ON THAT VARIABLE
-    if func_events == None:
+    if func_events is None:
         raise Exception("A function to detect the events must be specified")
 
     if freq is None:
@@ -420,7 +436,7 @@ def detect_events(
         func_events=None,
         max_phases=100,
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         **kwargs_func_events,
     ):
@@ -441,11 +457,11 @@ def detect_events(
         # If necessary, adjust initial an final events
         evts = evts[discard_phases_ini:]
 
-        if n_phases == None:
+        if num_phases is None:
             evts = evts[: len(evts) - discard_phases_end]
         else:  # if a specific number of phases from the first event is required
-            if len(evts) >= n_phases:
-                evts = evts[: n_phases + 1]
+            if len(evts) >= num_phases:
+                evts = evts[: num_phases + 1]
             else:  # not enought number of events in the block, trunkated to the end
                 pass
         events[: len(evts)] = evts
@@ -462,7 +478,7 @@ def detect_events(
         func_events,
         max_phases,
         discard_phases_ini,
-        n_phases,
+        num_phases,
         discard_phases_end,
         input_core_dims=[
             [n_dim_time],
@@ -473,8 +489,8 @@ def detect_events(
             [],
             [],
         ],
-        output_core_dims=[["n_event"]],
-        exclude_dims=set(("n_event", n_dim_time)),
+        output_core_dims=[["num_event"]],
+        exclude_dims=set(("num_event", n_dim_time)),
         dataset_fill_value=np.nan,
         vectorize=True,
         dask="parallelized",
@@ -482,9 +498,9 @@ def detect_events(
         kwargs=kwargs_func_events,
     )
     da = (
-        da.assign_coords(n_event=range(len(da.n_event)))
-        .dropna(dim="n_event", how="all")
-        .dropna(dim="n_event", how="all")
+        da.assign_coords(num_event=range(len(da.num_event)))
+        .dropna(dim="num_event", how="all")
+        .dropna(dim="num_event", how="all")
     )
     da.name = "Events"
     return da
@@ -497,14 +513,14 @@ def slice_time_series(
     n_dim_time: str = "time",
     reference_var: str | dict | None = None,
     discard_phases_ini: int = 0,
-    n_phases: int | None = None,
+    num_phases: int | None = None,
     discard_phases_end: int = 0,
     add_to_ini: int | None = None,
     add_to_end: int | None = None,
     include_first_next_last: bool | None = False,
     max_phases: int | None = 100,
     func_events: Any | None = None,
-    split_version_function: str = "numpy",  # "polars" or "numpy"
+    split_version_function: str = "numpy",  # "polars", "polarspiv", "pandas"
     **kwargs_func_events,
 ) -> xr.DataArray:
     """
@@ -527,7 +543,7 @@ def slice_time_series(
         and returns the value to which the events refer. By default None.
     discard_phases_ini : int, optional
         Discard the first `discard_phases_ini` phases. By default 0.
-    n_phases : int, optional
+    num_phases : int, optional
         Number of phases to keep. By default None, which means all phases are
         kept.
     discard_phases_end : int, optional
@@ -545,7 +561,7 @@ def slice_time_series(
         A function that takes the data and returns the events. By default None.
     split_version_function : str, optional
         A string indicating the version of the function to use to split the data.
-        By default "numpy". Can be "polars".
+        By default "numpy". Can be "polars", "polarspiv" or "pandas".
     **kwargs_func_events
         Additional keyword arguments to pass to the function `func_events`.
 
@@ -564,7 +580,7 @@ def slice_time_series(
             n_dim_time,
             reference_var,
             discard_phases_ini,
-            n_phases,
+            num_phases,
             discard_phases_end,
             # include_first_next_last,
             max_phases,
@@ -572,7 +588,9 @@ def slice_time_series(
             **kwargs_func_events,
         )
 
+    # -------------------------------------------------------------------------
     # Numpy version
+    # -------------------------------------------------------------------------
     def _slice_aux(
         dat,
         evts,
@@ -582,10 +600,8 @@ def slice_time_series(
         var,
         add_ini,
         add_end,
-        # include_first_next_last,
     ):
         phases = np.full((max_phases, max_time), np.nan)
-        # print(ID, var)
         if (
             np.count_nonzero(~np.isnan(dat)) == 0
             or np.count_nonzero(~np.isnan(evts)) == 0
@@ -602,36 +618,11 @@ def slice_time_series(
             d = dat[evts[sl] : evts[sl + 1] + add_end]
             phases[sl, : len(d)] = d
 
-        """
-        # Whith np.split much slower
-        tpo=time.perf_counter()        
-        for i in range(1000):
-            t = np.split(dat, evts)[1:-1]
-            try:
-                t = np.array(list(itertools.zip_longest(*t, fillvalue=np.nan))).T
-                phases[: t.shape[0], : t.shape[1]] = t
-            except:
-                pass
-        print(f'{time.perf_counter()-tpo:.3f} s')
-        """
-
-        # To include the first value of the next slice as the last of the
-        # present. Usefull when graphing cycles
-        # TODO: improve vectorizing
-        # TODO: CHECK TO INCLUDE ONE LAST FRAME IN EACH PHASE
-
-        # if add_ini is not None or add_end is not None:
-        #     for sl in range(len(evts) - 1):
-        #         phases[sl, evts[sl + 1] - evts[sl] : evts[sl + 1] - evts[sl] + add_end] = dat[
-        #             evts[sl + 1] + add_end
-        #         ]
-        #         # phases[0, evts[1] - evts[0]-4:evts[1] - evts[0]+2]
-
-        #         # phases[1, evts[2] - evts[1]-4:evts[2] - evts[1]+2]
-
         return phases
 
-    # Polars version
+    # -------------------------------------------------------------------------
+    # Polars version (alternative, for future use)
+    # -------------------------------------------------------------------------
     if split_version_function in ["polars", "polarspiv"]:
         import polars as pl
     elif split_version_function == "pandas":
@@ -646,9 +637,7 @@ def slice_time_series(
         var,
         add_ini,
         add_end,
-        # include_first_next_last=True,
     ):
-        # print(ID, var)
         phases = np.full((max_time, max_phases), np.nan)
         try:
             if (
@@ -713,9 +702,7 @@ def slice_time_series(
         var,
         add_ini,
         add_end,
-        # include_first_next_last=True,
     ):
-        # print(ID, var)
         phases = np.full((max_time, max_phases), np.nan)
         try:
             if (
@@ -768,6 +755,9 @@ def slice_time_series(
             print(f"Error en {ID}, {var}, {inst}")
         return phases.T
 
+    # -------------------------------------------------------------------------
+    # Pandas version (alternative, for future use)
+    # -------------------------------------------------------------------------
     def _slice_aux_pd(
         dat,
         evts,
@@ -777,9 +767,7 @@ def slice_time_series(
         var,
         add_ini,
         add_end,
-        # include_first_next_last=True,
     ):
-        # print(ID, var)
         phases = np.full((max_time, max_phases), np.nan)
 
         try:
@@ -869,10 +857,13 @@ def slice_time_series(
                     # phases[evts[1] - evts[0]-4:evts[1] - evts[0]+2, 0]
                     # phases[0:4, 1] #evts[2] - evts[1]-4:evts[2] - evts[1]+2, 1]
                     # phases[2, evts[2] - evts[1]-4:evts[2] - evts[1]+2]
-        except:
-            print(f"Error in {ID}, {var}")
+        except Exception as inst:
+            print(inst)
         return phases.T
 
+    # -------------------------------------------------------------------------
+    # Select slicer function
+    # -------------------------------------------------------------------------
     if split_version_function == "numpy":
         func_slice = _slice_aux
     elif split_version_function == "polars":
@@ -897,7 +888,7 @@ def slice_time_series(
     if add_to_end is None:
         add_to_end = 0
 
-    max_phases = int(events.n_event[-1])
+    max_phases = int(events.num_event[-1])
     max_time = int(events.diff("n_event").max()) + add_to_ini + add_to_end
 
     da = xr.apply_ufunc(
@@ -910,9 +901,9 @@ def slice_time_series(
         data.n_var,
         add_to_ini,
         add_to_end,
-        input_core_dims=[[n_dim_time], ["n_event"], [], [], [], [], [], []],
-        output_core_dims=[["n_event", n_dim_time]],
-        exclude_dims=set(("n_event", n_dim_time)),
+        input_core_dims=[[n_dim_time], ["num_event"], [], [], [], [], [], []],
+        output_core_dims=[["num_event", n_dim_time]],
+        exclude_dims=set(("num_event", n_dim_time)),
         dataset_fill_value=np.nan,
         vectorize=True,
         dask="parallelized",
@@ -920,54 +911,55 @@ def slice_time_series(
         # kwargs=args_func_events,
     )
     da = (
-        da.assign_coords(n_event=range(len(da.n_event)))
+        da.assign_coords(num_event=range(len(da.num_event)))
         .assign_coords(time=np.arange(0, len(da.time)) / data.freq)
-        .dropna(dim="n_event", how="all")
+        .dropna(dim="num_event", how="all")
         .dropna(dim=n_dim_time, how="all")
-        .rename({"n_event": "phase"})
+        .rename({"num_event": "phase"})
     )
     # da[0,0,0].plot.line(x="time")
     da.attrs = data.attrs
     try:
         da.time.attrs["units"] = data.time.attrs["units"]
-    except:
+    except Exception as inst:
+        print(inst)
         pass
 
     return da
 
 
-if False:  # TEST WITH POLARS
-    # TRYIIIING
-    cortes_idx = detect_events(
-        data=daTotal,
-        func_events=detect_onset_detecta_aux,
-        **(dict(threshold=60, show=True)),
-    )
-    dat = data[0, 0, 0].values
-    events = cortes_idx[0, 0, 0].values
+# if False:  # TEST WITH POLARS
+#     # TRYIIIING
+#     cortes_idx = detect_events(
+#         data=daTotal,
+#         func_events=detect_onset_detecta_aux,
+#         **(dict(threshold=60, show=True)),
+#     )
+#     dat = data[0, 0, 0].values
+#     events = cortes_idx[0, 0, 0].values
 
-    da = xr.apply_ufunc(
-        slice_aux_PRUEBAAS_pl,
-        data,
-        events,
-        max_phases,
-        include_first_next_last,
-        input_core_dims=[[n_dim_time], ["n_event"], [], []],
-        output_core_dims=[["n_event", n_dim_time]],
-        exclude_dims=set(("n_event", n_dim_time)),
-        dataset_fill_value=np.nan,
-        vectorize=True,
-        dask="parallelized",
-        keep_attrs=True,
-        # kwargs=args_func_events,
-    )
-    da = (
-        da.assign_coords(n_event=range(len(da.n_event)))
-        .assign_coords(time=np.arange(0, len(da.time)) / data.freq)
-        .dropna(dim="n_event", how="all")
-        .dropna(dim=n_dim_time, how="all")
-        .rename({"n_event": "phase"})
-    )
+#     da = xr.apply_ufunc(
+#         slice_aux_PRUEBAAS_pl,
+#         data,
+#         events,
+#         max_phases,
+#         include_first_next_last,
+#         input_core_dims=[[n_dim_time], ["n_event"], [], []],
+#         output_core_dims=[["n_event", n_dim_time]],
+#         exclude_dims=set(("n_event", n_dim_time)),
+#         dataset_fill_value=np.nan,
+#         vectorize=True,
+#         dask="parallelized",
+#         keep_attrs=True,
+#         # kwargs=args_func_events,
+#     )
+#     da = (
+#         da.assign_coords(n_event=range(len(da.n_event)))
+#         .assign_coords(time=np.arange(0, len(da.time)) / data.freq)
+#         .dropna(dim="n_event", how="all")
+#         .dropna(dim=n_dim_time, how="all")
+#         .rename({"n_event": "phase"})
+#     )
 
 
 # TEST BY ANALYZING EVERYTHING WITH POLARS. UNDER CONSTRUCTION
@@ -978,7 +970,7 @@ def slice_time_series_pl(
     n_dim_time: str = "time",
     reference_var: str | dict | None = None,
     discard_phases_ini: int = 0,
-    n_phases: int | None = None,
+    num_phases: int | None = None,
     discard_phases_end: int = 0,
     include_first_next_last: bool = False,
     max_phases: int = 100,
@@ -1007,7 +999,7 @@ def slice_time_series_pl(
         and returns the value to which the events refer. By default None.
     discard_phases_ini : int, optional
         Discard the first `discard_phases_ini` phases. By default 0.
-    n_phases : int, optional
+    num_phases : int, optional
         Number of phases to keep. By default None, which means all phases are
         kept.
     discard_phases_end : int, optional
@@ -1037,7 +1029,7 @@ def slice_time_series_pl(
             n_dim_time,
             reference_var,
             discard_phases_ini,
-            n_phases,
+            num_phases,
             discard_phases_end,
             # include_first_next_last,
             max_phases,
@@ -1084,7 +1076,7 @@ def slice_time_series2(
     n_dim_time: str = "time",
     reference_var: str | dict | None = None,
     discard_phases_ini: int = 0,
-    n_phases: int | None = None,
+    num_phases: int | None = None,
     discard_phases_end: int = 0,
     include_first_next_last: bool = False,
     max_phases: int = 100,
@@ -1099,17 +1091,18 @@ def slice_time_series2(
             n_dim_time,
             reference_var,
             discard_phases_ini,
-            n_phases,
+            num_phases,
             discard_phases_end,
             include_first_next_last,
             max_phases,
             func_events,
             **kwargs_func_events,
         )
+    import itertools
 
     # TRYIIIIIING
     cortes_idx = detect_events(
-        data=daTotal,
+        data=data,
         func_events=detect_onset_detecta_aux,
         **(dict(threshold=60, show=True)),
     )
@@ -1138,7 +1131,8 @@ def slice_time_series2(
         try:
             t = np.array(list(itertools.zip_longest(*t, fillvalue=np.nan))).T
             phases[: t.shape[0], : t.shape[1]] = t
-        except:
+        except Exception as inst:
+            print(inst)
             pass
 
         # To include the first value of the next slice as the last of the
@@ -1174,7 +1168,8 @@ def slice_time_series2(
     da.attrs = data.attrs
     try:
         da.time.attrs["units"] = data.time.attrs["units"]
-    except:
+    except Exception as inst:
+        print(inst)
         pass
 
     return da
@@ -1209,7 +1204,6 @@ def trim_window(
     # TODO: TRY with da.pad
 
     def __trim_window(datos, ini, fin):
-        # print(datos.shape, ini,fin)
         d2 = np.full(datos.shape, np.nan)
         try:
             ini = int(ini)
@@ -1219,7 +1213,8 @@ def trim_window(
             if fin > len(datos):
                 fin = len(datos)
             d2[: fin - ini] = datos[ini:fin]
-        except:
+        except Exception as inst:
+            print(inst)
             pass
         return d2
 
@@ -1232,8 +1227,8 @@ def trim_window(
             daFin = daEvents
 
     else:
-        daIni = daEvents.isel(event=0)
-        daFin = daEvents.isel(event=1)
+        daIni = daEvents.isel(n_event=0)
+        daFin = daEvents.isel(n_event=1)
 
     daSliced = (
         xr.apply_ufunc(
@@ -1258,10 +1253,10 @@ def trim_window(
         for var in list(daSliced.data_vars):
             daSliced[var].attrs = daData[var].attrs
 
-    # daSliced.plot.line(x='time', row='ID', col='axis')
     return daSliced
 
 
+"""
 #################################################################
 # TEST WITH CLASS
 class SliceTimeSeriesPhases:
@@ -1272,7 +1267,7 @@ class SliceTimeSeriesPhases:
         n_dim_time: Optional[str] = "time",
         reference_var: Optional[Union[str, dict]] = None,
         discard_phases_ini: int = 0,
-        n_phases: Optional[int] = None,
+        num_phases: Optional[int] = None,
         discard_phases_end: int = 0,
         include_first_next_last: Optional[bool] = False,
         max_phases: int = 100,
@@ -1284,7 +1279,7 @@ class SliceTimeSeriesPhases:
         self.n_dim_time = n_dim_time
         self.reference_var = reference_var
         self.discard_phases_ini = discard_phases_ini
-        self.n_phases = n_phases
+        self.num_phases = num_phases
         self.discard_phases_end = discard_phases_end
         self.include_first_next_last = include_first_next_last
         self.func_events = func_events
@@ -1309,7 +1304,7 @@ class SliceTimeSeriesPhases:
             func_events=None,
             max_phases=50,
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             **kwargs_func_events,
         ):
@@ -1327,11 +1322,11 @@ class SliceTimeSeriesPhases:
             # If necessary, adjust initial an final events
             evts = evts[discard_phases_ini:]
 
-            if n_phases == None:
+            if num_phases == None:
                 evts = evts[: len(evts) - discard_phases_end]
             else:  # if a specific number of phases from the first event is required
-                if len(evts) >= n_phases:
-                    evts = evts[: n_phases + 1]
+                if len(evts) >= num_phases:
+                    evts = evts[: num_phases + 1]
                 else:  # not enought number of events in the block, trunkated to the end
                     pass
             events[: len(evts)] = evts
@@ -1347,7 +1342,7 @@ class SliceTimeSeriesPhases:
             self.func_events,
             self.max_phases,
             self.discard_phases_ini,
-            self.n_phases,
+            self.num_phases,
             self.discard_phases_end,
             input_core_dims=[
                 [self.n_dim_time],
@@ -1532,7 +1527,7 @@ class SliceTimeSeriesPhases:
 
 
 # =============================================================================
-
+"""
 
 # =============================================================================
 # %% TESTS
@@ -1543,15 +1538,11 @@ if __name__ == "__main__":
     # %%---- Create a sample
     # =============================================================================
 
+    import matplotlib.pyplot as plt
     import numpy as np
 
     # import pandas as pd
     import xarray as xr
-    from scipy.signal import butter, filtfilt
-    from pathlib import Path
-
-    import matplotlib.pyplot as plt
-    import seaborn as sns
 
     from biomdp.create_time_series import create_time_series_xr
 
@@ -1716,7 +1707,7 @@ if __name__ == "__main__":
         reference_var=dict(n_var="a"),
         max_phases=100,
     )
-    cortes_retocados = cortes_idx.isel(n_event=slice(3, 20, 2))
+    cortes_retocados = cortes_idx.isel(num_event=slice(3, 20, 2))
 
     dacor = slice_time_series(data=daTotal, events=cortes_retocados)
     dacor.isel(ID=slice(None, 6)).sel(n_var="a").plot.line(
@@ -1729,7 +1720,7 @@ if __name__ == "__main__":
         reference_var=dict(n_var="a"),
         max_phases=100,
     )
-    cortes_retocados = cortes_idx.isel(n_event=slice(5, 20))
+    cortes_retocados = cortes_idx.isel(num_event=slice(5, 20))
 
     dacor = slice_time_series(data=daTotal, events=cortes_retocados)
     dacor.isel(ID=slice(None, 6)).sel(n_var="c").plot.line(
@@ -1738,10 +1729,10 @@ if __name__ == "__main__":
 
     daSliced = slice_time_series(
         data=daTotal,
-        func_events=SliceTimeSeriesPhases.detect_onset_detecta_aux,
+        func_events=detect_onset_detecta_aux,
         reference_var=dict(moment="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         include_first_next_last=False,
         **dict(threshold=60, show=False),
@@ -1750,26 +1741,14 @@ if __name__ == "__main__":
 
     daSliced = slice_time_series(
         data=daTotal,
-        func_events=SliceTimeSeriesPhases.find_peaks_aux,
+        func_events=find_peaks_aux,
         reference_var=dict(moment="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         include_first_next_last=True,
         **dict(height=60, distance=10),
     )
-    daSliced.sel(n_var="b").plot.line(x="time", col="moment", hue="phase", row="ID")
-
-    daSliced = SliceTimeSeriesPhases(
-        data=daTotal,
-        func_events=SliceTimeSeriesPhases.find_peaks_aux,
-        reference_var=dict(moment="pre", n_var="b"),
-        discard_phases_ini=0,
-        n_phases=None,
-        discard_phases_end=0,
-        include_first_next_last=True,
-        **dict(height=140, distance=1),
-    ).slice_time_series()
     daSliced.sel(n_var="b").plot.line(x="time", col="moment", hue="phase", row="ID")
 
     daSliced = slice_time_series(
@@ -1784,10 +1763,10 @@ if __name__ == "__main__":
     # Find_peaks with xSD
     daSliced = slice_time_series(
         data=daTotal,
-        func_events=SliceTimeSeriesPhases.find_peaks_aux,
+        func_events=find_peaks_aux,
         # reference_var=dict(moment="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         include_first_next_last=True,
         **dict(xSD=0.8, distance=1),
@@ -1798,10 +1777,10 @@ if __name__ == "__main__":
     # Onset by xSD
     daSliced = slice_time_series(
         daTotal,
-        func_events=SliceTimeSeriesPhases.detect_onset_detecta_aux,
+        func_events=detect_onset_detecta_aux,
         # reference_var=dict(moment='pre', n_var='b'),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         include_first_next_last=True,
         **dict(xSD=-1.2),
@@ -1811,25 +1790,25 @@ if __name__ == "__main__":
     # Trim data, slice ini and end events
     daEvents = detect_events(
         data=daTotal,
-        func_events=SliceTimeSeriesPhases.find_peaks_aux,
+        func_events=find_peaks_aux,
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         **dict(height=0, distance=10),
     )
 
-    # ---- Detect onset from detect peaks y derivative
+    # ---- Detect onset from detect peaks and derivative
     daSliced = detect_events(
         data=daTotal,
-        func_events=SliceTimeSeriesPhases.detect_onset_detecta_aux,
+        func_events=detect_onset_detecta_aux,
         reference_var=dict(moment="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         **dict(threshold=60, show=False),
     )
     daSliced.sel(n_var="b").plot.line(
-        x="n_event", col="moment", hue="phase", row="ID", marker="o"
+        x="num_event", col="moment", hue="phase", row="ID", marker="o"
     )
 
     from biomdp.general_processing_functions import integrate_window
@@ -1838,32 +1817,32 @@ if __name__ == "__main__":
     daInteg[2, 0].plot.line(x="time")
     daSliced = detect_events(
         data=daInteg,
-        func_events=SliceTimeSeriesPhases.find_peaks_aux,
+        func_events=find_peaks_aux,
         reference_var=dict(moment="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         **dict(height=0, show=True),
     )
     daSliced.sel(n_var="b").plot.line(x="time", col="moment", hue="phase", row="ID")
 
     window = xr.concat(
-        [daEvents.min("n_event"), daEvents.max("n_event")], dim="n_event"
+        [daEvents.min("num_event"), daEvents.max("num_event")], dim="num_event"
     )
-    # window = daEvents.isel(n_event=[5,7]) #xr.concat([daEvents.isel(n_event=5), daEvents.isel(n_event=7)], dim='n_event')
+    # window = daEvents.isel(num_event=[5,7]) #xr.concat([daEvents.isel(num_event=5), daEvents.isel(num_event=7)], dim='num_event')
 
     daTrimed = slice_time_series(daTotal, events=window)
     daTrimed.stack(var_moment=("n_var", "moment")).plot.line(
         x="time", col="var_moment", hue="phase", row="ID"
     )
 
-    # ---- Increasing the numbere of data in the begining and end
+    # ---- Increasing the number of data in the begining and end
     daSliced = slice_time_series(
         data=daTotal,
-        func_events=SliceTimeSeriesPhases.detect_onset_detecta_aux,
+        func_events=detect_onset_detecta_aux,
         reference_var=dict(moment="pre", n_var="b"),
         discard_phases_ini=0,
-        n_phases=None,
+        num_phases=None,
         discard_phases_end=0,
         add_to_ini=1,
         add_to_end=1,
@@ -1883,10 +1862,10 @@ if __name__ == "__main__":
     def test_performance():
         result = slice_time_series(
             data=daTotal,
-            func_events=SliceTimeSeriesPhases.find_peaks_aux,
+            func_events=find_peaks_aux,
             reference_var=dict(moment="pre", n_var="b"),
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             include_first_next_last=False,
             split_version_function="numpy",
@@ -1902,10 +1881,10 @@ if __name__ == "__main__":
     def test_performance():
         result = slice_time_series(
             data=daTotal,
-            func_events=SliceTimeSeriesPhases.find_peaks_aux,
+            func_events=find_peaks_aux,
             reference_var=dict(moment="pre", n_var="b"),
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             include_first_next_last=False,
             split_version_function="polars",
@@ -1922,10 +1901,10 @@ if __name__ == "__main__":
     def test_performance():
         result = slice_time_series(
             data=daTotal,
-            func_events=SliceTimeSeriesPhases.find_peaks_aux,
+            func_events=find_peaks_aux,
             reference_var=dict(moment="pre", n_var="b"),
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             include_first_next_last=False,
             split_version_function="polarspiv",
@@ -1942,10 +1921,10 @@ if __name__ == "__main__":
     def test_performance():
         result = slice_time_series(
             data=daTotal,
-            func_events=SliceTimeSeriesPhases.find_peaks_aux,
+            func_events=find_peaks_aux,
             reference_var=dict(moment="pre", n_var="b"),
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             include_first_next_last=False,
             split_version_function="pandas",
@@ -1964,6 +1943,7 @@ if __name__ == "__main__":
     slices3[0, 0, 0, :, -50:-6].plot.line(x="time", hue="phase")
 
     ###################################
+    """
     # With the class version
     def test_performance():
         result = SliceTimeSeriesPhases(
@@ -1971,7 +1951,7 @@ if __name__ == "__main__":
             func_events=SliceTimeSeriesPhases.find_peaks_aux,
             # reference_var=dict(moment="pre", n_var="b"),
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             include_first_next_last=False,
             # split_version_function="polars",
@@ -1985,7 +1965,7 @@ if __name__ == "__main__":
     )
     daSliced = test_performance()
     daSliced.sel(n_var="b").plot.line(x="time", col="moment", hue="phase", row="ID")
-
+    
     # %%Performance tests class / functions
     import timeit
 
@@ -1995,7 +1975,7 @@ if __name__ == "__main__":
             func_events=SliceTimeSeriesPhases.find_peaks_aux,
             reference_var=dict(moment="pre", n_var="b"),
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             include_first_next_last=True,
             **dict(height=60, distance=10),
@@ -2012,7 +1992,7 @@ if __name__ == "__main__":
             func_events=SliceTimeSeriesPhases.find_peaks_aux,
             reference_var=dict(moment="pre", n_var="b"),
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             include_first_next_last=True,
             **dict(height=60, distance=10),
@@ -2022,6 +2002,7 @@ if __name__ == "__main__":
     print(
         f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
     )
+    """
 
     # %%Performance tests trim
     # Quicker with trim function
@@ -2030,9 +2011,9 @@ if __name__ == "__main__":
     def test_performance():
         daEvents = detect_events(
             data=daTotal,
-            func_events=SliceTimeSeriesPhases.find_peaks_aux,
+            func_events=find_peaks_aux,
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             **dict(height=10, distance=10),
         )
@@ -2050,16 +2031,16 @@ if __name__ == "__main__":
     def test_performance():
         daEvents = detect_events(
             data=daTotal,
-            func_events=SliceTimeSeriesPhases.find_peaks_aux,
+            func_events=find_peaks_aux,
             discard_phases_ini=0,
-            n_phases=None,
+            num_phases=None,
             discard_phases_end=0,
             **dict(height=0, distance=10),
         )
         window = xr.concat(
             [daEvents.min("n_event"), daEvents.max("n_event")], dim="n_event"
         )
-        result = trim_window(daTotal, window)
+        result = trim_window(daTotal, daEvents=window)
         return result
 
     print(

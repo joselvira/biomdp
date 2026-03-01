@@ -7,13 +7,12 @@ from biomdp.slice_time_series_phases import (
     detect_events,
     slice_time_series,
     trim_window,
-    SliceTimeSeriesPhases,
+    show_events,
 )
 from biomdp.create_time_series import create_time_series_xr
 
 
 class TestSliceTimeSeriesPhases(unittest.TestCase):
-
     def setUp(self):
         # Setup code to create sample data
         self.rnd_seed = np.random.seed(12340)

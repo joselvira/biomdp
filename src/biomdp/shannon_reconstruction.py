@@ -12,8 +12,16 @@ Shannon reconstruction.
 # %% LOAD LIBRARIES
 # =============================================================================
 
+import numpy as np
+import xarray as xr
+
+import matplotlib.pyplot as plt
+
+# from biomdp.general_processing_functions import detrend_dim
+
+
 __author__ = "Jose L. L. Elvira"
-__version__ = "v0.1.1"
+__version__ = "0.1.1"
 __date__ = "11/03/2025"
 
 """
@@ -26,20 +34,12 @@ Updates:
 
 """
 
-import numpy as np
-import xarray as xr
-
-import matplotlib.pyplot as plt
-
-# from biomdp.general_processing_functions import detrend_dim
-
-
 # =============================================================================
 # %% Function for Shannon reconstruction
 # =============================================================================
 
 
-def _circularity(data: np.ndarray, solapar: bool = False) -> np.array:
+def _circularity(data: np.ndarray, overlap: bool = False) -> np.array:
     """
     Create circularity in a single dimension array
     """
@@ -52,19 +52,19 @@ def _circularity(data: np.ndarray, solapar: bool = False) -> np.array:
     data = np.array(data[~np.isnan(data)])
     # plt.plot(data)
 
-    if solapar:
+    if overlap:
         pass
 
-    else:  # sin solapar data
+    else:  # without overlapping data
         mitad = int(len(data) / 2)
-        if True:  # len(data) % 2 == 0:  # si es par
-            # Carga la 1ª mitad en orden inverso al principio
+        if True:  # len(data) % 2 == 0:  # if even
+            # Load the first half in reverse order at the beginning
             data_recons[:mitad] = 2 * data[0] - data[mitad:0:-1]
 
-            # Continúa cargando todos los datos seguidos
+            # Continue loading all data in sequence
             data_recons[mitad : mitad + len(data)] = data
 
-            # Termina cargando la 2ª mitad en orden inverso al final
+            # Load the second half in reverse order at the end
             data_recons[mitad + len(data) - 1 :] = 2 * data[-1] - data[: mitad - 2 : -1]
 
             """
@@ -82,15 +82,15 @@ def _circularity(data: np.ndarray, solapar: bool = False) -> np.array:
             ).plot()
             """
 
-        else:  # si es impar. OMPROBAR SI ES NECESARIO
+        else:  # if odd. TODO: Check if it is necessary
             par_impar = 1
-            # Carga la 1ª mitad en orden inverso al principio
+            # Load the first half in reverse order at the beginning
             data_recons[: mitad + par_impar] = 2 * data[0] - data[mitad:par_impar:-1]
 
-            # Continúa cargando todos los datos seguidos
+            # Continue loading all data in sequence
             data_recons[mitad : mitad + len(data)] = data
             data[-1]
-            # Termina cargando la 2ª mitad en orden inverso al final
+            # Load the second half in reverse order at the end
             data_recons[mitad + len(data) - 1 :] = 2 * data[-1] - data[: mitad - 2 : -1]
 
     """

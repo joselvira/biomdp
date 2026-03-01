@@ -1263,12 +1263,6 @@ def process_video(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    # mpdc: float = 0.5,
-    # mppc: float = 0.5,
-    # mtc: float = 0.5,
-    # model_path: str | Path | None = None,
-    # mode: str = "balanced",  # 'performance', 'lightweight', 'balanced'
-    # det_frequency: int = 1,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
@@ -1283,10 +1277,6 @@ def process_video(
             file=file,
             fv=fv,
             n_vars_load=n_vars_load,
-            # mpdc=mpdc,
-            # mppc=mppc,
-            # mtc=mtc,
-            # model_path=model_path,
             num_frame=num_frame,
             save_frame_file=save_frame_file,
             show=show,
@@ -1317,11 +1307,6 @@ def process_video_rtmlib(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    # mode="balanced",
-    # det_frequency: int = 1,
-    # keypoint_likelihood_threshold=0.3,
-    # average_likelihood_threshold=0.5,
-    # keypoint_number_threshold=0.3,
     tracking: bool = False,
     num_frame: int | List[int] | None = None,
     save_frame_file: bool | Path | None = None,
@@ -2634,10 +2619,6 @@ def process_image_from_video(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    # mpdc: float = 0.5,
-    # mppc: float = 0.5,
-    # mtc: float = 0.5,
-    # model_path: str | Path | None = None,
     num_frame: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
@@ -2768,6 +2749,7 @@ def process_image_from_video(
             .copy()
         )  # .transpose("marker", "axis", "time")
 
+        # Default values
         mpdc = 0.5
         mppc = 0.5
         mtc = 0.5
@@ -2848,6 +2830,7 @@ def process_image_from_video(
             .copy()
         )  # .transpose("marker", "axis", "time")
 
+        # Default values
         mode = "balanced"
         pose_tracker = None
         det_frequency = 1

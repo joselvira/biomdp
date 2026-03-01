@@ -29,5 +29,5 @@ src/biomdp/io/read_vicon_c3d.py
 src/biomdp/io/read_vicon_csv.py
 src/datasets/__init__.py
 tests/test_fotogrammetry.py
-tests/test_slice_time_series_phases.py
 tests/test_multicam_dlt.py
+tests/test_slice_time_series_phases.py
