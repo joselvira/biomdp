@@ -9,13 +9,17 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "v.1.7.2"
+__version__ = "1.7.3"
 __date__ = "26/08/2025"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    03/03/2026, v.1.7.3
+        - In calculate_variables function, when daEvents parameter is None,
+          calculate variables along all the data.
+    
     26/08/2025, v.1.7.2
         - Added 'verbose' parameter in load_merge_bioware_pl
     
@@ -5538,6 +5542,13 @@ def calculate_variables(
                iniMov/finMov (to avoid drifts) or iniAnalisis/finAnalisis for
                variable full plots.
     """
+    if daEvents is None:
+        daEvents = (
+            xr.full_like(daData.isel(time=0).drop_vars("time"), np.nan)
+            .expand_dims({"event": ["ini", "fin"]})
+            .copy()
+        )
+        daEvents.isel(ID=0).loc[dict(event=["ini", "fin"])] = [0, len(daData.time)]
 
     daBW = daData / daWeight.sel(stat="media").drop_vars("stat")
 
