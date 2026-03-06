@@ -1201,6 +1201,9 @@ def trim_window(
         The trimmed DataArray.
     """
 
+    if daEvents.num_event.size > 2:
+        raise ValueError("daEvents must have 1 or 2 events.")
+
     # TODO: TRY with da.pad
 
     def __trim_window(datos, ini, fin):

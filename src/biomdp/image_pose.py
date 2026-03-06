@@ -19,12 +19,15 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.5.1"
-__date__ = "14/12/2025"
+__version__ = "1.6.0"
+__date__ = "06/03/2026"
 
 
 """
 Updates:
+    06/03/2026, v1.6.0
+        - Included parameter 'resize_factor' in process_video.
+    
     14/12/2025, v1.5.1
         - Replaced sort_persons_by_size with sort_people_by_size.
     
@@ -1264,6 +1267,7 @@ def process_video(
     fv: int = 30,
     n_vars_load: List[str] | None = None,
     num_frame: int | None = None,
+    resize_factor: float | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 10,
@@ -1293,6 +1297,7 @@ def process_video(
             # mode=mode,
             # det_frequency=det_frequency,
             num_frame=num_frame,
+            resize_factor=resize_factor,
             save_frame_file=save_frame_file,
             show=show,
             show_every_frames=show_every_frames,
@@ -1309,6 +1314,7 @@ def process_video_rtmlib(
     n_vars_load: List[str] | None = None,
     tracking: bool = False,
     num_frame: int | List[int] | None = None,
+    resize_factor: float | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 1,
@@ -1379,7 +1385,7 @@ def process_video_rtmlib(
     backend = "onnxruntime"  # opencv, onnxruntime, openvino
     tracking_mode = "sports2d"
     tracking = False
-    max_distance = 250  # distance to avoid changes detectiong people
+    max_distance = 250  # distance to avoid changes detecting people
     sorting_people_by = "highest_likelihood"
     max_num_people = None  # None for no limit
     keypoint_likelihood_threshold = 0.3
@@ -1564,6 +1570,12 @@ def process_video_rtmlib(
             all_frames_scores.append([])
             frame_idx += 1
             continue
+
+        if resize_factor is not None and resize_factor != 1.0:
+            img = cv2.resize(
+                img,
+                (int(img.shape[1] * resize_factor), int(img.shape[0] * resize_factor)),
+            )
 
         # Reset colors. It is not necessary but it does not seem to slow down
         # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
