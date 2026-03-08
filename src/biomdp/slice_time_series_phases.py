@@ -28,6 +28,7 @@ TODO: to make the cuts interpolating so that the phases start right at the crite
 
 Updates:
     01/03/2026, v5.0.1
+        - Included check for nan in trim_window.
         - The argument n_event has been changed to num_event to avoid confusion with
           the variable n_var. The same for the coordinate num_event in the output DataArray.
 
@@ -1206,16 +1207,19 @@ def trim_window(
 
     # TODO: TRY with da.pad
 
-    def __trim_window(datos, ini, fin):
-        d2 = np.full(datos.shape, np.nan)
+    def __trim_window(data, ini, fin):
+        d2 = np.full(data.shape, np.nan)
+        if np.isnan(data).all() or np.isnan(ini) or np.isnan(fin):
+            return d2  # np.nan
+
         try:
             ini = int(ini)
             fin = int(fin)
             if ini < 0:
                 ini = 0
-            if fin > len(datos):
-                fin = len(datos)
-            d2[: fin - ini] = datos[ini:fin]
+            if fin > len(data):
+                fin = len(data)
+            d2[: fin - ini] = data[ini:fin]
         except Exception as inst:
             print(inst)
             pass
@@ -1232,7 +1236,12 @@ def trim_window(
     else:
         daIni = daEvents.isel(n_event=0)
         daFin = daEvents.isel(n_event=1)
-
+    """
+    data = daData[0,0,0,0,0,0,0]
+    ini = daIni[0,0,0,0]
+    fin = daFin[0,0,0,0]
+    
+    """
     daSliced = (
         xr.apply_ufunc(
             __trim_window,
@@ -1242,6 +1251,7 @@ def trim_window(
             input_core_dims=[["time"], [], []],
             output_core_dims=[["time"]],
             exclude_dims=set(("time",)),
+            dask="parallelized",
             vectorize=True,
         )
         .assign_coords({"time": daData.time})
