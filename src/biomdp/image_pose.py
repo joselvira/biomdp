@@ -19,12 +19,16 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.6.0"
-__date__ = "06/03/2026"
+__version__ = "1.6.1"
+__date__ = "11/03/2026"
 
 
 """
 Updates:
+    11/03/2026, v1.6.1        
+        - Included parameter 'rotate' in process_video.
+        - Minor corrections in plot_pose_2D function.
+
     06/03/2026, v1.6.0
         - Included parameter 'resize_factor' in process_video.
     
@@ -1267,7 +1271,8 @@ def process_video(
     fv: int = 30,
     n_vars_load: List[str] | None = None,
     num_frame: int | None = None,
-    resize_factor: float | None = None,
+    resize_factor: float = 1.0,
+    rotate: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 10,
@@ -1298,6 +1303,7 @@ def process_video(
             # det_frequency=det_frequency,
             num_frame=num_frame,
             resize_factor=resize_factor,
+            rotate=rotate,
             save_frame_file=save_frame_file,
             show=show,
             show_every_frames=show_every_frames,
@@ -1314,7 +1320,8 @@ def process_video_rtmlib(
     n_vars_load: List[str] | None = None,
     tracking: bool = False,
     num_frame: int | List[int] | None = None,
-    resize_factor: float | None = None,
+    resize_factor: float = 1.0,
+    rotate: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 1,
@@ -1571,7 +1578,15 @@ def process_video_rtmlib(
             frame_idx += 1
             continue
 
-        if resize_factor is not None and resize_factor != 1.0:
+        h, w = img.shape[:2]
+
+        if rotate is not None:
+            rotation_matrix = cv2.getRotationMatrix2D(
+                (w // 2, h // 2), rotate, resize_factor
+            )
+            img = cv2.warpAffine(img, rotation_matrix, (w, h))
+
+        if rotate is None and resize_factor is not None and resize_factor != 1.0:
             img = cv2.resize(
                 img,
                 (int(img.shape[1] * resize_factor), int(img.shape[0] * resize_factor)),
@@ -1579,7 +1594,6 @@ def process_video_rtmlib(
 
         # Reset colors. It is not necessary but it does not seem to slow down
         # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        h, w = img.shape[:2]
 
         try:
             # Detect poses
@@ -3244,7 +3258,7 @@ def process_video_mixed(file, fv=30, show=False):
 
 def plot_pose_2D(
     daData,
-    dim_col: str = "ID",
+    dim_col: str | None = None,  # "ID",
     x: str = "x",
     y: str = "y",
     frames: int | List[int] = [None, None],
@@ -3273,6 +3287,9 @@ def plot_pose_2D(
     col_wrap = 4
     if "col_wrap" in kwargs:
         col_wrap = kwargs["col_wrap"]
+    sharex = False
+    if "sharex" in kwargs:
+        sharex = kwargs["sharex"]
 
     if isinstance(frames, int):
         frames = [frames, frames + 1]
@@ -3289,7 +3306,7 @@ def plot_pose_2D(
             col=dim_col,
             col_wrap=col_wrap,
             linewidths=0.5,
-            sharex=False,
+            # sharex=sharex,
         )
     return g
 

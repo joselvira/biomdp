@@ -9,13 +9,16 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.7.3"
-__date__ = "26/08/2025"
+__version__ = "1.7.4"
+__date__ = "25/03/2026"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    25/03/2026, v.1.7.4
+        - Included check for None in split_dim_repe_logsheet function.
+    
     03/03/2026, v.1.7.3
         - In calculate_variables function, when daEvents parameter is None,
           calculate variables along all the data.
@@ -518,11 +521,17 @@ def split_dim_repe_logsheet(
                         da.ID.data[0].split("_")[0:-1]
                     )  # ['_'.join(n.split('_')[0:-1]) for n in list(da.ID.data)]
                     print(r, reID)
-                    if da.ID.str.endswith(reps.iloc[0]):  # len(da.ID) >0:
+                    if reps.iloc[0] is not None and da.ID.str.endswith(
+                        reps.iloc[0]
+                    ):  # len(da.ID) >0:
                         rep0.append(da.assign_coords(ID=[reID]))
-                    elif da.ID.str.endswith(reps.iloc[1]):  # len(da.ID) >1:
+                    elif reps.iloc[1] is not None and da.ID.str.endswith(
+                        reps.iloc[1]
+                    ):  # len(da.ID) >1:
                         rep1.append(da.assign_coords(ID=[reID]))
-                    elif da.ID.str.endswith(reps.iloc[2]):  # len(da.ID) >2:
+                    elif reps.iloc[2] is not None and da.ID.str.endswith(
+                        reps.iloc[2]
+                    ):  # len(da.ID) >2:
                         rep2.append(da.assign_coords(ID=[reID]))
 
     """
