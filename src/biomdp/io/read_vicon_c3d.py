@@ -10,11 +10,14 @@ Created on Fry Sep 15 16:36:37 2023
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.3.1"
-__date__ = "13/12/2025"
+__version__ = "0.3.2"
+__date__ = "30/03/2026"
 
 """
 Updates:
+    30/03/2026, v0.3.2
+        - Refined variable selection in Forces section with engine='c3d'.
+    
     13/12/2025, v0.3.1
         - Changed default engine to c3d.
 
@@ -185,7 +188,7 @@ def read_vicon_c3d_c3d(
 
     try:
         import c3d
-    except:
+    except Exception as e:
         raise ImportError("Module c3d not installed.\nInstall with pip install c3d")
 
     if isinstance(file, str):
@@ -259,9 +262,10 @@ def read_vicon_c3d_c3d(
 
         # Analogs
         elif section in ["Forces", "EMG"]:
-            labels_analog = [
-                s.split(".")[0].replace(" ", "") for s in reader.analog_labels
-            ]
+            labels_analog = reader.analog_labels
+            # labels_analog = [
+            #     s.split(".")[0].replace(" ", "") for s in reader.analog_labels
+            # ]
             data_analog = np.concatenate(analog, axis=1)
 
             # data_analog.shape
@@ -280,12 +284,19 @@ def read_vicon_c3d_c3d(
             # Sometimes contains 'Force' and others 'Fx', Fy', 'Fz'
             # Get only force variables
             if section == "Forces":
-                if "Force" in da_analog.n_var:  # newer versions of Nexus?
+                if da_analog.n_var.str.contains(
+                    "Force"
+                ).any():  # newer versions of Nexus?
                     da = da_analog.sel(n_var=da_analog.n_var.str.contains("Force"))
                 elif da_analog.n_var.str.contains(
                     "Fz"
                 ).any():  # older versions of Nexus?
-                    da = da_analog.sel(n_var=da_analog.n_var.str.startswith("F"))
+                    da = da_analog.sel(
+                        n_var=(
+                            da_analog.n_var.str.startswith("F")
+                            & ~da_analog.n_var.str.contains("Foot")
+                        )
+                    )
                 else:
                     da = xr.DataArray()
                     raise Exception("Apparently no force data in file")
@@ -293,9 +304,9 @@ def read_vicon_c3d_c3d(
                 try:
                     # da = da_analog.sel(n_var=da_analog.n_var.str.startswith('F')) #'Force') #.sel(n_var=da_analog.n_var.str.contains('Force'))
                     if len(da.n_var) == 3:  # 1 platform
-                        x = da.isel(n_var=0)
-                        y = da.isel(n_var=1)
-                        z = da.isel(n_var=2)
+                        x = da.isel(n_var=da.n_var.str.contains("x"))
+                        y = da.isel(n_var=da.n_var.str.contains("y"))
+                        z = da.isel(n_var=da.n_var.str.contains("z"))
                         da = (
                             xr.concat([x, y, z], dim="axis")
                             .assign_coords(n_var="plat1")
@@ -322,7 +333,7 @@ def read_vicon_c3d_c3d(
                     da.attrs["units"] = "N"
                     # da.time.attrs['units']='s'
                     # da.plot.line(x='time', col='axis', hue='n_var')
-                except:
+                except Exception as e:
                     da = xr.DataArray()
                     raise Exception("Not available force data in file")
 
@@ -330,7 +341,7 @@ def read_vicon_c3d_c3d(
             elif section == "EMG":
                 if da_analog.n_var.str.contains("EMG").any():
                     da = da_analog.sel(n_var=da_analog.n_var.str.contains("EMG"))
-                    da.attrs["units"] = "mV"
+                    da.attrs["units"] = "V"
                     # da.n_var.sortby('n_var')
                     # da.plot.line(x='time', col='n_var', col_wrap=3)
                 else:
@@ -347,7 +358,7 @@ def read_vicon_c3d_c3d(
         print(f"\nATTENTION. Unable to process {file.name}, {err}\n")
 
     if n_vars_load is not None and "n_var" in da.coords:
-        da = da.sel(n_var=n_vars_load)
+        da = da.sel(n_var=n_vars_load, drop=True)
 
     return da  # daTrajec, daModels, daForce, daEMG
 

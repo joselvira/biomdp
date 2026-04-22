@@ -19,12 +19,20 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.6.1"
-__date__ = "11/03/2026"
+__version__ = "1.6.3"
+__date__ = "20/04/2026"
 
 
 """
 Updates:
+
+    20/04/2026, v1.6.3
+        - Included parameter 'min_bbox_size' in process_video to filter detections by bounding box size before tracking.
+        - Improved kwargs variables handling.
+
+    16/04/2026, v1.6.2
+        - 'marker' dimension renamed to 'n_marker'.
+    
     11/03/2026, v1.6.1        
         - Included parameter 'rotate' in process_video.
         - Minor corrections in plot_pose_2D function.
@@ -259,11 +267,11 @@ def draw_model_on_image(
 
     for marker1, marker2 in MODEL_STICK_UNIONS:
         try:
-            if marker1 in _daMarkers.marker and marker2 in _daMarkers.marker:
-                x1 = int(_daMarkers.isel(ID=0).sel(marker=marker1, axis="x"))
-                y1 = int(_daMarkers.isel(ID=0).sel(marker=marker1, axis="y"))
-                x2 = int(_daMarkers.isel(ID=0).sel(marker=marker2, axis="x"))
-                y2 = int(_daMarkers.isel(ID=0).sel(marker=marker2, axis="y"))
+            if marker1 in _daMarkers.n_marker and marker2 in _daMarkers.n_marker:
+                x1 = int(_daMarkers.isel(ID=0).sel(n_marker=marker1, axis="x"))
+                y1 = int(_daMarkers.isel(ID=0).sel(n_marker=marker1, axis="y"))
+                x2 = int(_daMarkers.isel(ID=0).sel(n_marker=marker2, axis="x"))
+                y2 = int(_daMarkers.isel(ID=0).sel(n_marker=marker2, axis="y"))
                 modified_image = cv2.line(
                     rgb_image, (x1, y1), (x2, y2), (255, 255, 255, 0.5), lw, cv2.LINE_AA
                 )
@@ -278,8 +286,8 @@ def draw_model_on_image(
                 marker_color = (0, 255, 0, 0.5)
             else:
                 marker_color = (255, 255, 255, 0.5)
-            x = int(_daMarkers.isel(ID=0).sel(marker=marker, axis="x"))
-            y = int(_daMarkers.isel(ID=0).sel(marker=marker, axis="y"))
+            x = int(_daMarkers.isel(ID=0).sel(n_marker=marker, axis="x"))
+            y = int(_daMarkers.isel(ID=0).sel(n_marker=marker, axis="y"))
             modified_image = cv2.circle(
                 modified_image,
                 (x, y),
@@ -422,7 +430,7 @@ def extract_markers(data_mark, coords):
         data=data_mark,
         dims=coords.keys(),
         coords=coords,
-    ).transpose("marker", "axis")
+    ).transpose("n_marker", "axis")
 
 
 def pose_landmarkers_to_xr(pose_landmarker_result, image=None):
@@ -444,7 +452,7 @@ def pose_landmarkers_to_xr(pose_landmarker_result, image=None):
 
     # To dataarray
     coords = {
-        "marker": N_MARKERS,
+        "n_marker": N_MARKERS,
         "axis": ["x", "y", "z", "visib", "presence"],
     }
     da = xr.DataArray(
@@ -476,38 +484,38 @@ def split_dim_side(daData, n_bilat=None):
 
     """
     if n_bilat is not None:
-        bilat = daData.sel(marker=n_bilat)
-        daData = daData.sel(marker=~daData.marker.isin(n_bilat))
+        bilat = daData.sel(n_marker=n_bilat)
+        daData = daData.sel(n_marker=~daData.n_marker.isin(n_bilat))
 
-    # Lo subdivide en side L y R
-    L = daData.sel(marker=daData.marker.str.endswith("_L"))
-    L = L.assign_coords(marker=L.marker.str.rstrip(to_strip="_L"))
-    R = daData.sel(marker=daData.marker.str.endswith("_R"))
-    R = R.assign_coords(marker=R.marker.str.rstrip(to_strip="_R"))
+    # Split in side L and R
+    L = daData.sel(n_marker=daData.n_marker.str.endswith("_L"))
+    L = L.assign_coords(n_marker=L.n_marker.str.rstrip(to_strip="_L"))
+    R = daData.sel(n_marker=daData.n_marker.str.endswith("_R"))
+    R = R.assign_coords(n_marker=R.n_marker.str.rstrip(to_strip="_R"))
 
-    # Si hay variables bilaterales, las añade al lado derecho e izquierdo
+    # If there are bilateral variables, add them to both sides
     if n_bilat is not None:
-        L = xr.concat([L, bilat], dim="marker")
-        R = xr.concat([R, bilat], dim="marker")
+        L = xr.concat([L, bilat], dim="n_marker")
+        R = xr.concat([R, bilat], dim="n_marker")
 
     daData_side = xr.concat([L, R], dim="side").assign_coords(side=["L", "R"])
 
-    # daData_side = daData_side.transpose('marker', 'ID', 'qual', 'test', 'lap', 'side', 'time') #reordena las dimensiones
+    # daData_side = daData_side.transpose('n_marker', 'ID', 'qual', 'test', 'lap', 'side', 'time') #reordena las dimensiones
 
     return daData_side
 
 
 def add_shoulder_hip_centers(daData):
-    if "hip" not in daData.marker and "shoulder" not in daData.marker:
-        raise ValueError("No hay marcadores caderas ni hombros")
+    if "hip" not in daData.n_marker and "shoulder" not in daData.n_marker:
+        raise ValueError("No shoulder nor hip markers found in the dataarray.")
 
-    c_cad = daData.sel(marker="hip").mean("side").assign_coords(marker="hip_center")
+    c_cad = daData.sel(n_marker="hip").mean("side").assign_coords(n_marker="hip_center")
     c_hom = (
-        daData.sel(marker="shoulder")
+        daData.sel(n_marker="shoulder")
         .mean("side")
-        .assign_coords(marker="shoulder_center")
+        .assign_coords(n_marker="shoulder_center")
     )
-    return xr.concat([daData, c_cad, c_hom], dim="marker")
+    return xr.concat([daData, c_cad, c_hom], dim="n_marker")
 
 
 def calculate_angle(points):
@@ -556,31 +564,31 @@ def calculate_angle_np(points):
 
 def calculate_angle_xr(daPoints: xr.DataArray) -> np.ndarray:
     # TODO: INCLUDE IMAGE DIMENSIONS TO SCALE?
-    if len(daPoints.marker) == 3:
+    if len(daPoints.n_marker) == 3:
         a = (
-            daPoints.isel(marker=0).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=0).sel(axis=["x", "y"]).data
         )  # np.array([puntos[0].x, puntos[0].y])
         b = (
-            daPoints.isel(marker=1).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=1).sel(axis=["x", "y"]).data
         )  # np.array([puntos[1].x, puntos[1].y])
         c = (
-            daPoints.isel(marker=1).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=1).sel(axis=["x", "y"]).data
         )  # np.array([puntos[1].x, puntos[1].y])
         d = (
-            daPoints.isel(marker=2).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=2).sel(axis=["x", "y"]).data
         )  # np.array([puntos[2].x, puntos[2].y])
-    elif len(daPoints.marker) == 4:
+    elif len(daPoints.n_marker) == 4:
         a = (
-            daPoints.isel(marker=0).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=0).sel(axis=["x", "y"]).data
         )  # np.array([puntos[0].x, puntos[0].y])
         b = (
-            daPoints.isel(marker=1).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=1).sel(axis=["x", "y"]).data
         )  # np.array([puntos[1].x, puntos[1].y])
         c = (
-            daPoints.isel(marker=2).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=2).sel(axis=["x", "y"]).data
         )  # np.array([puntos[2].x, puntos[2].y])
         d = (
-            daPoints.isel(marker=3).sel(axis=["x", "y"]).data
+            daPoints.isel(n_marker=3).sel(axis=["x", "y"]).data
         )  # np.array([puntos[3].x, puntos[3].y])
 
     radians = np.arctan2(np.linalg.norm(np.cross(a - b, d - c)), np.dot(a - b, d - c))
@@ -816,14 +824,14 @@ def process_video_deprecated(
     # Pasa los marcadores a xarary
     coords = {
         "time": np.arange(0, num_frames) / fv,
-        "marker": N_MARKERS,
+        "n_marker": N_MARKERS,
         "axis": ["x", "y", "z"],
     }
     da = xr.DataArray(
         data=data_mark,
         dims=coords.keys(),
         coords=coords,
-    ).transpose("marker", "axis", "time")
+    ).transpose("n_marker", "axis", "time")
     if len(da.time) > 1:  # si es vídeo filtra
         da_filt = da  # filtrar_Butter(da, fr=fv, fc=6)
         da.sel(marcador=["tobillo_L", "tobillo_R"]).plot.line(
@@ -1281,20 +1289,7 @@ def process_video(
     engine="rtmlib",  # "mediapipe", "rtmlib",
     **kwargs,
 ) -> xr.DataArray:
-    if engine == "mediapipe":
-        daReturn = process_video_mediapipe(
-            file=file,
-            fv=fv,
-            n_vars_load=n_vars_load,
-            num_frame=num_frame,
-            save_frame_file=save_frame_file,
-            show=show,
-            show_every_frames=show_every_frames,
-            radius=radius,
-            verbose=verbose,
-            **kwargs,
-        )
-    elif engine == "rtmlib":
+    if engine == "rtmlib":
         daReturn = process_video_rtmlib(
             file=file,
             fv=fv,
@@ -1311,6 +1306,20 @@ def process_video(
             verbose=verbose,
             **kwargs,
         )
+
+    elif engine == "mediapipe":
+        daReturn = process_video_mediapipe(
+            file=file,
+            fv=fv,
+            n_vars_load=n_vars_load,
+            num_frame=num_frame,
+            save_frame_file=save_frame_file,
+            show=show,
+            show_every_frames=show_every_frames,
+            radius=radius,
+            verbose=verbose,
+            **kwargs,
+        )
     return daReturn
 
 
@@ -1318,7 +1327,6 @@ def process_video_rtmlib(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    tracking: bool = False,
     num_frame: int | List[int] | None = None,
     resize_factor: float = 1.0,
     rotate: int | None = None,
@@ -1326,8 +1334,24 @@ def process_video_rtmlib(
     show: bool | str = False,
     show_every_frames: int = 1,
     sort_people_by_size: bool = True,
+    # min_bbox_size: tuple[int, int] | None = None,
     radius: int = 2,
     verbose: bool = False,
+    pose_tracker=None,
+    mode="balanced",
+    pose_model_name="body_with_feet",
+    det_frequency=10,
+    device="cuda",  # cpu, cuda,
+    backend="onnxruntime",  # opencv, onnxruntime, openvino
+    tracking_mode="sports2d",  # "sports2d", "rtmlib"
+    tracking: bool = False,
+    max_distance=250,  # distance to avoid changes detecting people
+    sorting_people_by="highest_likelihood",
+    max_num_people=None,  # None for no limit
+    min_bbox_size=None,  # (width, height) in pixels, None for no limit
+    keypoint_likelihood_threshold=0.3,
+    average_likelihood_threshold=0.5,
+    keypoint_number_threshold=0.3,
     **kwargs,
 ) -> xr.DataArray:
     """
@@ -1346,18 +1370,19 @@ def process_video_rtmlib(
         Path to the model file, defaults to None, which uses "pose_landmarker_heavy.task".
     num_frame : int, optional
         Number of frames to process, if None, all frames are processed.
-    save_frame_file : bool or Path, optional
+    save_frame_file : None, bool or Path, optional
         Defaults to None
         True: save to the same folder
-        Path: save to the proposed folderto save frames to file.
+        Path: save to the proposed folder to save frames as image.
     show : bool or str, optional
         If False, no display is shown. If True, it displays the frames with markers in a local environment.
         If 'colab', it displays the frames in Google Colab.
     show_every_frames : int, optional
         Frame skip number to display.
-    max_distance : int, optional (into kwargs)
+    max_distance : int, optional
         Distance to avoid changes detectiong people.
-
+    min_bbox_size : tuple[int, int], optional
+        Minimum bounding box size (width, height) in pixels to consider a detection valid.
     Returns
     -------
     xarray.DataArray
@@ -1384,7 +1409,10 @@ def process_video_rtmlib(
             "rtmlib, Sports2D or Pose2Sim are not installed. Please install it with 'pip install sports2d Pose2Sim'"  # or 'pip install rtmlib -i https://pypi.org/simple'."
         )
 
-    pose_tracker = None
+    # print("4", kwargs)
+    # print(det_frequency, pose_tracker, min_bbox_size, tracking_mode)
+
+    """pose_tracker = None
     mode = "balanced"
     pose_model_name = "body_with_feet"
     det_frequency = 10
@@ -1395,6 +1423,7 @@ def process_video_rtmlib(
     max_distance = 250  # distance to avoid changes detecting people
     sorting_people_by = "highest_likelihood"
     max_num_people = None  # None for no limit
+    min_bbox_size = None  # (width, height) in pixels, None for no limit
     keypoint_likelihood_threshold = 0.3
     average_likelihood_threshold = 0.5
     keypoint_number_threshold = 0.3
@@ -1421,13 +1450,16 @@ def process_video_rtmlib(
         sorting_people_by = kwargs["sorting_people_by"]
     if "max_num_people" in kwargs:
         max_num_people = kwargs["max_num_people"]
-
+    if "min_bbox_size" in kwargs:
+        min_bbox_size = (np.asarray(kwargs["min_bbox_size"])*resize_factor).astype(int)
+        
     if "keypoint_likelihood_threshold" in kwargs:
         keypoint_likelihood_threshold = kwargs["keypoint_likelihood_threshold"]
     if "average_likelihood_threshold" in kwargs:
         average_likelihood_threshold = kwargs["average_likelihood_threshold"]
     if "keypoint_number_threshold" in kwargs:
         keypoint_number_threshold = kwargs["keypoint_number_threshold"]
+    """
 
     if not isinstance(file, Path):
         file = Path(file)
@@ -1481,6 +1513,8 @@ def process_video_rtmlib(
     #     device="auto",
     #     tracking=True,
     # )
+    if min_bbox_size is not None:
+        min_bbox_size = (np.asarray(min_bbox_size) * resize_factor).astype(int)
 
     if pose_tracker is None:
         print("pose_tracker updated")
@@ -1549,6 +1583,7 @@ def process_video_rtmlib(
     frame_processing_times = []
 
     pTime = 0
+
     # frame_idx = first_frame
     # # Skip to the starting frame
     # cap.set does't wort ???
@@ -1578,6 +1613,7 @@ def process_video_rtmlib(
             frame_idx += 1
             continue
 
+        detected_people, confirmed_people = 0, 0  # num of people in frame
         h, w = img.shape[:2]
 
         if rotate is not None:
@@ -1620,6 +1656,23 @@ def process_video_rtmlib(
                 keep = []
             keypoints, scores = likely_keypoints[keep], likely_scores[keep]
 
+            detected_people = len(keep)
+
+            # Filter by bbox size before tracking
+            if min_bbox_size is not None and len(keep) > 0:
+                bbox_sizes = likely_bboxes[keep, 2:] - likely_bboxes[keep, :2]
+                keep_size = np.where(
+                    (bbox_sizes[:, 0] >= min_bbox_size[0])
+                    & (bbox_sizes[:, 1] >= min_bbox_size[1])
+                )[0]
+                keep = keep[keep_size]
+                keypoints, scores = keypoints[keep_size], scores[keep_size]
+
+            # If all detections were filtered out, fill with NaN
+            if len(keypoints) == 0:
+                keypoints = np.full((1, kpt_id_max, 2), fill_value=np.nan)
+                scores = np.full((1, kpt_id_max), fill_value=np.nan)
+
             # Track poses across frames (default sports2d)
             if tracking_mode == "sports2d":
                 if "prev_keypoints" not in locals():
@@ -1633,6 +1686,7 @@ def process_video_rtmlib(
                 prev_keypoints, keypoints, scores = sort_people_rtmlib(
                     pose_tracker, keypoints, scores
                 )
+
         except Exception as e:
             keypoints = np.full((1, kpt_id_max, 2), fill_value=np.nan)
             scores = np.full((1, kpt_id_max), fill_value=np.nan)
@@ -1670,6 +1724,8 @@ def process_video_rtmlib(
                 person_X = np.full_like(person_X, np.nan)
                 person_Y = np.full_like(person_Y, np.nan)
                 person_scores = np.full_like(person_scores, np.nan)
+            else:
+                confirmed_people += 1
 
             valid_X.append(person_X)
             valid_Y.append(person_Y)
@@ -1721,6 +1777,15 @@ def process_video_rtmlib(
                 annotated_image,
                 f"Frame {show_frame}/{last_frame} fps: {fps:.2f}",
                 (30, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+            cv2.putText(
+                annotated_image,
+                f"Detected: {detected_people}  Confirmed: {confirmed_people}",
+                (30, 50),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (255, 0, 0),
@@ -1834,7 +1899,7 @@ def process_video_rtmlib(
     cv2.destroyAllWindows()
 
     if verbose:
-        print(f"Video processed in {time.perf_counter() - t_ini:.2f} s")
+        print(f"Video processed in {time.perf_counter() - t_ini:.3f} s")
 
     # Convert to dataarray
     from Sports2D.Utilities.common import make_homogeneous
@@ -2056,7 +2121,7 @@ def process_video_rtmlib_bkp(
     # Precreate Dataarray
     coords = {
         "time": np.arange(0, num_frames),  # / fv,
-        "marker": N_MARKERS_RTMLIB26,
+        "n_marker": N_MARKERS_RTMLIB26,
         "axis": ["x", "y", "score"],
     }
     daMarkers = (
@@ -2068,7 +2133,7 @@ def process_video_rtmlib_bkp(
         .expand_dims({"ID": [file.stem]})
         # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
         .copy()
-    )  # .transpose("marker", "axis", "time")
+    )  # .transpose("n_marker", "axis", "time")
 
     pTime = 0
     frame_idx = 0
@@ -2312,7 +2377,7 @@ def process_video_rtmlib_bkp(
         daMarkers = daMarkers.isel(time=frame_idx).assign_coords(time=num_frame / fv)
 
     if n_vars_load is not None:
-        daMarkers = daMarkers.sel(marker=n_vars_load)
+        daMarkers = daMarkers.sel(n_marker=n_vars_load)
 
     # Invert y coordinates
     # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
@@ -2437,7 +2502,7 @@ def process_video_mediapipe(
         # Precreate Dataarray
         coords = {
             "time": np.arange(0, num_frames),  # / fv,
-            "marker": N_MARKERS,
+            "n_marker": N_MARKERS,
             "axis": ["x", "y", "z", "visib", "presence"],
         }
         daMarkers = (
@@ -2449,7 +2514,7 @@ def process_video_mediapipe(
             .expand_dims({"ID": [file.stem]})
             # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
             .copy()
-        )  # .transpose("marker", "axis", "time")
+        )  # .transpose("n_marker", "axis", "time")
 
         pTime = 0
         frame_idx = 0
@@ -2487,7 +2552,7 @@ def process_video_mediapipe(
             daMarkers.loc[dict(ID=file.stem, time=frame_idx)] = pose_landmarkers_to_xr(
                 pose_landmarker_result, mp_image
             )
-            # daMarkers.isel(ID=0).plot.line(x="time", col='marker', col_wrap=4, sharey=False)
+            # daMarkers.isel(ID=0).plot.line(x="time", col='n_marker', col_wrap=4, sharey=False)
             '''# Loop through the detected poses to visualize.
             if pose_landmarker_result.pose_landmarks:
                 pose_landmarks = pose_landmarker_result.pose_landmarks[0]
@@ -2633,7 +2698,7 @@ def process_video_mediapipe(
         daMarkers = daMarkers.isel(time=frame_idx).assign_coords(time=num_frame / fv)
 
     if n_vars_load is not None:
-        daMarkers = daMarkers.sel(marker=n_vars_load)
+        daMarkers = daMarkers.sel(n_marker=n_vars_load)
 
     # Invert y coordinates
     # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
@@ -2761,7 +2826,7 @@ def process_image_from_video(
         # Precreate Dataarray
         coords = {
             "time": np.arange(1),  # / fv,
-            "marker": N_MARKERS,
+            "n_marker": N_MARKERS,
             "axis": ["x", "y", "z", "visib", "presence"],
         }
         daMarkers = (
@@ -2773,7 +2838,7 @@ def process_image_from_video(
             .expand_dims({"ID": [file.stem]})
             # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
             .copy()
-        )  # .transpose("marker", "axis", "time")
+        )  # .transpose("n_marker", "axis", "time")
 
         # Default values
         mpdc = 0.5
@@ -2842,7 +2907,7 @@ def process_image_from_video(
         # Precreate Dataarray
         coords = {
             "time": np.arange(1),  # / fv,
-            "marker": N_MARKERS_RTMLIB26,
+            "n_marker": N_MARKERS_RTMLIB26,
             "axis": ["x", "y", "score"],
         }
         daMarkers = (
@@ -2854,7 +2919,7 @@ def process_image_from_video(
             .expand_dims({"ID": [file.stem]})
             # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
             .copy()
-        )  # .transpose("marker", "axis", "time")
+        )  # .transpose("n_marker", "axis", "time")
 
         # Default values
         mode = "balanced"
@@ -3087,7 +3152,7 @@ def process_image_from_video(
         cv2.destroyAllWindows()
 
     if n_vars_load is not None:
-        daMarkers = daMarkers.sel(marker=n_vars_load)
+        daMarkers = daMarkers.sel(n_marker=n_vars_load)
 
     # Save the selected num_frame
     if num_frame is not None and save_frame_file not in [None, False]:
@@ -3244,7 +3309,7 @@ def process_video_mixed(file, fv=30, show=False):
     # Pasa los marcadores a xarary
     coords = {
         "time": np.arange(0, num_frames) / fv,
-        "marker": N_MARKERS,
+        "n_marker": N_MARKERS,
         "axis": ["x", "y", "z"],
     }
     da = xr.DataArray(
@@ -3504,7 +3569,7 @@ def mask_face_video(
     # Precreate Dataarray
     coords = {
         "time": np.arange(0, num_frames),  # / fv,
-        "marker": N_MARKERS_RTMLIB26,
+        "n_marker": N_MARKERS_RTMLIB26,
         "axis": ["x", "y", "score"],
     }
     daMarkers = (
@@ -3516,7 +3581,7 @@ def mask_face_video(
         .expand_dims({"ID": [file.stem]})
         # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
         .copy()
-    )  # .transpose("marker", "axis", "time")
+    )  # .transpose("n_marker", "axis", "time")
 
     pTime = 0
     frame_idx = 0
@@ -3740,7 +3805,7 @@ def mask_face_video(
         daMarkers = daMarkers.isel(time=frame_idx).assign_coords(time=num_frame / fv)
 
     if n_vars_load is not None:
-        daMarkers = daMarkers.sel(marker=n_vars_load)
+        daMarkers = daMarkers.sel(n_marker=n_vars_load)
 
     # Invert y coordinates
     # daMarkers.loc[dict(axis="y")] = -daMarkers.loc[dict(axis="y")]
@@ -3780,7 +3845,7 @@ if __name__ == "__main__":
     )
     daMarkers = split_dim_side(daMarkers)
     daMarkers.isel(ID=0).sel(
-        axis="x", marker=["hip", "knee", "ankle", "heel", "toe"]
+        axis="x", n_marker=["hip", "knee", "ankle", "heel", "toe"]
     ).plot.line(x="time", col="side")
     plot_pose_2D(daMarkers, frames=[100, None])
 

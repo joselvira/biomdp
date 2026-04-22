@@ -19,14 +19,20 @@ import numpy as np
 import xarray as xr
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "5.0.1"
-__date__ = "18/02/2026"
+__version__ = "5.1.1"
+__date__ = "21/04/2026"
 
 
 """
 TODO: to make the cuts interpolating so that the phases start right at the criterion?
 
 Updates:
+    21/04/2026, v5.1.1
+        - Corrected 'n_event' variable in trim_window function.
+    
+    28/03/2026, v5.1.0
+        - Included function 'detect_onset_offset' to detect couples of events over a threshold.
+        
     01/03/2026, v5.0.1
         - Included check for nan in trim_window.
         - The argument n_event has been changed to num_event to avoid confusion with
@@ -133,6 +139,73 @@ def show_events(data, events, threshold=None):
     if threshold is not None:
         plt.hlines(y=threshold, xmin=0, xmax=len(data), color="C1", ls="--", lw=1)
     plt.show()
+
+
+def detect_onset_offset(
+    data: xr.DataArray = xr.DataArray(),
+    n_dim_time: str = "time",
+    max_phases=100,
+    **kwargs_func_events: Optional[dict],
+) -> xr.DataArray:
+    try:
+        from detecta import detect_onset
+    except:
+        raise ImportError(
+            "This function needs Detecta to be installed (https://pypi.org/project/detecta/)"
+        )
+
+    def _det_on(dat, id, max_phases=100, **kwargs_func_events):
+        events = np.full([max_phases, 2], np.nan)
+        if np.count_nonzero(~np.isnan(dat)) == 0:
+            return events
+
+        # dat2=np.full(100,np.nan)
+        ev = detect_onset(dat, **kwargs_func_events)
+        if len(ev) == 0:
+            return events
+        events[: len(ev), :] = ev
+        return events
+
+    """
+    dat=data[0]
+    """
+    events = xr.apply_ufunc(
+        _det_on,
+        data,  # .dropna(dim=n_dim_time, how='all'),
+        data.ID,
+        max_phases,
+        input_core_dims=[
+            [n_dim_time],
+            [],
+            [],
+        ],
+        output_core_dims=[["num_section", "event"]],
+        dataset_fill_value=np.nan,
+        vectorize=True,
+        dask="parallelized",
+        # keep_attrs=True,
+        kwargs=dict(kwargs_func_events),
+    ).dropna(dim="num_section", how="all")
+    """
+    events = xr.apply_ufunc(
+        detect_onset,
+        data,  # .dropna(dim=n_dim_time, how='all'),
+        input_core_dims=[
+            [n_dim_time],
+        ],
+        output_core_dims=[["num_section", "event"]],
+        dataset_fill_value=np.nan,
+        vectorize=True,
+        dask="parallelized",
+        # keep_attrs=True,
+        kwargs=kwargs_func_events,
+    )
+    """
+    events = events.assign_coords(
+        num_section=np.arange(len(events.num_section)), event=["ini", "end"]
+    )
+
+    return events
 
 
 def detect_onset_detecta_aux(
@@ -455,7 +528,7 @@ def detect_events(
             print(exc)
             return events
 
-        # If necessary, adjust initial an final events
+        # If necessary, adjust initial and final events
         evts = evts[discard_phases_ini:]
 
         if num_phases is None:
@@ -597,11 +670,12 @@ def slice_time_series(
         evts,
         max_phases,
         max_time,
-        ID,
-        var,
+        # ID,
+        # var,
         add_ini,
         add_end,
     ):
+        # print(ID, var)
         phases = np.full((max_phases, max_time), np.nan)
         if (
             np.count_nonzero(~np.isnan(dat)) == 0
@@ -634,8 +708,8 @@ def slice_time_series(
         evts,
         max_phases,
         max_time,
-        ID,
-        var,
+        # ID,
+        # var,
         add_ini,
         add_end,
     ):
@@ -699,8 +773,8 @@ def slice_time_series(
         evts,
         max_phases,
         max_time,
-        ID,
-        var,
+        # ID,
+        # var,
         add_ini,
         add_end,
     ):
@@ -764,8 +838,8 @@ def slice_time_series(
         evts,
         max_phases,
         max_time,
-        ID,
-        var,
+        # ID,
+        # var,
         add_ini,
         add_end,
     ):
@@ -898,11 +972,11 @@ def slice_time_series(
         events,
         max_phases,
         max_time,
-        data.ID,
-        data.n_var,
+        # data.ID,
+        # data.n_var,
         add_to_ini,
         add_to_end,
-        input_core_dims=[[n_dim_time], ["num_event"], [], [], [], [], [], []],
+        input_core_dims=[[n_dim_time], ["num_event"], [], [], [], []],
         output_core_dims=[["num_event", n_dim_time]],
         exclude_dims=set(("num_event", n_dim_time)),
         dataset_fill_value=np.nan,
@@ -1202,7 +1276,7 @@ def trim_window(
         The trimmed DataArray.
     """
 
-    if daEvents.num_event.size > 2:
+    if daEvents.n_event.size > 2:
         raise ValueError("daEvents must have 1 or 2 events.")
 
     # TODO: TRY with da.pad
@@ -1866,6 +1940,40 @@ if __name__ == "__main__":
     daSliced[0, 0, 0, 0][~np.isnan(daSliced[0, 0, 0, 0])][-2:]  # final de una fase
     daSliced[0, 0, 0, 1][~np.isnan(daSliced[0, 0, 0, 1])][-2:]  # final de una fase
     daSliced.sel(n_var="b").plot.line(x="time", col="moment", hue="phase", row="ID")
+
+    # ---- Detect couples of onset-offset
+    evs = detect_onset_offset(
+        daTotal.isel(moment=0, n_var=0, drop=True), **dict(threshold=50, show=True)
+    )
+    evs.sel(num_section=0)
+    len(evs.num_section)
+    evs.diff("event")
+
+    # ---- Remove nan in the beginning and end
+    events = (
+        detect_onset_offset(
+            daTotal.sel(moment="pre", n_var="a", drop=True), threshold=10, show=False
+        )
+        .isel(num_section=0, drop=True)
+        .rename({"event": "n_event"})
+    )
+    daTotal_trim = trim_window(daTotal, events)
+
+    import timeit
+
+    def detectonoff():
+        evs = detect_onset_offset(daTotal, **dict(threshold=50, show=False))
+        evs = evs.isel(event=0)
+
+    def detectonset():
+        evs = detect_events(daTotal, event_ini=0, **dict(threshold=50, show=False))
+
+    print(
+        f"{timeit.timeit('detectonoff()', setup='from __main__ import detectonoff', number=100):.4f} s"
+    )
+    print(
+        f"{timeit.timeit('detectonset()', setup='from __main__ import detectonset', number=100):.4f} s"
+    )
 
     # =============================================================================
     # %% Test functions to slice (polars, numpy, ...)

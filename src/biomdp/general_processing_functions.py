@@ -3,11 +3,20 @@
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.5.1"
-__date__ = "12/03/2025"
+__version__ = "0.7.1"
+__date__ = "27/03/2026"
 
 """
 Updates:
+
+    27/03/2026, v0.7.1
+        - Corrected to keep the same length in dim and the first value 0.0.
+
+
+    25/03/2026, v0.7.0
+        - Included a function to calculate the distance across a dimension,
+          (generally 'time' dimension).
+
     09/05/2025, v0.6.0
         - Added function get_list_dir to scan subdirectories, returns a list
           of subdirectories.
@@ -45,7 +54,7 @@ Updates:
 """
 
 import time
-from typing import List
+# from typing import List
 
 import numpy as np
 import scipy.integrate as integrate
@@ -313,7 +322,7 @@ def tkeo(x: np.ndarray) -> np.ndarray:
 def process_EMG(
     daEMG: xr.DataArray,
     fr: float | None = None,
-    fc_band: List[float] = [10, 400],
+    fc_band: list[float] = [10, 400],
     fclow: float = 8,
     btkeo: bool = False,
 ) -> xr.DataArray:
@@ -623,11 +632,65 @@ def nanargmin_xr(da: xr.DataArray, dim: str = None) -> xr.DataArray:
     return daResult
 
 
+def get_list_dir(n_path):
+    """
+    Recursively gets a list of all subdirectories in a given directory.
+    Returns a list of Path objects.
+    """
+    from os import scandir
+    from pathlib import Path
+
+    subfolders = [f.path for f in scandir(n_path) if f.is_dir()]
+    for n_path in list(subfolders):
+        subfolders.extend(get_list_dir(n_path))
+    subfolders = [Path(f) for f in subfolders]
+    return subfolders
+
+
 def round_to_nearest_even_2_decimal(number: float) -> float:
     """Rounds a float to the nearest even number with 2 decimal places"""
     rounded = np.round(number * 50) / 50  # Round to the nearest 0.02
 
     return rounded
+
+
+def calculate_distance_dim(da: xr.DataArray, dim: str = "time") -> xr.DataArray:
+    """
+    Calculates the distance between consecutive points along a specified dimension.
+    Assumes 'axis' dimension with x, y or x, y, z coordinates.
+    Use with .cumsum() to obtain the point by point cummulative.
+    Use with .sum() to obtain the total distance.
+
+    Parameters
+    ----------
+    da : xr.DataArray
+        The input data array containing the coordinates.
+    dim : str, optional
+        The dimension along which to calculate the distance. If None, the last dimension is used.
+
+    Returns
+    -------
+    xr.DataArray
+        The distance between consecutive points.
+    """
+    if dim not in da.dims:
+        raise ValueError(f"Dimension {dim} not found in the data array.")
+
+    if da.dims[-1] != dim:
+        da = da.transpose(..., dim)
+
+    # To keep the same length in dim and the first value 0.0
+    daResult = xr.full_like(da.isel(axis=0).drop_vars("axis"), 0.0)
+
+    daResult.loc[{dim: slice(da.time.data[1], None)}] = xr.apply_ufunc(
+        np.linalg.norm,
+        da.diff(dim),
+        input_core_dims=[["axis"]],
+        dask="parallelized",
+        kwargs={"axis": -1},
+    )
+
+    return daResult
 
 
 # =============================================================================
@@ -800,17 +863,79 @@ if __name__ == "__main__":
     daCrosscorr_rap.plot.line(x="lag")
     nanargmax_xr(daCrosscorr_rap, dim="lag")
 
+    # =============================================================================
+    # %% TEST CALCULATE DISTANCE
+    # =============================================================================
+    from biomdp.create_time_series import create_time_series_xr
 
-def get_list_dir(n_path):
-    """
-    Recursively gets a list of all subdirectories in a given directory.
-    Returns a list of Path objects.
-    """
-    from os import scandir
-    from pathlib import Path
+    rnd_seed = np.random.seed(
+        12340
+    )  # fija la aleatoriedad para asegurarse la reproducibilidad
+    n = 10
+    duration = 10
+    freq = 200.0
+    dax = (
+        create_time_series_xr(
+            rnd_seed=rnd_seed,
+            num_subj=n,
+            fs=freq,
+            IDini=0,
+            range_offset=[5, 8],
+            range_amp=[10, 15],
+            range_freq=[1.6, 1.9],
+            range_af=[0, 10],
+            amplific_noise=[0.2, 0.4],
+            fc_noise=[0.2, 0.5],
+            range_duration=[duration, duration],
+        )
+        .expand_dims({"axis": ["x"]})
+        .transpose("ID", "axis", "time")
+    )
+    day = (
+        create_time_series_xr(
+            rnd_seed=rnd_seed,
+            num_subj=n,
+            fs=freq,
+            IDini=0,
+            range_offset=[5, 8],
+            range_amp=[6, 9],
+            range_freq=[1.9, 2.5],
+            range_af=[0, 10],
+            amplific_noise=[0.8, 0.9],
+            fc_noise=[1.2, 2.5],
+            range_duration=[duration, duration],
+        )
+        .expand_dims({"axis": ["y"]})
+        .transpose("ID", "axis", "time")
+    )
+    daz = (
+        create_time_series_xr(
+            rnd_seed=rnd_seed,
+            num_subj=n,
+            fs=freq,
+            IDini=0,
+            range_offset=[5, 8],
+            range_amp=[70, 90],
+            range_freq=[0.6, 0.9],
+            range_af=[0, 10],
+            amplific_noise=[0.2, 0.4],
+            fc_noise=[1.2, 2.5],
+            range_duration=[duration, duration],
+        )
+        .expand_dims({"axis": ["z"]})
+        .transpose("ID", "axis", "time")
+    )
+    daPosition = xr.concat([dax, day, daz], dim="axis")
+    daPosition.plot.line(x="time", col="ID", col_wrap=4)
+    daPosition.attrs["freq"] = freq
 
-    subfolders = [f.path for f in scandir(n_path) if f.is_dir()]
-    for n_path in list(subfolders):
-        subfolders.extend(get_list_dir(n_path))
-    subfolders = [Path(f) for f in subfolders]
-    return subfolders
+    dist_each_point3D = calculate_distance_dim(da=daPosition)
+    dist_point_by_point3D = calculate_distance_dim(daPosition).cumsum(dim="time")
+
+    # To keep final nans
+    dist_point_by_point3D = (
+        calculate_distance_dim(daPosition)
+        .cumsum(dim="time")
+        .where(~daPosition.isel(axis=0).drop_vars("axis").isnull(), np.nan)
+    )
+    dist_point_by_point3D.plot.line(x="time", col="ID", col_wrap=4)

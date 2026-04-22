@@ -9,13 +9,17 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.7.4"
-__date__ = "25/03/2026"
+__version__ = "1.7.5"
+__date__ = "02/04/2026"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    02/04/2026, v.1.7.5
+        - 'detect_maxFz' and 'detect_minFz' functions changed to return np.array(ind)
+          in the auxiliary function. Test in every cases.
+
     25/03/2026, v.1.7.4
         - Included check for None in split_dim_repe_logsheet function.
     
@@ -243,7 +247,7 @@ BASIC_EVENTS = [
 
 def create_standard_jump_events(daData: xr.DataArray) -> xr.DataArray:
     return (
-        xr.full_like(daData.isel(time=0).drop_vars("time"), np.nan).expand_dims(
+        xr.full_like(daData.isel(time=0, drop=True), np.nan).expand_dims(
             {"event": BASIC_EVENTS},
             axis=-1,
         )
@@ -426,8 +430,8 @@ def df_to_da(
         .set_index(["ID", "n_var", "time"])
         .to_xarray()
         .to_array()
-        .squeeze("variable")
-        .drop_vars("variable")
+        .squeeze("variable", drop=True)
+        # .drop_vars("variable")
     )
 
     daAll = split_dim_plats(da=daAll, merge_2_plats=merge_2_plats)
@@ -1869,7 +1873,7 @@ def check_flat_window(
 
     daEvent = daEvent.sel(ID=daData.ID)
     daEventosVentana = (
-        xr.full_like(daDatosZ.isel(time=0).drop_vars("time"), np.nan).expand_dims(
+        xr.full_like(daDatosZ.isel(time=0, drop=True), np.nan).expand_dims(
             {"event": ["iniAnalisis", "finAnalisis"]}, axis=-1
         )
     ).copy()
@@ -2774,13 +2778,13 @@ def finetune_weight(
 
     """
     #Con repe
-    data = daData[0,0].data
+    data = daData[-3,0].data
     t = daData.time.data
-    weight = daWeight.sel(stat='media')[0,0].data
+    weight = daWeight.sel(stat='media')[-3,0].data
     evIni = 'iniMov' #'despegue'
     evFin = 'finMov' #'finAnalisis'
-    ini = daEvents.sel(event=evIni)[0,0].data
-    fin = daEvents.sel(event=evFin)[0,0].data
+    ini = daEvents.sel(event=evIni)[-3,0].data
+    fin = daEvents.sel(event=evFin)[-3,0].data
 
     #Sin repe
     data = daData[0].data
@@ -2957,7 +2961,7 @@ def detect_takeoff_landing(
             # exclude_dims=set(('time',)),
             vectorize=True,
             kwargs=dict(
-                threshold=-threshold, n_above=int(0.01 * daData.freq), show=show
+                threshold=-threshold, n_above=int(0.2 * daData.freq), show=show
             ),
         ).assign_coords(event=["despegue", "aterrizaje"])
     # Comprobaciones
@@ -3599,7 +3603,7 @@ def detect_maxFz(
                 # data[int(ind)-1:int(ind)+2] #data[ind]
             except:
                 ind = np.nan  # por si no encuentra el criterio
-            return np.array([ind])
+            return np.array(ind)  # np.array([ind])
 
         """      
         data = daData[0,1,-1].data
@@ -3649,7 +3653,7 @@ def detect_minFz(
                 # data[int(ind)-1:int(ind)+2] #data[ind]
             except Exception as e:
                 ind = np.nan  # por si no encuentra el criterio
-            return np.array([ind])
+            return np.array(ind)  # np.array([ind])
 
         """       
         data = daData[0].data
@@ -5553,13 +5557,13 @@ def calculate_variables(
     """
     if daEvents is None:
         daEvents = (
-            xr.full_like(daData.isel(time=0).drop_vars("time"), np.nan)
+            xr.full_like(daData.isel(time=0, drop=True), np.nan)
             .expand_dims({"event": ["ini", "fin"]})
             .copy()
         )
         daEvents.isel(ID=0).loc[dict(event=["ini", "fin"])] = [0, len(daData.time)]
 
-    daBW = daData / daWeight.sel(stat="media").drop_vars("stat")
+    daBW = daData / daWeight.sel(stat="media", drop=True)
 
     def _integrate(data, time, weight, ini, fin):
         # if np.count_nonzero(~np.isnan(data))==0:
@@ -5605,12 +5609,9 @@ def calculate_variables(
         / (daWeight.sel(stat="media") / g)
     ).drop_vars("stat")
     """
-    daV = (
-        daData.biomxr.integrate_window(
-            daEvents, daOffset=daWeight.sel(stat="media"), result_return="continuous"
-        )
-        / (daWeight.sel(stat="media") / g)
-    ).drop_vars("stat")
+    daV = daData.biomxr.integrate_window(
+        daEvents, daOffset=daWeight.sel(stat="media"), result_return="continuous"
+    ) / (daWeight.sel(stat="media", drop=True) / g)  # .drop_vars("stat")
     # daV.isel(ID=slice(None, 8)).plot.line(x='time', col='ID', col_wrap=4)
 
     daS = daV.biomxr.integrate_window(daEvents, result_return="continuous")
@@ -5661,7 +5662,7 @@ def calculate_results(
 ) -> xr.DataArray:
     if not isinstance(daResults, xr.DataArray):
         daResults = (
-            xr.full_like(daCinet.isel(time=0).drop_vars("time"), np.nan).expand_dims(
+            xr.full_like(daCinet.isel(time=0, drop=True), np.nan).expand_dims(
                 {
                     "n_var": [
                         "tVuelo",
@@ -5833,7 +5834,7 @@ def calculate_results(
         - daCinet.sel(time=daEvents.sel(event="minFz") / dsCinem.freq, method="nearest")
     ) / ((daEvents.sel(event="maxFlex") - daEvents.sel(event="minFz")) / dsCinem.freq)
 
-    # ---- Impulsos. Como la fuerza viene en BW, el peso que resta es 1. Con fuerza en newtons restar daWeight.sel(stat='media').drop_vars('stat')
+    # ---- Impulsos. Como la fuerza viene en BW, el peso que resta es 1. Con fuerza en newtons restar daWeight.sel(stat='media', drop=True)
     from biomdp.general_processing_functions import integrate_window
 
     daResults.loc[dict(n_var="impNegDescenso")] = integrate_full(
@@ -6133,7 +6134,7 @@ class jump_forces_utils:
         self.data = data
         self.jump_test = jump_test
         self.events = (
-            xr.full_like(self.data.isel(time=0).drop_vars("time"), np.nan).expand_dims(
+            xr.full_like(self.data.isel(time=0, drop=True), np.nan).expand_dims(
                 {"event": BASIC_EVENTS}, axis=-1
             )
         ).copy()
@@ -6245,7 +6246,7 @@ if __name__ == "__main__":
     )  # , show=True)
 
     daEventsForces = (
-        xr.full_like(daCMJ.isel(time=0).drop_vars("time"), np.nan).expand_dims(
+        xr.full_like(daCMJ.isel(time=0, drop=True), np.nan).expand_dims(
             {"event": BASIC_EVENTS}, axis=-1
         )
     ).copy()
