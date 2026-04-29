@@ -19,13 +19,16 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.6.3"
-__date__ = "20/04/2026"
+__version__ = "1.6.4"
+__date__ = "29/04/2026"
 
 
 """
 Updates:
 
+    29/04/2026, v1.6.4
+        -Implemented 'sort_people_by' 'size' parameter in process_video.
+    
     20/04/2026, v1.6.3
         - Included parameter 'min_bbox_size' in process_video to filter detections by bounding box size before tracking.
         - Improved kwargs variables handling.
@@ -1327,28 +1330,29 @@ def process_video_rtmlib(
     file: str | Path,
     fv: int = 30,
     n_vars_load: List[str] | None = None,
-    num_frame: int | List[int] | None = None,
+    num_frame: int | list[int] | None = None,
     resize_factor: float = 1.0,
     rotate: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     show_every_frames: int = 1,
-    sort_people_by_size: bool = True,
     # min_bbox_size: tuple[int, int] | None = None,
     radius: int = 2,
     verbose: bool = False,
-    pose_tracker=None,
-    mode="balanced",
-    pose_model_name="body_with_feet",
-    det_frequency=10,
-    device="cuda",  # cpu, cuda,
-    backend="onnxruntime",  # opencv, onnxruntime, openvino
-    tracking_mode="sports2d",  # "sports2d", "rtmlib"
+    pose_tracker: str | None = None,
+    mode: str = "balanced",
+    pose_model_name: str = "body_with_feet",
+    pose_model=None,
+    det_frequency: int = 10,
+    device: str = "cuda",  # cpu, cuda,
+    backend: str = "onnxruntime",  # opencv, onnxruntime, openvino
+    tracking_mode: str = "sports2d",  # "sports2d", "rtmlib"
     tracking: bool = False,
-    max_distance=250,  # distance to avoid changes detecting people
-    sorting_people_by="highest_likelihood",
-    max_num_people=None,  # None for no limit
-    min_bbox_size=None,  # (width, height) in pixels, None for no limit
+    max_distance: int = 250,  # distance to avoid changes detecting people
+    sort_people_by: str | None = None,  # "size" "highest_likelihood",
+    max_num_people: int | None = None,  # None for no limit
+    min_bbox_size: list[int]
+    | None = None,  # (width, height) in pixels, None for no limit
     keypoint_likelihood_threshold=0.3,
     average_likelihood_threshold=0.5,
     keypoint_number_threshold=0.3,
@@ -1470,8 +1474,6 @@ def process_video_rtmlib(
     t_ini = time.perf_counter()
     # print(f"Processing video {file.name}...")
 
-    pose_model, ModelClass, mode = setup_model_class_mode(pose_model_name, mode)
-
     fontSize = 0.5
     thickness = 1
     colors = [
@@ -1516,8 +1518,11 @@ def process_video_rtmlib(
     if min_bbox_size is not None:
         min_bbox_size = (np.asarray(min_bbox_size) * resize_factor).astype(int)
 
+    # pose_model = pose_model_name
+
     if pose_tracker is None:
         print("pose_tracker updated")
+        pose_model, ModelClass, mode = setup_model_class_mode(pose_model_name, mode)
         try:
             pose_tracker = setup_pose_tracker(
                 ModelClass,
@@ -1606,7 +1611,8 @@ def process_video_rtmlib(
 
         success, img = cap.read()
         if not success:
-            print(f"Frame {frame_idx} not found")
+            if verbose:
+                print(f"Frame {frame_idx} not found")
             all_frames_X.append([])
             all_frames_Y.append([])
             all_frames_scores.append([])
@@ -1731,27 +1737,35 @@ def process_video_rtmlib(
             valid_Y.append(person_Y)
             valid_scores.append(person_scores)
 
-        # if sort_people_by_size:
-        #     # order of people by size (larger to smaller)
-        #     sorted = np.argsort(
-        #         np.nan_to_num(np.nanmax(valid_Y, axis=1) - np.nanmin(valid_Y, axis=1))
-        #     )[::-1]
+        if sort_people_by:
+            if sort_people_by == "size":
+                # order of people by size (larger to smaller)
+                sorted = np.argsort(
+                    np.nanmax(np.nan_to_num(valid_Y), axis=1)
+                    - np.nanmin(np.nan_to_num(valid_Y), axis=1)
+                )[::-1]
 
-        #     if sorted[0] != 0:
-        #         _X = np.take_along_axis(
-        #             np.asarray(valid_X), sorted[:, np.newaxis], axis=0
-        #         )
-        #         _Y = np.take_along_axis(
-        #             np.asarray(valid_Y), sorted[:, np.newaxis], axis=0
-        #         )
-        #         _scores = np.take_along_axis(
-        #             np.asarray(valid_scores), sorted[:, np.newaxis], axis=0
-        #         )
+                if sorted[0] != 0:
+                    _X = np.take_along_axis(
+                        np.asarray(valid_X), sorted[:, np.newaxis], axis=0
+                    )
+                    _Y = np.take_along_axis(
+                        np.asarray(valid_Y), sorted[:, np.newaxis], axis=0
+                    )
+                    _scores = np.take_along_axis(
+                        np.asarray(valid_scores), sorted[:, np.newaxis], axis=0
+                    )
 
-        #         for i in range(len(sorted)):
-        #             valid_X[i] = _X[i]
-        #             valid_Y[i] = _Y[i]
-        #             valid_scores[i] = _scores[i]
+                    for i in range(len(sorted)):
+                        valid_X[i] = _X[i]
+                        valid_Y[i] = _Y[i]
+                        valid_scores[i] = _scores[i]
+
+        if max_num_people:
+            valid_X = valid_X[:max_num_people]
+            valid_Y = valid_Y[:max_num_people]
+            valid_scores = valid_scores[:max_num_people]
+            confirmed_people = min(max_num_people, confirmed_people)
 
         # Calculate fps
         cTime = time.time()
@@ -1773,24 +1787,7 @@ def process_video_rtmlib(
             show_frame = frame_idx  # (
             #     frame_idx if isinstance(num_frame, int) else frame_idx + first_frame
             # )  # TODO: CHECK THIS
-            cv2.putText(
-                annotated_image,
-                f"Frame {show_frame}/{last_frame} fps: {fps:.2f}",
-                (30, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 0, 0),
-                2,
-            )
-            cv2.putText(
-                annotated_image,
-                f"Detected: {detected_people}  Confirmed: {confirmed_people}",
-                (30, 50),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 0, 0),
-                2,
-            )
+
             annotated_image = draw_keypts(
                 annotated_image,
                 valid_X,  # [person_X],
@@ -1820,6 +1817,24 @@ def process_video_rtmlib(
                 colors=colors,
                 fontSize=fontSize,
                 thickness=thickness,
+            )
+            cv2.putText(
+                annotated_image,
+                f"Frame {show_frame}/{last_frame} fps: {fps:.2f}",
+                (30, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+            cv2.putText(
+                annotated_image,
+                f"Detected: {detected_people}  Confirmed: {confirmed_people}",
+                (30, 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
             )
 
             if show is True:
