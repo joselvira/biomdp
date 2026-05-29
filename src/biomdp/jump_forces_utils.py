@@ -9,13 +9,21 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.7.5"
-__date__ = "02/04/2026"
+__version__ = "1.8.0"
+__date__ = "27/05/2026"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    27/05/2026, v.1.8.0
+        - Replaced "n_var" with "n_result" in calculate_results
+          and calculate_results_EMG functions.
+    
+    13/05/2026, v.1.7.6
+        - Replaced "event" with "n_event".
+
+    
     02/04/2026, v.1.7.5
         - 'detect_maxFz' and 'detect_minFz' functions changed to return np.array(ind)
           in the auxiliary function. Test in every cases.
@@ -33,7 +41,7 @@ Updates:
     29/07/2025, v.1.7.1
         - In non "DJ2P" jumps, adjusted the parameter 'n_above' to
           int(0.01 * daData.freq) in detect_takeoff_landing function, to avoid
-          rebounds in the takeoff event.
+          rebounds in the takeoff n_event.
 
     08/07/2025, v.1.7.0    
         - Included parameter 'avoid_file_name' and 'discardables' in 
@@ -97,7 +105,7 @@ Updates:
         - Introducido typo return en funciones (sin probar).
     
     2/02/2024, v.1.3.4
-        - Cambiada dimensión 'evento' por 'event'.
+        - Cambiada dimensión 'evento' por 'n_event'.
     
     21/02/2024, v.1.3.3
         - En la detección del evento despegue reducida la ventana de tener
@@ -133,7 +141,7 @@ Updates:
         - Para detectar iniMov en CMJ y SJ, busca superar el umbral por 
           encima o por debajo y coge el que esté antes.
         - Creación de gráficas eventos admite parámetro sharey.
-        - Al calcular resultados, cambiado nombre de variables var por n_var,
+        - Al calcular resultados, cambiado nombre de variables var por n_result,
           para evitar confusiones con el método .var (varianza).
         - Al detectar ini/fin imp posit, se queda con la detección última,
           la más cercana al despegue.
@@ -248,7 +256,7 @@ BASIC_EVENTS = [
 def create_standard_jump_events(daData: xr.DataArray) -> xr.DataArray:
     return (
         xr.full_like(daData.isel(time=0, drop=True), np.nan).expand_dims(
-            {"event": BASIC_EVENTS},
+            {"n_event": BASIC_EVENTS},
             axis=-1,
         )
     ).copy()
@@ -355,15 +363,15 @@ def integrate_full(daData: xr.DataArray, daEvents: xr.DataArray) -> xr.DataArray
     """
     data = daData[0].data
     time = daData.time.data
-    ini = daEvents[0].isel(event=0).data
-    fin = daEvents[0].isel(event=1).data
+    ini = daEvents[0].isel(n_event=0).data
+    fin = daEvents[0].isel(n_event=1).data
     """
     daInt = xr.apply_ufunc(
         _integra,
         daData,
         daData.time,
-        daEvents.isel(event=0),
-        daEvents.isel(event=1),
+        daEvents.isel(n_event=0),
+        daEvents.isel(n_event=1),
         daData.ID,
         input_core_dims=[["time"], ["time"], [], [], []],
         # output_core_dims=[['time']],
@@ -1874,17 +1882,17 @@ def check_flat_window(
     daEvent = daEvent.sel(ID=daData.ID)
     daEventosVentana = (
         xr.full_like(daDatosZ.isel(time=0, drop=True), np.nan).expand_dims(
-            {"event": ["iniAnalisis", "finAnalisis"]}, axis=-1
+            {"n_event": ["iniAnalisis", "finAnalisis"]}, axis=-1
         )
     ).copy()
     if window < 0:
-        daEventosVentana.loc[dict(event="finAnalisis")] = daEvent
-        daEventosVentana.loc[dict(event="iniAnalisis")] = (
+        daEventosVentana.loc[dict(n_event="finAnalisis")] = daEvent
+        daEventosVentana.loc[dict(n_event="iniAnalisis")] = (
             daEvent + window
         )  # resta (window negativo)
     else:
-        daEventosVentana.loc[dict(event="iniAnalisis")] = daEvent
-        daEventosVentana.loc[dict(event="finAnalisis")] = daEvent + window
+        daEventosVentana.loc[dict(n_event="iniAnalisis")] = daEvent
+        daEventosVentana.loc[dict(n_event="finAnalisis")] = daEvent + window
 
     # Recorta a una window
     daRecortes = trim_analysis_window(daDatosZ, daEventosVentana)
@@ -2053,12 +2061,12 @@ def guess_iniend_analysis(
         # Busca segundo aterrizaje provisional
         aterr2 = detect_takeoff_landing(
             daData, jump_test=jump_test, threshold=threshold
-        ).sel(event="aterrizaje")
+        ).sel(n_event="aterrizaje")
 
-        daEvents.loc[dict(event="iniAnalisis")] = xr.where(
+        daEvents.loc[dict(n_event="iniAnalisis")] = xr.where(
             (aterr1 - _window[0]) >= 0, aterr1 - _window[0], 0
         )  # .astype(int)
-        daEvents.loc[dict(event="finAnalisis")] = xr.where(
+        daEvents.loc[dict(n_event="finAnalisis")] = xr.where(
             (aterr2 + _window[1]) < len(daData.time),
             aterr2 + _window[1] - 1,
             len(daData.time) - 1,
@@ -2067,17 +2075,19 @@ def guess_iniend_analysis(
     else:
         # Busca despegue y aterrizaje provisionales
         d_a = detect_takeoff_landing(daData, jump_test=jump_test, threshold=threshold)
-        desp = d_a.sel(event="despegue").where(d_a.sel(event="despegue") > 0, np.nan)
-        aterr = d_a.sel(event="aterrizaje").where(
-            d_a.sel(event="aterrizaje") < len(daData.time) - 1, np.nan
+        desp = d_a.sel(n_event="despegue").where(
+            d_a.sel(n_event="despegue") > 0, np.nan
+        )
+        aterr = d_a.sel(n_event="aterrizaje").where(
+            d_a.sel(n_event="aterrizaje") < len(daData.time) - 1, np.nan
         )
 
-        daEvents.loc[dict(event="iniAnalisis")] = xr.where(
+        daEvents.loc[dict(n_event="iniAnalisis")] = xr.where(
             desp.notnull(),
             xr.where((desp - _window[0]) >= 0, desp - _window[0], 0),
             np.nan,
         )
-        daEvents.loc[dict(event="finAnalisis")] = xr.where(
+        daEvents.loc[dict(n_event="finAnalisis")] = xr.where(
             desp.notnull(),
             xr.where(
                 (aterr + _window[1] - 1) < len(daData.time),
@@ -2088,10 +2098,10 @@ def guess_iniend_analysis(
         )
 
         """
-        centro_flight = detect_takeoff_landing(daData, jump_test=jump_test, threshold=threshold).mean('evento')
+        centro_flight = detect_takeoff_landing(daData, jump_test=jump_test, threshold=threshold).mean('n_event')
             
-        daEvents.loc[dict(event='iniAnalisis')] = xr.where((centro_flight - window[0]) >= 0, centro_flight - window[0], 0)#.astype(int)
-        daEvents.loc[dict(event='finAnalisis')] = xr.where((centro_flight + window[1]-1) < len(daData.time), centro_flight + window[1]-1, len(daData.time)-1)#.astype(int)
+        daEvents.loc[dict(n_event='iniAnalisis')] = xr.where((centro_flight - window[0]) >= 0, centro_flight - window[0], 0)#.astype(int)
+        daEvents.loc[dict(n_event='finAnalisis')] = xr.where((centro_flight + window[1]-1) < len(daData.time), centro_flight + window[1]-1, len(daData.time)-1)#.astype(int)
         """
     return daEvents
 
@@ -2121,16 +2131,16 @@ def calculate_weight(
 
     """
     data = daData[0].data
-    vent0 = weight_window.sel(event='iniPeso')[0].data
-    vent1 = weight_window.sel(event='finPeso')[0].data
+    vent0 = weight_window.sel(n_event='iniPeso')[0].data
+    vent1 = weight_window.sel(n_event='finPeso')[0].data
     """
     daWeight = xr.apply_ufunc(
         _weight_indiv_xSD,
         daData,
-        weight_window.isel(event=0),
+        weight_window.isel(n_event=0),
         weight_window.isel(
-            event=1
-        ),  # .sel(event='iniPeso'), weight_window.sel(event='finPeso'),
+            n_event=1
+        ),  # .sel(n_event='iniPeso'), weight_window.sel(n_event='finPeso'),
         input_core_dims=[["time"], [], []],
         output_core_dims=[["stat"]],
         # exclude_dims=set(('time',)),
@@ -2160,9 +2170,9 @@ def calculate_weight(
                     # ax[i].axvspan(g.data.time[int(window[0]*self.datos.freq)], g.data.time[int(window[1]*self.datos.freq)], alpha=0.2, color='C1')
                     for j in daData.repe:
                         ax[i].axvspan(
-                            weight_window.sel(ID=idn, repe=j).isel(event=0)
+                            weight_window.sel(ID=idn, repe=j).isel(n_event=0)
                             / daData.freq,
-                            weight_window.sel(ID=idn, repe=j).isel(event=1)
+                            weight_window.sel(ID=idn, repe=j).isel(n_event=1)
                             / daData.freq,
                             alpha=0.2,
                             color=col[j.data - 1],
@@ -2214,7 +2224,9 @@ def finetune_end(
         window = window * daData.freq
 
     # Recorta a una ventana desde el final
-    daEvents.loc[dict(event="iniAnalisis")] = daEvents.sel(event="finAnalisis") - window
+    daEvents.loc[dict(n_event="iniAnalisis")] = (
+        daEvents.sel(n_event="finAnalisis") - window
+    )
     daDatosCort = trim_analysis_window(daData, daEvents)
 
     if show:
@@ -2341,8 +2353,8 @@ def finetune_end(
     weight = daWeight.sel(stat='media')[1,0].data
     evIni = 'despegue'
     evFin = 'finAnalisis'
-    ini = daEvents.sel(event=evIni)[1,0].data
-    fin = daEvents.sel(event=evFin)[1,0].data
+    ini = daEvents.sel(n_event=evIni)[1,0].data
+    fin = daEvents.sel(n_event=evFin)[1,0].data
 
     #Sin repe
     data = daData[1].data
@@ -2350,8 +2362,8 @@ def finetune_end(
     weight = daWeight.sel(stat='media')[1].data
     evIni = 'despegue'
     evFin = 'finAnalisis'
-    ini = daEvents.sel(event=evIni)[1].data
-    fin = daEvents.sel(event=evFin)[1].data
+    ini = daEvents.sel(n_event=evIni)[1].data
+    fin = daEvents.sel(n_event=evFin)[1].data
     """
     if kind == "iter_gradiente":
         f_calculo = _peso_iter_gradiente
@@ -2369,8 +2381,8 @@ def finetune_end(
         daData,
         daData.time,
         daWeight.sel(stat="media"),
-        daEvents.sel(event=evIni),
-        daEvents.sel(event=evFin),
+        daEvents.sel(n_event=evIni),
+        daEvents.sel(n_event=evFin),
         margin,
         daData.ID,  # daData.repe,
         input_core_dims=[["time"], ["time"], [], [], [], [], []],  # , []],
@@ -2783,8 +2795,8 @@ def finetune_weight(
     weight = daWeight.sel(stat='media')[-3,0].data
     evIni = 'iniMov' #'despegue'
     evFin = 'finMov' #'finAnalisis'
-    ini = daEvents.sel(event=evIni)[-3,0].data
-    fin = daEvents.sel(event=evFin)[-3,0].data
+    ini = daEvents.sel(n_event=evIni)[-3,0].data
+    fin = daEvents.sel(n_event=evFin)[-3,0].data
 
     #Sin repe
     data = daData[0].data
@@ -2792,8 +2804,8 @@ def finetune_weight(
     weight = daWeight.sel(stat='media')[0].data
     evIni = 'despegue'
     evFin = 'finAnalisis'
-    ini = daEvents.sel(event=evIni)[0].data
-    fin = daEvents.sel(event=evFin)[0].data
+    ini = daEvents.sel(n_event=evIni)[0].data
+    fin = daEvents.sel(n_event=evFin)[0].data
     """
     if kind == "opt":
         f_calculo = _optimiza_peso
@@ -2823,8 +2835,8 @@ def finetune_weight(
         daData,
         daData.time,
         daWeight.sel(stat="media"),
-        daEvents.sel(event=evIni),
-        daEvents.sel(event=evFin),
+        daEvents.sel(n_event=evIni),
+        daEvents.sel(n_event=evFin),
         margin,
         daData.ID,  # daData.repe,
         input_core_dims=[["time"], ["time"], [], [], [], [], []],  # , []],
@@ -2901,13 +2913,13 @@ def detect_takeoff_landing(
             daData,
             daData.ID,
             input_core_dims=[["time"], []],
-            output_core_dims=[["event"]],
+            output_core_dims=[["n_event"]],
             # exclude_dims=set(('time',)),
             vectorize=True,
             kwargs=dict(
                 threshold=-threshold, n_above=int(0.1 * daData.freq), show=show
             ),
-        ).assign_coords(event=["despegue", "aterrizaje"])
+        ).assign_coords(n_event=["despegue", "aterrizaje"])
 
     else:
 
@@ -2957,16 +2969,16 @@ def detect_takeoff_landing(
             daData,
             daData.ID,
             input_core_dims=[["time"], []],
-            output_core_dims=[["event"]],
+            output_core_dims=[["n_event"]],
             # exclude_dims=set(('time',)),
             vectorize=True,
             kwargs=dict(
                 threshold=-threshold, n_above=int(0.2 * daData.freq), show=show
             ),
-        ).assign_coords(event=["despegue", "aterrizaje"])
+        ).assign_coords(n_event=["despegue", "aterrizaje"])
     # Comprobaciones
-    # daData.sel(axis='z').isel(time=daCorte.sel(event='despegue')-1) #despegue cuando ya ha pasado por debajo del umbral
-    # daData.sel(axis='z').isel(time=daCorte.sel(event='aterrizaje')-1) #aterrizaje cuando ya ha pasado por debajo del umbral
+    # daData.sel(axis='z').isel(time=daCorte.sel(n_event='despegue')-1) #despegue cuando ya ha pasado por debajo del umbral
+    # daData.sel(axis='z').isel(time=daCorte.sel(n_event='aterrizaje')-1) #aterrizaje cuando ya ha pasado por debajo del umbral
     return daCorte
 
 
@@ -3012,14 +3024,14 @@ def detect_takeoff_landing_cusum(
         _detect_onset_aux,
         daData,
         input_core_dims=[["time"]],
-        output_core_dims=[["event"]],
+        output_core_dims=[["n_event"]],
         # exclude_dims=set(('time',)),
         vectorize=True,
         kwargs=dict(threshold=-threshold, n_above=int(0.2 * daData.freq), show=show),
-    ).assign_coords(event=["despegue", "aterrizaje"])
+    ).assign_coords(n_event=["despegue", "aterrizaje"])
     # Comprobaciones
-    # daData.sel(axis='z').isel(time=daCorte.sel(event='despegue')-1) #despegue cuando ya ha pasado por debajo del umbral
-    # daData.sel(axis='z').isel(time=daCorte.sel(event='aterrizaje')-1) #aterrizaje cuando ya ha pasado por debajo del umbral
+    # daData.sel(axis='z').isel(time=daCorte.sel(n_event='despegue')-1) #despegue cuando ya ha pasado por debajo del umbral
+    # daData.sel(axis='z').isel(time=daCorte.sel(n_event='aterrizaje')-1) #aterrizaje cuando ya ha pasado por debajo del umbral
     return daCorte
 
 
@@ -3141,8 +3153,9 @@ def detect_ini_mov(
                 ini[1] + 1
             )  # +1 para que se quede con el que ya ha pasado el umbral
 
+        # data = daData.sel(ID='S05_DJ_1', repe=0).data
         # data= daData[0,0,2].data
-        # args_func_cortes = dict(threshold=-10.0, n_above=50, show=False)
+        # args_func_cortes = dict(threshold=-40.0, n_above=400, show=True)
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
@@ -3179,8 +3192,8 @@ def detect_ini_mov(
         weight = daWeight[3,2].sel(stat='media').data
         sdpeso = (daWeight[3,2].sel(stat='sd')*SDx).data
         weight_threshold = (daWeight[3,2].sel(stat='sd')*SDx).data
-        iinianalisis = daEvents[3,2].sel(event='iniAnalisis').data
-        idespegue = daEvents[3,2].sel(event='despegue').data
+        iinianalisis = daEvents[3,2].sel(n_event='iniAnalisis').data
+        idespegue = daEvents[3,2].sel(n_event='despegue').data
         ID = daEvents[3,2].ID.data
         """
         func_detect = _detect_iniMov_peso_mayor_menor  # detect_iniMov_peso_pcto
@@ -3189,8 +3202,8 @@ def detect_ini_mov(
             daData,
             daWeight.sel(ID=daData.ID, stat="media"),
             daWeight.sel(ID=daData.ID, stat="sd") * SDx,
-            daEvents.sel(ID=daData.ID).sel(event="iniAnalisis"),
-            daEvents.sel(ID=daData.ID).sel(event="despegue"),
+            daEvents.sel(ID=daData.ID).sel(n_event="iniAnalisis"),
+            daEvents.sel(ID=daData.ID).sel(n_event="despegue"),
             0.1,
             0.05,
             daData.ID,
@@ -3226,8 +3239,8 @@ def detect_ini_mov(
         weight = daWeight[6,2].sel(stat='media').data
         sdpeso = (daWeight[6,2].sel(stat='sd')*SDx).data
         weight_threshold =  (daWeight[6,2].sel(stat='sd')*SDx).data
-        iinianalisis = daEvents[6,2].sel(event='iniAnalisis').data
-        idespegue = daEvents[6,2].sel(event='despegue').data
+        iinianalisis = daEvents[6,2].sel(n_event='iniAnalisis').data
+        idespegue = daEvents[6,2].sel(n_event='despegue').data
         win_down = 0.05
         win_up = 0.1
         """
@@ -3237,8 +3250,8 @@ def detect_ini_mov(
             daData,
             daWeight.sel(ID=daData.ID, stat="media"),
             daWeight.sel(ID=daData.ID, stat="media") * SDx / 100,
-            daEvents.sel(ID=daData.ID).sel(event="iniAnalisis"),
-            daEvents.sel(ID=daData.ID).sel(event="despegue"),
+            daEvents.sel(ID=daData.ID).sel(n_event="iniAnalisis"),
+            daEvents.sel(ID=daData.ID).sel(n_event="despegue"),
             0.05,
             0.1,  # ventanas down y up, en segundos
             daData.ID,
@@ -3250,8 +3263,8 @@ def detect_ini_mov(
         )
 
     elif jump_test == "SJPreac":
-        # Como no se observa un patrón estable, coge un tiempo prefijado antes del despegue, basado en la media de fase concéntrica en SJ (#((daEventosForces.sel(event='finImpPos') - daEventosForces.sel(event='iniImpPos'))/daSJ.freq).mean())
-        daCorte = daEvents.sel(event="despegue") - 0.25 * daData.freq
+        # Como no se observa un patrón estable, coge un tiempo prefijado antes del despegue, basado en la media de fase concéntrica en SJ (#((daEventosForces.sel(n_event='finImpPos') - daEventosForces.sel(n_event='iniImpPos'))/daSJ.freq).mean())
+        daCorte = daEvents.sel(n_event="despegue") - 0.25 * daData.freq
 
         """
         from detecta import detect_cusum        
@@ -3274,10 +3287,10 @@ def detect_ini_mov(
         pcto = 10
         sdpeso = (daWeight[0,0].sel(stat='sd')*SDx).data
         threshold = (daWeight[0].sel(stat='sd')*SDx).data
-        idespegue = daEvents[0,0].sel(event='despegue').data
+        idespegue = daEvents[0,0].sel(n_event='despegue').data
         """
         """
-        daCorte = xr.apply_ufunc(detect_iniMov_peso_pcto, daData, daWeight.sel(ID=daData.ID, stat='media'), daWeight.sel(ID=daData.ID, stat='media')*SDx/100, daEvents.sel(ID=daData.ID).sel(event='despegue'),
+        daCorte = xr.apply_ufunc(detect_iniMov_peso_pcto, daData, daWeight.sel(ID=daData.ID, stat='media'), daWeight.sel(ID=daData.ID, stat='media')*SDx/100, daEvents.sel(ID=daData.ID).sel(n_event='despegue'),
                                    input_core_dims=[['time'], [], [], []],
                                    #output_core_dims=[['weight']],
                                    #exclude_dims=set(('time',)),
@@ -3328,19 +3341,19 @@ def detect_ini_mov(
         pcto = 10
         sdpeso = (daWeight[0,0].sel(stat='sd')*SDx).data
         weight_threshold = daWeight[0,0].sel(stat='media').data*SDx/100
-        idespegue = daEvents[0,0].sel(event='despegue').data
+        idespegue = daEvents[0,0].sel(n_event='despegue').data
         
         data = daData.sel(ID='S02_DJ_30', repe=1).data
         weight = daWeight.sel(ID='S02_DJ_30', repe=1, stat='media').data
         weight_threshold = daWeight.sel(ID='S02_DJ_30', repe=1).sel(stat='media').data*SDx/100
-        idespegue = daEvents.sel(ID='S02_DJ_30', repe=1).sel(event='despegue').data
+        idespegue = daEvents.sel(ID='S02_DJ_30', repe=1).sel(n_event='despegue').data
         """
         daCorte = xr.apply_ufunc(
             _detect_iniMov_peso_pcto,
             daData,
             daWeight.sel(stat="media"),
             SDx,
-            daEvents.sel(event="despegue"),
+            daEvents.sel(n_event="despegue"),
             input_core_dims=[["time"], [], [], []],
             # output_core_dims=[['weight']],
             # exclude_dims=set(('time',)),
@@ -3382,8 +3395,8 @@ def detect_ini_mov(
     daCorte = xr.where(
         daCorte.notnull(),
         daCorte.where(
-            daCorte > daEvents.sel(event="iniAnalisis"),
-            daEvents.sel(event="iniAnalisis"),
+            daCorte > daEvents.sel(n_event="iniAnalisis"),
+            daEvents.sel(n_event="iniAnalisis"),
         ),
         np.nan,
     )
@@ -3421,7 +3434,7 @@ def detect_end_mov(
     #         fin = len(data[~np.isnan(data)]) #por si no encuentra el criterio
     #     return float(fin)
 
-    # TODO: IMPLEMENT 'flat_window', THAT LOOKS FOR WHEN A WINDOW HAS SD LESS THAN THRESHOLD
+    # TODO: IMPLEMENT 'flat_window', THAT SEARCHES WHEN A WINDOW HAS SD LESS THAN THRESHOLD
 
     # Calcula la diferencia en velocidad dato a dato y detecta cuándo está por encima de umbral pequeño
     def _detect_onset_dif_v(data, threshold, sd, iaterrizaje, finAn, ID):
@@ -3467,7 +3480,7 @@ def detect_end_mov(
         datos = calculate_variables(
             daData,
             daWeight=daWeight,
-            daEvents=daEvents.sel(event=["iniMov", "finAnalisis"]),
+            daEvents=daEvents.sel(n_event=["iniMov", "finAnalisis"]),
         )["v"]
     elif kind == "force":
         f_calculo = _detect_onset_fuerza
@@ -3480,8 +3493,8 @@ def detect_end_mov(
     """
     #data = daData[0,0].data
     data = datos[0,0].data
-    iaterrizaje = daEvents.sel(event='aterrizaje')[0,0].data
-    finAn = daEvents.sel(event='finAnalisis')[0,0].data
+    iaterrizaje = daEvents.sel(n_event='aterrizaje')[0,0].data
+    finAn = daEvents.sel(n_event='finAnalisis')[0,0].data
     threshold = daWeight.sel(stat='media')[0,0].data
     sd = daWeight.sel(stat='sd')[0,0].data
     """
@@ -3493,8 +3506,8 @@ def detect_end_mov(
         datos,
         daWeight.sel(stat="media"),
         daWeight.sel(stat="sd"),
-        daEvents.sel(event="aterrizaje"),
-        daEvents.sel(event="finAnalisis"),
+        daEvents.sel(n_event="aterrizaje"),
+        daEvents.sel(n_event="finAnalisis"),
         daData.ID,
         input_core_dims=[["time"], [], [], [], [], []],
         # output_core_dims=[['weight']],
@@ -3507,8 +3520,8 @@ def detect_end_mov(
     daCorte = xr.where(
         daCorte.notnull(),
         daCorte.where(
-            daCorte < daEvents.sel(event="finAnalisis"),
-            daEvents.sel(event="finAnalisis"),
+            daCorte < daEvents.sel(n_event="finAnalisis"),
+            daEvents.sel(n_event="finAnalisis"),
         ),
         np.nan,
     )
@@ -3547,7 +3560,7 @@ def detect_end_mov_conventional(
     data = daData[0,0].data
     threshold = daWeight.sel(stat='media')[0,0].data
     sd =  daWeight.sel(stat='sd')[0,0].data
-    iaterrizaje = daEvents.sel(event='aterrizaje')[0,0].data
+    iaterrizaje = daEvents.sel(n_event='aterrizaje')[0,0].data
     """
     if "axis" in daData.dims:
         daData = daData.sel(axis="z")
@@ -3556,7 +3569,7 @@ def detect_end_mov_conventional(
         daData,
         daWeight.sel(stat="media"),
         daWeight.sel(stat="sd"),
-        daEvents.sel(event="aterrizaje"),
+        daEvents.sel(n_event="aterrizaje"),
         daData.ID,
         input_core_dims=[["time"], [], [], [], []],
         # output_core_dims=[['weight']],
@@ -3569,8 +3582,8 @@ def detect_end_mov_conventional(
     daCorte = xr.where(
         daCorte.notnull(),
         daCorte.where(
-            daCorte < daEvents.sel(event="finAnalisis"),
-            daEvents.sel(event="finAnalisis"),
+            daCorte < daEvents.sel(n_event="finAnalisis"),
+            daEvents.sel(n_event="finAnalisis"),
         ),
         np.nan,
     )
@@ -3607,20 +3620,20 @@ def detect_maxFz(
 
         """      
         data = daData[0,1,-1].data
-        ini = daEvents[0,1].sel(event='iniMov').data
-        fin = daEvents[0,1].sel(event='despegue').data
+        ini = daEvents[0,1].sel(n_event='iniMov').data
+        fin = daEvents[0,1].sel(n_event='despegue').data
         """
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
-            daEvents.sel(event="iniMov").data,
-            daEvents.sel(event="despegue").data,
+            daEvents.sel(n_event="iniMov").data,
+            daEvents.sel(n_event="despegue").data,
             input_core_dims=[["time"], [], []],
             # output_core_dims=[['evento']],
             # exclude_dims=set(('evento',)),
             vectorize=True,
             # kwargs=dict(threshold=daWeight.sel(stat='media'), n_above=50, show=False)
-        )  # .assign_coords(event=['minFz'])
+        )  # .assign_coords(n_event=['minFz'])
 
         return daCorte
 
@@ -3657,20 +3670,20 @@ def detect_minFz(
 
         """       
         data = daData[0].data
-        ini = daEvents[0].sel(event='iniMov').data
-        fin = daEvents[0].sel(event='maxFlex').data
+        ini = daEvents[0].sel(n_event='iniMov').data
+        fin = daEvents[0].sel(n_event='maxFlex').data
         """
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
-            daEvents.sel(event="iniMov").data,
-            daEvents.sel(event="maxFlex").data,
+            daEvents.sel(n_event="iniMov").data,
+            daEvents.sel(n_event="maxFlex").data,
             input_core_dims=[["time"], [], []],
             # output_core_dims=[['evento']],
             # exclude_dims=set(('evento',)),
             vectorize=True,
             # kwargs=dict(threshold=daWeight.sel(stat='media'), n_above=50, show=False)
-        )  # .assign_coords(event=['minFz'])
+        )  # .assign_coords(n_event=['minFz'])
 
     elif jump_test in ["SJ", "SJPreac"]:
 
@@ -3694,20 +3707,20 @@ def detect_minFz(
 
         """       
         data = daData[0,0].data
-        ini = daEvents[0,0].sel(event='iniMov').data
-        fin = daEvents[0,0].sel(event='maxFz').data
+        ini = daEvents[0,0].sel(n_event='iniMov').data
+        fin = daEvents[0,0].sel(n_event='maxFz').data
         """
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
-            daEvents.sel(event="iniMov").data,
-            daEvents.sel(event="maxFz").data,
+            daEvents.sel(n_event="iniMov").data,
+            daEvents.sel(n_event="maxFz").data,
             input_core_dims=[["time"], [], []],
             # output_core_dims=[['evento']],
             # exclude_dims=set(('evento',)),
             vectorize=True,
             # kwargs=dict(threshold=daWeight.sel(stat='media'), n_above=50, show=False)
-        )  # .assign_coords(event=['minFz'])
+        )  # .assign_coords(n_event=['minFz'])
 
     elif jump_test in ["DJ", "DJ2P"]:
 
@@ -3726,14 +3739,14 @@ def detect_minFz(
 
         """
         data= daData[0,1].data
-        ini = daEvents[0,1].sel(event='iniMov').data
-        fin = daEvents[0,1].sel(event='iniImpPos').data
+        ini = daEvents[0,1].sel(n_event='iniMov').data
+        fin = daEvents[0,1].sel(n_event='iniImpPos').data
         args_func_cortes = dict(threshold=-threshold, n_above=int(0.1*daData.freq), show=True)
         """
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
-            daEvents.sel(event="iniImpPos").data,
+            daEvents.sel(n_event="iniImpPos").data,
             input_core_dims=[["time"], []],
             # output_core_dims=[['evento']],
             # exclude_dims=set(('time',)),
@@ -3787,21 +3800,21 @@ def detect_ini_end_impulse(
         """
         data = daData[5,0].data
         weight = daWeight[5,0].sel(stat='media').data
-        ini = daEvents[5,0].sel(event='iniMov').data
-        fin = daEvents[5,0].sel(event='despegue').data
+        ini = daEvents[5,0].sel(n_event='iniMov').data
+        fin = daEvents[5,0].sel(n_event='despegue').data
         """
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
             daWeight.sel(stat="media").data,
-            daEvents.sel(event="iniMov"),
-            daEvents.sel(event="despegue"),
+            daEvents.sel(n_event="iniMov"),
+            daEvents.sel(n_event="despegue"),
             input_core_dims=[["time"], [], [], []],
-            output_core_dims=[["event"]],
+            output_core_dims=[["n_event"]],
             # exclude_dims=set(('evento',)),
             vectorize=True,
             # kwargs=dict(threshold=daWeight.sel(stat='media'), n_above=50, show=False)
-        ).assign_coords(event=["iniImpPos", "finImpPos"])
+        ).assign_coords(n_event=["iniImpPos", "finImpPos"])
 
     elif jump_test in ["DJ2P"]:
 
@@ -3830,21 +3843,21 @@ def detect_ini_end_impulse(
         """
         data = daData[1,0].data
         weight = daWeight[1,0].sel(stat='media').data
-        ini = daEvents[1,0].sel(event='iniMov').data
-        fin = daEvents[1,0].sel(event='despegue').data
+        ini = daEvents[1,0].sel(n_event='iniMov').data
+        fin = daEvents[1,0].sel(n_event='despegue').data
         """
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
             daWeight.sel(stat="media").data,
-            daEvents.sel(event="iniMov"),
-            daEvents.sel(event="despegue"),
+            daEvents.sel(n_event="iniMov"),
+            daEvents.sel(n_event="despegue"),
             input_core_dims=[["time"], [], [], []],
-            output_core_dims=[["event"]],
+            output_core_dims=[["n_event"]],
             # exclude_dims=set(('evento',)),
             vectorize=True,
             # kwargs=dict(threshold=daWeight.sel(stat='media'), n_above=50, show=False)
-        ).assign_coords(event=["iniImpPos", "finImpPos"])
+        ).assign_coords(n_event=["iniImpPos", "finImpPos"])
 
     return daCorte
 
@@ -3889,21 +3902,21 @@ def detect_max_flex(
             v = calculate_variables(
                 daData,
                 daWeight=daWeight,
-                daEvents=daEvents.sel(event=["iniMov", "finMov"]),
+                daEvents=daEvents.sel(n_event=["iniMov", "finMov"]),
             )["v"]
         # v = v.sel(axis='z') #se queda solo con axis z la haya calculado aquí o venga calculada del reversed
         # v.plot.line(x='time', col='ID', col_wrap=5, sharey=False)
         """
         data = v[0,:].data
         weight = daWeight[0].sel(stat='media').data
-        ini = daEvents[0].sel(event='iniMov').data
-        fin = daEvents[0].sel(event='despegue').data
+        ini = daEvents[0].sel(n_event='iniMov').data
+        fin = daEvents[0].sel(n_event='despegue').data
         """
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             v,
-            daEvents.sel(event="iniImpPos"),
-            daEvents.sel(event="despegue"),
+            daEvents.sel(n_event="iniImpPos"),
+            daEvents.sel(n_event="despegue"),
             input_core_dims=[["time"], [], []],
             # output_core_dims=[['weight']],
             # exclude_dims=set(('time',)),
@@ -3942,15 +3955,15 @@ def detect_max_flex_fromV(
             return ind
 
         # data = daData[0,1,-1].data
-        # ini = daEvents[0,1].sel(event='iniMov').data
-        # fin = daEvents[0,1].sel(event='despegue').data
+        # ini = daEvents[0,1].sel(n_event='iniMov').data
+        # fin = daEvents[0,1].sel(n_event='despegue').data
 
         daCorte = xr.apply_ufunc(
             _detect_onset_aux,
             daData.sel(axis="z"),
             daWeight.sel(stat="media").data,
-            daEvents.sel(event="iniMov"),
-            daEvents.sel(event="despegue"),
+            daEvents.sel(n_event="iniMov"),
+            daEvents.sel(n_event="despegue"),
             input_core_dims=[["time"], [], [], []],
             # output_core_dims=[['weight']],
             # exclude_dims=set(('time',)),
@@ -4080,47 +4093,47 @@ def detect_standard_events(
         daEvents = create_standard_jump_events(daData)
 
     # Despegue y aterrizaje definitivo
-    daEvents.loc[dict(event=["despegue", "aterrizaje"])] = detect_takeoff_landing(
+    daEvents.loc[dict(n_event=["despegue", "aterrizaje"])] = detect_takeoff_landing(
         daData, jump_test=jump_test, threshold=threshold
     )  # , events=daEventosCMJ)
 
     # Inicio movimiento, después de detectar el despegue
-    daEvents.loc[dict(event="iniMov")] = detect_ini_mov(
+    daEvents.loc[dict(n_event="iniMov")] = detect_ini_mov(
         daData,
         jump_test=jump_test,
         daWeight=daWeight,
         daEvents=daEvents,
         threshold=threshold,
         SDx=SDx,
-    )  # .sel(event='despegue'))
+    )  # .sel(n_event='despegue'))
 
     # Final del movimiento
-    daEvents.loc[dict(event="finMov")] = detect_end_mov(
+    daEvents.loc[dict(n_event="finMov")] = detect_end_mov(
         daData,
         jump_test=jump_test,
         daWeight=daWeight,
         daEvents=daEvents,
         kind=kind_end_mov,
-    )  # .sel(event='aterrizaje'))
+    )  # .sel(n_event='aterrizaje'))
 
     # Ini y fin del impulso positivo
-    daEvents.loc[dict(event=["iniImpPos", "finImpPos"])] = detect_ini_end_impulse(
+    daEvents.loc[dict(n_event=["iniImpPos", "finImpPos"])] = detect_ini_end_impulse(
         daData, jump_test=jump_test, daWeight=daWeight, daEvents=daEvents
-    )  # .sel(event='iniMov'))
+    )  # .sel(n_event='iniMov'))
 
     # Maxima flexión rodillas batida
     if jump_test not in ["DJ", "SJPreac"]:
-        daEvents.loc[dict(event="maxFlex")] = detect_max_flex(
+        daEvents.loc[dict(n_event="maxFlex")] = detect_max_flex(
             daData, jump_test=jump_test, daWeight=daWeight, daEvents=daEvents
         )
 
     # MaxFz, entre de iniMov y despegue
-    daEvents.loc[dict(event="maxFz")] = detect_maxFz(
+    daEvents.loc[dict(n_event="maxFz")] = detect_maxFz(
         daData, jump_test=jump_test, daWeight=daWeight, daEvents=daEvents
     )
 
     # MinFz, entre de iniMov y maxFlex
-    daEvents.loc[dict(event="minFz")] = detect_minFz(
+    daEvents.loc[dict(n_event="minFz")] = detect_minFz(
         daData,
         jump_test=jump_test,
         daWeight=daWeight,
@@ -4128,9 +4141,9 @@ def detect_standard_events(
         threshold=threshold,
     )
 
-    if "preactiv" in daEvents.event:
-        daEvents.loc[dict(event="preactiv")] = (
-            daEvents.loc[dict(event="iniMov")] - np.array(0.5) * daData.freq
+    if "preactiv" in daEvents.n_event:
+        daEvents.loc[dict(n_event="preactiv")] = (
+            daEvents.loc[dict(n_event="iniMov")] - np.array(0.5) * daData.freq
         )  # para calcular preactivación en ventana de 0.5 s
 
     return daEvents
@@ -4202,11 +4215,13 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     # Imp neg descent
                     if not any(
                         daEvents.sel(dimensiones)
-                        .sel(event=["iniMov", "iniImpPos"])
+                        .sel(n_event=["iniMov", "iniImpPos"])
                         .isnull()
                     ):
-                        ini = int(daEvents.sel(dimensiones).sel(event="iniMov").data)
-                        end = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
+                        ini = int(daEvents.sel(dimensiones).sel(n_event="iniMov").data)
+                        end = int(
+                            daEvents.sel(dimensiones).sel(n_event="iniImpPos").data
+                        )
                         ax[i].fill_between(
                             t[ini:end],
                             weight,
@@ -4217,11 +4232,13 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     # Imp posit descent
                     if not any(
                         daEvents.sel(dimensiones)
-                        .sel(event=["iniImpPos", "maxFlex"])
+                        .sel(n_event=["iniImpPos", "maxFlex"])
                         .isnull()
                     ):
-                        ini = int(daEvents.sel(dimensiones).sel(event="iniImpPos").data)
-                        end = int(daEvents.sel(dimensiones).sel(event="maxFlex").data)
+                        ini = int(
+                            daEvents.sel(dimensiones).sel(n_event="iniImpPos").data
+                        )
+                        end = int(daEvents.sel(dimensiones).sel(n_event="maxFlex").data)
                         ax[i].fill_between(
                             t[ini:end],
                             weight,
@@ -4233,14 +4250,14 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     if test == "preacsj":
                         if not any(
                             daEvents.sel(dimensiones)
-                            .sel(event=["iniImpPos", "finImpPos"])
+                            .sel(n_event=["iniImpPos", "finImpPos"])
                             .isnull()
                         ):
                             ini = int(
-                                daEvents.sel(dimensiones).sel(event="iniImpPos").data
+                                daEvents.sel(dimensiones).sel(n_event="iniImpPos").data
                             )
                             end = int(
-                                daEvents.sel(dimensiones).sel(event="finImpPos").data
+                                daEvents.sel(dimensiones).sel(n_event="finImpPos").data
                             )
                             ax[i].fill_between(
                                 t[ini:end],
@@ -4252,14 +4269,14 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     elif test == "generic":
                         if not any(
                             daEvents.sel(dimensiones)
-                            .sel(event=["maxFlex", "finImpPos"])
+                            .sel(n_event=["maxFlex", "finImpPos"])
                             .isnull()
                         ):
                             ini = int(
-                                daEvents.sel(dimensiones).sel(event="maxFlex").data
+                                daEvents.sel(dimensiones).sel(n_event="maxFlex").data
                             )
                             end = int(
-                                daEvents.sel(dimensiones).sel(event="finImpPos").data
+                                daEvents.sel(dimensiones).sel(n_event="finImpPos").data
                             )
                             ax[i].fill_between(
                                 t[ini:end],
@@ -4272,11 +4289,15 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     # Imp negat ascent
                     if not any(
                         daEvents.sel(dimensiones)
-                        .sel(event=["finImpPos", "despegue"])
+                        .sel(n_event=["finImpPos", "despegue"])
                         .isnull()
                     ):
-                        ini = int(daEvents.sel(dimensiones).sel(event="finImpPos").data)
-                        end = int(daEvents.sel(dimensiones).sel(event="despegue").data)
+                        ini = int(
+                            daEvents.sel(dimensiones).sel(n_event="finImpPos").data
+                        )
+                        end = int(
+                            daEvents.sel(dimensiones).sel(n_event="despegue").data
+                        )
                         ax[i].fill_between(
                             t[ini:end],
                             weight,
@@ -4287,12 +4308,14 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     # Flight
                     if not any(
                         daEvents.sel(dimensiones)
-                        .sel(event=["despegue", "aterrizaje"])
+                        .sel(n_event=["despegue", "aterrizaje"])
                         .isnull()
                     ):
-                        ini = int(daEvents.sel(dimensiones).sel(event="despegue").data)
+                        ini = int(
+                            daEvents.sel(dimensiones).sel(n_event="despegue").data
+                        )
                         end = int(
-                            daEvents.sel(dimensiones).sel(event="aterrizaje").data
+                            daEvents.sel(dimensiones).sel(n_event="aterrizaje").data
                         )
                         ax[i].fill_between(
                             t[ini:end],
@@ -4303,7 +4326,7 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                         )
 
                 # Draw vertical lines
-                for ev in daEvents.sel(dimensiones):  # .event:
+                for ev in daEvents.sel(dimensiones):  # .n_event:
                     # print(ev.data)
                     if (
                         ev.isnull().all() or ev.count() > 1
@@ -4312,20 +4335,22 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
 
                     # No muestra ventana búsqueda peso si ajusta ini-fin
                     if (
-                        str(ev.event.data) in ["iniPeso", "finPeso"] and adjust_iniend
+                        str(ev.n_event.data) in ["iniPeso", "finPeso"] and adjust_iniend
                     ):  # se salta estos dos porque el array viene cortado por sus valores y tienen escala distinta
                         continue
                     # print(str(ev.data))
 
                     # Si no es un evento conocido le pone un color cualquiera
-                    try:
-                        col = colr[str(ev.event.data)]
+                    col = colr.get(str(ev.n_event.data), "k")
+                    """try:
+                        col = colr[str(ev.n_event.data)]
                     except:
                         col = "k"
+                    """
                     ax[i].axvline(
                         x=ev / g.data.freq,
                         c=col,
-                        lw=1,
+                        lw=0.8,
                         ls="--",
                         dashes=(5, 5),
                         dash_capstyle="round",
@@ -4333,9 +4358,9 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     )
 
                     # Ajusta altura de etiquetas
-                    if str(ev.event.data) in ["iniImpPos", "finImpPos"]:
+                    if str(ev.n_event.data) in ["iniImpPos", "finImpPos"]:
                         y_texto = ax[i].get_ylim()[1] * 0.7
-                    elif str(ev.event.data) in ["minFz", "maxFlex"]:
+                    elif str(ev.n_event.data) in ["minFz", "maxFlex"]:
                         y_texto = ax[i].get_ylim()[1] * 0.8
                     else:
                         y_texto = ax[i].get_ylim()[1] * 0.97
@@ -4343,7 +4368,7 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                     ax[i].text(
                         ev / g.data.freq,
                         y_texto,
-                        ev.event.data,
+                        ev.n_event.data,
                         ha="right",
                         va="top",
                         rotation="vertical",
@@ -4362,8 +4387,8 @@ def _complete_in_graph_xr(g, adjust_iniend, daWeight, daEvents, test="generic") 
                 fr = g.data.freq  # .loc[g.name_dicts[0, 0]]
                 plt.xlim(
                     [
-                        daEvents.sel(dimensiones).sel(event="iniAnalisis") / fr,
-                        daEvents.sel(dimensiones).sel(event="finAnalisis") / fr,
+                        daEvents.sel(dimensiones).sel(n_event="iniAnalisis") / fr,
+                        daEvents.sel(dimensiones).sel(n_event="finAnalisis") / fr,
                     ]
                 )
 
@@ -4373,7 +4398,7 @@ def graphs_events(
     daEvents: xr.DataArray | None = None,
     daWeight: xr.DataArray | None = None,
     num_per_block: int = 4,
-    show_in_console: bool = True,
+    show_in_console: bool = False,
     adjust_iniend: bool = False,
     sharey: bool = False,
     test: str = "generic",
@@ -4412,12 +4437,12 @@ def graphs_events(
         daWeight = daWeight.sel(axis="z")
 
     if adjust_iniend and daEvents is not None:
-        # ini = daEvents.isel(event=daEvents.argmin(dim="event"))
+        # ini = daEvents.isel(n_event=daEvents.argmin(dim="n_event"))
         daData = trim_analysis_window(
-            daData, daEvents.sel(event=["iniAnalisis", "finAnalisis"])
+            daData, daEvents.sel(n_event=["iniAnalisis", "finAnalisis"])
         )
         if daEvents is not None:
-            daEvents = daEvents - daEvents.sel(event="iniAnalisis")
+            daEvents = daEvents - daEvents.sel(n_event="iniAnalisis")
 
     # Por si no hay dimensión 'repe'
     if "repe" in daData.dims:  # dfDatos.columns:
@@ -4493,16 +4518,16 @@ def graphs_events(
         if daWeight is not None: #isinstance(daWeight, xr.DataArray):
             plt.axhline(daWeight.sel(ID=ID, repe=repe, stat='media').data, color='C0', lw=1, ls='--', dash_capstyle='round', alpha=0.6)
        
-        for ev in daEvents.sel(ID=ID, repe=repe).event:
+        for ev in daEvents.sel(ID=ID, repe=repe).n_event:
             if str(ev.data) not in ['iniAnalisis', 'finAnalisis']: #se salta estos dos porque el array viene cortado por sus valores y tienen escala distinta
                 #print(str(ev.data))
-                #print(daEvents.sel(ID=ID, repe=repe,event=ev))
+                #print(daEvents.sel(ID=ID, repe=repe,n_event=ev))
             # for num, ev in daEvents.sel(ID=ID, repe=repe).groupby('evento'):
             #     print('\n',num)
-                if not np.isnan(daEvents.sel(ID=ID, repe=repe, event=ev)): #si existe el evento
-                    plt.axvline(x=daEvents.sel(ID=ID, repe=repe, event=ev)/daData.freq, c=col[str(ev.data)], lw=0.5, ls='--', dashes=(5, 5), dash_capstyle='round', alpha=0.5)
+                if not np.isnan(daEvents.sel(ID=ID, repe=repe, n_event=ev)): #si existe el evento
+                    plt.axvline(x=daEvents.sel(ID=ID, repe=repe, n_event=ev)/daData.freq, c=col[str(ev.data)], lw=0.5, ls='--', dashes=(5, 5), dash_capstyle='round', alpha=0.5)
                     y_texto = plt.gca().get_ylim()[1] if str(ev.data) not in ['minFz', 'despegue', 'maxFz'] else plt.gca().get_ylim()[1]*0.8
-                    plt.text(daEvents.sel(ID=ID, repe=repe, event=ev).data/daData.freq, y_texto, ev.data,
+                    plt.text(daEvents.sel(ID=ID, repe=repe, n_event=ev).data/daData.freq, y_texto, ev.data,
                              ha='right', va='top', rotation='vertical', c='k', alpha=0.6, fontsize=8, 
                              bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', boxstyle='round,pad=0.3'+',rounding_size=.5'), transform=plt.gca().transData)
     
@@ -4553,7 +4578,7 @@ def graphs_all_variables(
     show_events: bool = False,
     daWeight: xr.DataArray = None,
     num_per_block: int = 4,
-    show_in_console: bool = True,
+    show_in_console: bool = False,
     adjust_iniend: bool = False,
     work_path: Path | str = None,
     n_file_graph_global: str = None,
@@ -4598,10 +4623,10 @@ def graphs_all_variables(
 
     if adjust_iniend:
         daData = trim_analysis_window(
-            daData, daEvents.sel(event=["iniAnalisis", "finAnalisis"])
+            daData, daEvents.sel(n_event=["iniAnalisis", "finAnalisis"])
         )
         if daEvents:  # is not None:
-            daEvents = daEvents - daEvents.sel(event="iniAnalisis")
+            daEvents = daEvents - daEvents.sel(n_event="iniAnalisis")
 
     # Por si no hay dimensión 'repe'
     if "repe" in daData.dims:  # dfDatos.columns:
@@ -4644,7 +4669,7 @@ def graphs_weight_check(
     daWeight_mean: xr.DataArray | None = None,
     allowed_window: float = 0.3,
     num_per_block: int = 4,
-    show_in_console: bool = True,
+    show_in_console: bool = False,
     work_path: Path | str | None = None,
     n_file_graph_global: str | None = None,
 ) -> None:
@@ -4746,49 +4771,49 @@ def graphs_weight_check(
                 
                 
                 if isinstance(daEvents, xr.DataArray):
-                    for ev in daEvents.sel(dimensiones):#.event:
+                    for ev in daEvents.sel(dimensiones):#.n_event:
                         if ev.isnull().all():#np.isnan(ev): #si no existe el evento
                             continue                       
                         
-                        ax[i].axvline(x=ev/g.data.freq, c=colr[str(ev.event.data)], lw=1, ls='--', dashes=(5, 5), dash_capstyle='round', alpha=0.7)
+                        ax[i].axvline(x=ev/g.data.freq, c=colr[str(ev.n_event.data)], lw=1, ls='--', dashes=(5, 5), dash_capstyle='round', alpha=0.7)
                         
                         y_texto = ax[i].get_ylim()[1]*0.97
-                        ax[i].text(ev / g.data.freq, y_texto, ev.event.data,
+                        ax[i].text(ev / g.data.freq, y_texto, ev.n_event.data,
                                  ha='right', va='top', rotation='vertical', c='k', alpha=0.7, fontsize='small', 
-                                 bbox=dict(facecolor=colr[str(ev.event.data)], alpha=0.2, edgecolor='none', boxstyle='round,pad=0.3'+',rounding_size=.5'), 
+                                 bbox=dict(facecolor=colr[str(ev.n_event.data)], alpha=0.2, edgecolor='none', boxstyle='round,pad=0.3'+',rounding_size=.5'), 
                                  transform=ax[i].transData)
     """
 
-    daWindow = daEvents.sel(event=["iniPeso", "finPeso"]).copy()
-    daWindow.loc[dict(event="iniPeso")] = xr.where(
-        daWindow.loc[dict(event="iniPeso")] - allowed_window > 0,
-        daWindow.loc[dict(event="iniPeso")] - allowed_window,
+    daWindow = daEvents.sel(n_event=["iniPeso", "finPeso"]).copy()
+    daWindow.loc[dict(n_event="iniPeso")] = xr.where(
+        daWindow.loc[dict(n_event="iniPeso")] - allowed_window > 0,
+        daWindow.loc[dict(n_event="iniPeso")] - allowed_window,
         0,
-    )  # daWindow.loc[dict(event='iniPeso')] - allowed_window
-    daWindow.loc[dict(event="finPeso")] = xr.where(
-        daWindow.loc[dict(event="finPeso")] + allowed_window
-        < daData.time.size,  # daEvents.loc[dict(event="finAnalisis")],
-        daWindow.loc[dict(event="finPeso")] + allowed_window,
-        daData.time.size,  # daEvents.loc[dict(event="finAnalisis")],
-    )  # daWindow.loc[dict(event='finPeso')] + allowed_window
+    )  # daWindow.loc[dict(n_event='iniPeso')] - allowed_window
+    daWindow.loc[dict(n_event="finPeso")] = xr.where(
+        daWindow.loc[dict(n_event="finPeso")] + allowed_window
+        < daData.time.size,  # daEvents.loc[dict(n_event="finAnalisis")],
+        daWindow.loc[dict(n_event="finPeso")] + allowed_window,
+        daData.time.size,  # daEvents.loc[dict(n_event="finAnalisis")],
+    )  # daWindow.loc[dict(n_event='finPeso')] + allowed_window
     # #TODO: ESTO NO SE AJUSTA BIEN CUANDO LA VENTANA ESTÁ CERCA DE CERO Y SALE NEGATIVO
-    # daWindow = xr.where(daWindow.loc[dict(event='iniPeso')] < 0, daWindow - daWindow.loc[dict(event='iniPeso')], daWindow)
-    # daWindow = xr.where(daWindow.loc[dict(event='finPeso')] > len(daData.time), daWindow - (daWindow.loc[dict(event='finPeso')] - len(daData.time)), daWindow)
+    # daWindow = xr.where(daWindow.loc[dict(n_event='iniPeso')] < 0, daWindow - daWindow.loc[dict(n_event='iniPeso')], daWindow)
+    # daWindow = xr.where(daWindow.loc[dict(n_event='finPeso')] > len(daData.time), daWindow - (daWindow.loc[dict(n_event='finPeso')] - len(daData.time)), daWindow)
 
-    # daWindow.loc[dict(event=["iniPeso", "finPeso"])] = [19000,19500]
+    # daWindow.loc[dict(n_event=["iniPeso", "finPeso"])] = [19000,19500]
     daDat = trim_analysis_window(daData, daWindow)
-    daEvents = daEvents - daWindow.loc[dict(event="iniPeso")]
+    daEvents = daEvents - daWindow.loc[dict(n_event="iniPeso")]
 
-    # daWindow = daWindow - daWindow.sel(event='iniPeso') #+ 0.5*daData.freq
-    # daWindow.loc[dict(event='iniPeso')] = daWindow.loc[dict(event='iniPeso')] + allowed_window*daDat.freq
-    # daWindow.loc[dict(event='finPeso')] = daWindow.loc[dict(event='finPeso')] - allowed_window*daDat.freq
+    # daWindow = daWindow - daWindow.sel(n_event='iniPeso') #+ 0.5*daData.freq
+    # daWindow.loc[dict(n_event='iniPeso')] = daWindow.loc[dict(n_event='iniPeso')] + allowed_window*daDat.freq
+    # daWindow.loc[dict(n_event='finPeso')] = daWindow.loc[dict(n_event='finPeso')] - allowed_window*daDat.freq
 
     """
     for n in range(0,len(daData.ID), distribuidor):
         dax = daDat.isel(ID=slice(n, n + distribuidor))
         
         g=dax.plot.line(x='time', alpha=0.8, aspect=1.5, color='lightgrey', sharey=False, **fils_cols) #, lw=1)
-        completa_peso(g, daEvents.sel(event=['iniPeso', 'finPeso']), daWeight, daWeight_mean)
+        completa_peso(g, daEvents.sel(n_event=['iniPeso', 'finPeso']), daWeight, daWeight_mean)
                         
         if n_file_graph_global is not None:
             pdf_pages.savefig(g.fig)
@@ -4896,16 +4921,16 @@ def graphs_weight_check(
 
         if isinstance(daEvents, xr.DataArray):
             # coords_graph_events = coords_graph.copy()
-            # coords_graph_events["event"] = ["iniPeso", "finPeso"]
+            # coords_graph_events["n_event"] = ["iniPeso", "finPeso"]
 
             for ev in daEvents.sel(
-                dict(coords_graph, event=["iniPeso", "finPeso"])
-            ):  # .event:
+                dict(coords_graph, n_event=["iniPeso", "finPeso"])
+            ):  # .n_event:
                 if ev.isnull().all():  # np.isnan(ev): #si no existe el evento
                     continue
                 plt.axvline(
                     x=ev / g.data.freq,
-                    c=colr[str(ev.event.data)],
+                    c=colr[str(ev.n_event.data)],
                     lw=1,
                     ls="--",
                     dashes=(5, 5),
@@ -4920,7 +4945,7 @@ def graphs_weight_check(
                 plt.text(
                     ev / g.data.freq,
                     y_texto,
-                    ev.event.data,
+                    ev.n_event.data,
                     ha="right",
                     va="top",
                     rotation="vertical",
@@ -4928,7 +4953,7 @@ def graphs_weight_check(
                     alpha=0.7,
                     fontsize="small",
                     bbox=dict(
-                        facecolor=colr[str(ev.event.data)],
+                        facecolor=colr[str(ev.n_event.data)],
                         alpha=0.2,
                         edgecolor="none",
                         boxstyle="round,pad=0.3" + ",rounding_size=.5",
@@ -4955,7 +4980,7 @@ def graphs_weight_check(
             g.map(_completa_graf_xr, "ID", "repe", "time", color=0)
         else:
             g.map(_completa_graf_xr, "ID", "time", color=0)
-        # _completa_graf_xr(g, daEvents.sel(event=['iniPeso', 'finPeso']), daWeight, daWeight_mean)
+        # _completa_graf_xr(g, daEvents.sel(n_event=['iniPeso', 'finPeso']), daWeight, daWeight_mean)
 
         if n_file_graph_global is not None:
             pdf_pages.savefig(g.fig)
@@ -4978,8 +5003,8 @@ def trim_analysis_window(
     daData: xr.DataArray | xr.Dataset, daEvents: xr.DataArray, window=None
 ) -> xr.DataArray:
     """
-    If a value is passed to window, only one event should be passed.
-    Add the window (in seconds) to the initial event.
+    If a value is passed to window, only one n_event should be passed.
+    Add the window (in seconds) to the initial n_event.
     """
     # TODO: TRY WITH DA.PAD
 
@@ -5009,8 +5034,8 @@ def trim_analysis_window(
             daFin = daEvents
 
     else:
-        daIni = daEvents.isel(event=0)
-        daFin = daEvents.isel(event=1)
+        daIni = daEvents.isel(n_event=0)
+        daFin = daEvents.isel(n_event=1)
 
     daCortado = (
         xr.apply_ufunc(
@@ -5171,14 +5196,14 @@ def adjust_offsetFz(
             )
             split_window = (
                 (
-                    vuelo.loc[dict(event="aterrizaje")]
-                    - vuelo.loc[dict(event="despegue")]
+                    vuelo.loc[dict(n_event="aterrizaje")]
+                    - vuelo.loc[dict(n_event="despegue")]
                 )
                 * pct_window
                 / 100
             ).round()  # astype(np.int32)
-            vuelo.loc[dict(event="despegue")] += split_window
-            vuelo.loc[dict(event="aterrizaje")] -= split_window
+            vuelo.loc[dict(n_event="despegue")] += split_window
+            vuelo.loc[dict(n_event="aterrizaje")] -= split_window
             offset_flight = trim_analysis_window(daReturn, vuelo).mean(dim="time")
 
         else:
@@ -5189,14 +5214,14 @@ def adjust_offsetFz(
             # reduces the window a little to avoid possible bounces from filtering
             split_window = (
                 (
-                    vuelo.loc[dict(event="aterrizaje")]
-                    - vuelo.loc[dict(event="despegue")]
+                    vuelo.loc[dict(n_event="aterrizaje")]
+                    - vuelo.loc[dict(n_event="despegue")]
                 )
                 * pct_window
                 / 100
             ).round()  # .astype(np.int32)  # TODO: CHECK FOR NAN
-            vuelo.loc[dict(event="despegue")] += split_window
-            vuelo.loc[dict(event="aterrizaje")] -= split_window
+            vuelo.loc[dict(n_event="despegue")] += split_window
+            vuelo.loc[dict(n_event="aterrizaje")] -= split_window
 
             offset_flight = trim_analysis_window(daReturn, vuelo).mean(dim="time")
             # trim_analysis_window(daData, vuelo).sel(axis='x').plot.line(x='time', col='ID', col_wrap=4)
@@ -5214,7 +5239,7 @@ def adjust_offsetFz(
                     )
             else:
                 trim_analysis_window(
-                    daReturn, vuelo.sel(event=["despegue", "aterrizaje"])
+                    daReturn, vuelo.sel(n_event=["despegue", "aterrizaje"])
                 ).plot.line(col="ID", col_wrap=4, hue="repe", sharey=False)
 
     elif kind == "threshold":
@@ -5301,12 +5326,15 @@ def adjust_offsetFz_flight_conventional(
             daData, jump_test, threshold=threshold
         )  # , show=show)
         split_window = (
-            (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
+            (
+                vuelo.loc[dict(n_event="aterrizaje")]
+                - vuelo.loc[dict(n_event="despegue")]
+            )
             * pct_window
             / 100
         ).astype("int32")
-        vuelo.loc[dict(event="despegue")] += split_window
-        vuelo.loc[dict(event="aterrizaje")] -= split_window
+        vuelo.loc[dict(n_event="despegue")] += split_window
+        vuelo.loc[dict(n_event="aterrizaje")] -= split_window
         offset_flight = trim_analysis_window(daData, vuelo).mean(dim="time")
 
     else:
@@ -5316,12 +5344,15 @@ def adjust_offsetFz_flight_conventional(
         )  # , show=show)
         # reduces the window a little to avoid possible bounces from filtering
         split_window = (
-            (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
+            (
+                vuelo.loc[dict(n_event="aterrizaje")]
+                - vuelo.loc[dict(n_event="despegue")]
+            )
             * pct_window
             / 100
         ).astype("int32")
-        vuelo.loc[dict(event="despegue")] += split_window
-        vuelo.loc[dict(event="aterrizaje")] -= split_window
+        vuelo.loc[dict(n_event="despegue")] += split_window
+        vuelo.loc[dict(n_event="aterrizaje")] -= split_window
 
         offset_flight = trim_analysis_window(daData, vuelo).mean(dim="time")
         # trim_analysis_window(daData, vuelo).sel(axis='x').plot.line(x='time', col='ID', col_wrap=4)
@@ -5334,11 +5365,11 @@ def adjust_offsetFz_flight_conventional(
         if show:
             try:  # comprobar si es necesario cuando hay ejes
                 trim_analysis_window(
-                    daData, vuelo.sel(event=["despegue", "aterrizaje"])
+                    daData, vuelo.sel(n_event=["despegue", "aterrizaje"])
                 ).plot.line(col="ID", col_wrap=4, hue="axis", sharey=False)
             except:
                 trim_analysis_window(
-                    daData, vuelo.sel(event=["despegue", "aterrizaje"])
+                    daData, vuelo.sel(n_event=["despegue", "aterrizaje"])
                 ).plot.line(col="ID", col_wrap=4, hue="repe", sharey=False)
 
     return daData  # datos
@@ -5415,14 +5446,14 @@ def reset_Fz_flight(
         daReturn = xr.apply_ufunc(
             _detect_onset_aux,
             daData,
-            vuelo.sel(event="despegue"),
+            vuelo.sel(n_event="despegue"),
             daData.ID,
             input_core_dims=[["time"], [], []],
             output_core_dims=[["time"]],
             # exclude_dims=set(('time',)),
             vectorize=True,
             # kwargs=dict(threshold=-threshold, n_above=int(0.1*daData.freq), show=show)
-        ).drop_vars("event")
+        ).drop_vars("n_event")
 
     else:  # if not DJ2PApart. Keeps nans
         daReturn = daData.where(daData.isnull(), daData.where(daData > threshold, 0.0))
@@ -5453,11 +5484,11 @@ def reset_Fz_flight(
     
     
     # data = daData[0,1].sel(axis='z').data
-    # ini = daEvents[0,1].sel(event='iniMov')
-    # fin = daEvents[0,1].sel(event='finMov')
+    # ini = daEvents[0,1].sel(n_event='iniMov')
+    # fin = daEvents[0,1].sel(n_event='finMov')
     
     
-    daCortado = xr.apply_ufunc(reset_ventana, daData, ventana_flight.isel(event=0).sel(ID=daData.ID, repe=daData.repe), ventana_flight.isel(event=1).sel(ID=daData.ID, repe=daData.repe),
+    daCortado = xr.apply_ufunc(reset_ventana, daData, ventana_flight.isel(n_event=0).sel(ID=daData.ID, repe=daData.repe), ventana_flight.isel(n_event=1).sel(ID=daData.ID, repe=daData.repe),
                    input_core_dims=[['time'], [], []],
                    output_core_dims=[['time']],
                    #exclude_dims=set(('time',)),
@@ -5487,12 +5518,12 @@ def reset_F_flight_axis(
     vuelo = detect_takeoff_landing(daDatosZ, jump_test, threshold=threshold)
     # reduces the window a little to avoid possible bounces from filtering
     split_window = (
-        (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
+        (vuelo.loc[dict(n_event="aterrizaje")] - vuelo.loc[dict(n_event="despegue")])
         * pct_window
         / 100
     ).astype("int32")
-    vuelo.loc[dict(event="despegue")] += split_window
-    vuelo.loc[dict(event="aterrizaje")] -= split_window
+    vuelo.loc[dict(n_event="despegue")] += split_window
+    vuelo.loc[dict(n_event="aterrizaje")] -= split_window
 
     with xr.set_options(keep_attrs=True):
         daData = xr.where(
@@ -5524,12 +5555,12 @@ def reset_F_flight_axis_convencional(
     vuelo = detect_takeoff_landing(daDatosZ, jump_test, threshold=threshold)
     # reduces the window a little to avoid possible bounces from filtering
     split_window = (
-        (vuelo.loc[dict(event="aterrizaje")] - vuelo.loc[dict(event="despegue")])
+        (vuelo.loc[dict(n_event="aterrizaje")] - vuelo.loc[dict(n_event="despegue")])
         * pct_window
         / 100
     ).astype("int32")
-    vuelo.loc[dict(event="despegue")] += split_window
-    vuelo.loc[dict(event="aterrizaje")] -= split_window
+    vuelo.loc[dict(n_event="despegue")] += split_window
+    vuelo.loc[dict(n_event="aterrizaje")] -= split_window
 
     with xr.set_options(keep_attrs=True):
         daData = xr.where(
@@ -5551,17 +5582,17 @@ def calculate_variables(
 ) -> xr.Dataset:
     """
     Calculates force / time related variables: v, s, P, RFD
-    daEvents: receives the initial and final event for the calculation. You can pass
+    daEvents: receives the initial and final n_event for the calculation. You can pass
                iniMov/finMov (to avoid drifts) or iniAnalisis/finAnalisis for
                variable full plots.
     """
     if daEvents is None:
         daEvents = (
             xr.full_like(daData.isel(time=0, drop=True), np.nan)
-            .expand_dims({"event": ["ini", "fin"]})
+            .expand_dims({"n_event": ["ini", "fin"]})
             .copy()
         )
-        daEvents.isel(ID=0).loc[dict(event=["ini", "fin"])] = [0, len(daData.time)]
+        daEvents.isel(ID=0).loc[dict(n_event=["ini", "fin"])] = [0, len(daData.time)]
 
     daBW = daData / daWeight.sel(stat="media", drop=True)
 
@@ -5586,8 +5617,8 @@ def calculate_variables(
     data = daData[2,0].data #.sel(axis='z').data
     time = daData.time.data
     weight=daWeight[2,0].sel(stat='media').data
-    ini = daEvents[2,0].sel(event='iniMov').data
-    fin = daEvents[2,0].sel(event='finMov').data
+    ini = daEvents[2,0].sel(n_event='iniMov').data
+    fin = daEvents[2,0].sel(n_event='finMov').data
     plt.plot(data[int(ini):int(fin)])
     """
     """daV = (
@@ -5596,9 +5627,9 @@ def calculate_variables(
             daData,
             daData.time,
             daWeight.sel(stat="media"),
-            daEvents.isel(event=0),
+            daEvents.isel(n_event=0),
             daEvents.isel(
-                event=1
+                n_event=1
             ),  # events 0 y 1 para que sirva con reversed, se pasa iniMov y finMov en el orden adecuado
             input_core_dims=[["time"], ["time"], [], [], []],
             output_core_dims=[["time"]],
@@ -5620,8 +5651,8 @@ def calculate_variables(
         daV,
         daData.time,
         0,
-        daEvents.isel(event=0),
-        daEvents.isel(event=1),
+        daEvents.isel(n_event=0),
+        daEvents.isel(n_event=1),
         input_core_dims=[["time"], ["time"], [], [], []],
         output_core_dims=[["time"]],
         # exclude_dims=set(('time',)),
@@ -5664,7 +5695,7 @@ def calculate_results(
         daResults = (
             xr.full_like(daCinet.isel(time=0, drop=True), np.nan).expand_dims(
                 {
-                    "n_var": [
+                    "n_result": [
                         "tVuelo",
                         "tFaseInicioDesc",
                         "tFaseExc",
@@ -5733,206 +5764,212 @@ def calculate_results(
 
     dsBatida = trim_analysis_window(
         dsCinem[["BW", "v", "s", "P", "RFD"]],
-        daEvents.sel(event=["iniMov", "despegue"]),
+        daEvents.sel(n_event=["iniMov", "despegue"]),
     )
     dsCaida = trim_analysis_window(
         dsCinem[["BW", "v", "s", "P", "RFD"]],
-        daEvents.sel(event=["aterrizaje", "finMov"]),
+        daEvents.sel(n_event=["aterrizaje", "finMov"]),
     )
 
     # Tiempos de fase
-    daResults.loc[dict(n_var="tFaseInicioDesc")] = (
-        daEvents.sel(event="iniImpPos") - daEvents.sel(event="iniMov")
+    daResults.loc[dict(n_result="tFaseInicioDesc")] = (
+        daEvents.sel(n_event="iniImpPos") - daEvents.sel(n_event="iniMov")
     ) / dsCinem.freq
-    daResults.loc[dict(n_var="tFaseExc")] = (
-        daEvents.sel(event="maxFlex") - daEvents.sel(event="iniImpPos")
+    daResults.loc[dict(n_result="tFaseExc")] = (
+        daEvents.sel(n_event="maxFlex") - daEvents.sel(n_event="iniImpPos")
     ) / dsCinem.freq
-    daResults.loc[dict(n_var="tFaseConc")] = (
-        daEvents.sel(event="despegue") - daEvents.sel(event="maxFlex")
+    daResults.loc[dict(n_result="tFaseConc")] = (
+        daEvents.sel(n_event="despegue") - daEvents.sel(n_event="maxFlex")
     ) / dsCinem.freq
-    daResults.loc[dict(n_var="tVuelo")] = (
-        daEvents.sel(event="aterrizaje") - daEvents.sel(event="despegue")
+    daResults.loc[dict(n_result="tVuelo")] = (
+        daEvents.sel(n_event="aterrizaje") - daEvents.sel(n_event="despegue")
     ) / dsCinem.freq
 
     # Fuerzas batida
-    daResults.loc[dict(n_var="FzMax")] = dsBatida["BW"].max(
+    daResults.loc[dict(n_result="FzMax")] = dsBatida["BW"].max(
         dim="time"
-    )  # trim_analysis_window(daCinet, daEvents.sel(event=['iniMov', 'despegue'])).max(dim='time')
-    daResults.loc[dict(n_var="FzMin")] = trim_analysis_window(
+    )  # trim_analysis_window(daCinet, daEvents.sel(n_event=['iniMov', 'despegue'])).max(dim='time')
+    daResults.loc[dict(n_result="FzMin")] = trim_analysis_window(
         dsCinem["BW"],
-        daEvents.sel(event=["iniMov", "maxFz"]),
+        daEvents.sel(n_event=["iniMov", "maxFz"]),
     ).min(
         dim="time"
-    )  # trim_analysis_window(daCinet, daEvents.sel(event=['iniMov', 'despegue'])).min(dim='time')
-    daResults.loc[dict(n_var="FzTransicion")] = daCinet.sel(
-        time=daEvents.sel(event="maxFlex") / dsCinem.freq, method="nearest"
+    )  # trim_analysis_window(daCinet, daEvents.sel(n_event=['iniMov', 'despegue'])).min(dim='time')
+    daResults.loc[dict(n_result="FzTransicion")] = daCinet.sel(
+        time=daEvents.sel(n_event="maxFlex") / dsCinem.freq, method="nearest"
     )
 
     # Fuerzas caída
-    daResults.loc[dict(n_var="FzMaxCaida")] = dsCaida["BW"].max(dim="time")
+    daResults.loc[dict(n_result="FzMaxCaida")] = dsCaida["BW"].max(dim="time")
 
     # Velocidades
-    daResults.loc[dict(n_var="vDespegue")] = dsCinem["v"].sel(
-        time=daEvents.sel(event="despegue") / dsCinem.freq, method="nearest"
+    daResults.loc[dict(n_result="vDespegue")] = dsCinem["v"].sel(
+        time=daEvents.sel(n_event="despegue") / dsCinem.freq, method="nearest"
     )
-    daResults.loc[dict(n_var="vAterrizaje")] = dsCinem["v"].sel(
-        time=daEvents.sel(event="aterrizaje") / dsCinem.freq, method="nearest"
+    daResults.loc[dict(n_result="vAterrizaje")] = dsCinem["v"].sel(
+        time=daEvents.sel(n_event="aterrizaje") / dsCinem.freq, method="nearest"
     )
-    daResults.loc[dict(n_var="vMax")] = dsBatida["v"].max(dim="time")
-    daResults.loc[dict(n_var="vMin")] = dsBatida["v"].min(dim="time")
-    daResults.loc[dict(n_var="vMinCaida")] = dsCaida["v"].min(dim="time")
+    daResults.loc[dict(n_result="vMax")] = dsBatida["v"].max(dim="time")
+    daResults.loc[dict(n_result="vMin")] = dsBatida["v"].min(dim="time")
+    daResults.loc[dict(n_result="vMinCaida")] = dsCaida["v"].min(dim="time")
 
     # Posiciones
-    daResults.loc[dict(n_var="sIniMov")] = dsCinem["s"].sel(
-        time=daEvents.sel(event="iniMov") / dsCinem.freq, method="nearest"
+    daResults.loc[dict(n_result="sIniMov")] = dsCinem["s"].sel(
+        time=daEvents.sel(n_event="iniMov") / dsCinem.freq, method="nearest"
     )
-    daResults.loc[dict(n_var="sFinMov")] = dsCinem["s"].sel(
-        time=(daEvents.sel(event="finMov") - 1) / dsCinem.freq, method="nearest"
+    daResults.loc[dict(n_result="sFinMov")] = dsCinem["s"].sel(
+        time=(daEvents.sel(n_event="finMov") - 1) / dsCinem.freq, method="nearest"
     )
-    daResults.loc[dict(n_var="sDespegue")] = dsCinem["s"].sel(
-        time=daEvents.sel(event="despegue") / dsCinem.freq, method="nearest"
+    daResults.loc[dict(n_result="sDespegue")] = dsCinem["s"].sel(
+        time=daEvents.sel(n_event="despegue") / dsCinem.freq, method="nearest"
     )
-    daResults.loc[dict(n_var="sAterrizaje")] = dsCinem["s"].sel(
-        time=daEvents.sel(event="aterrizaje") / dsCinem.freq, method="nearest"
+    daResults.loc[dict(n_result="sAterrizaje")] = dsCinem["s"].sel(
+        time=daEvents.sel(n_event="aterrizaje") / dsCinem.freq, method="nearest"
     )
-    daResults.loc[dict(n_var="sDifDespAter")] = (
-        daResults.loc[dict(n_var="sDespegue")]
-        - daResults.loc[dict(n_var="sAterrizaje")]
+    daResults.loc[dict(n_result="sDifDespAter")] = (
+        daResults.loc[dict(n_result="sDespegue")]
+        - daResults.loc[dict(n_result="sAterrizaje")]
     )
-    daResults.loc[dict(n_var="sMax")] = trim_analysis_window(
-        dsCinem["s"], daEvents.sel(event=["despegue", "aterrizaje"])
+    daResults.loc[dict(n_result="sMax")] = trim_analysis_window(
+        dsCinem["s"], daEvents.sel(n_event=["despegue", "aterrizaje"])
     ).max(dim="time")
-    daResults.loc[dict(n_var="sMin")] = dsBatida["s"].min(dim="time")
-    daResults.loc[dict(n_var="sMinCaida")] = dsCaida["s"].min(dim="time")
+    daResults.loc[dict(n_result="sMin")] = dsBatida["s"].min(dim="time")
+    daResults.loc[dict(n_result="sMinCaida")] = dsCaida["s"].min(dim="time")
 
     # Altura salto
-    daResults.loc[dict(n_var="hTVuelo")] = (
-        g / 8 * daResults.loc[dict(n_var="tVuelo")] ** 2
+    daResults.loc[dict(n_result="hTVuelo")] = (
+        g / 8 * daResults.loc[dict(n_result="tVuelo")] ** 2
     )
-    daResults.loc[dict(n_var="hVDespegue")] = daResults.loc[
-        dict(n_var="vDespegue")
+    daResults.loc[dict(n_result="hVDespegue")] = daResults.loc[
+        dict(n_result="vDespegue")
     ] ** 2 / (2 * g)
-    daResults.loc[dict(n_var="hS")] = (
-        daResults.loc[dict(n_var="sMax")] - daResults.loc[dict(n_var="sDespegue")]
+    daResults.loc[dict(n_result="hS")] = (
+        daResults.loc[dict(n_result="sMax")] - daResults.loc[dict(n_result="sDespegue")]
     )
 
     # Potencias
-    daResults.loc[dict(n_var="PMax")] = dsBatida["P"].max(
+    daResults.loc[dict(n_result="PMax")] = dsBatida["P"].max(
         dim="time"
-    )  # trim_analysis_window(dsCinem['P'], daEvents.sel(event=['iniMov', 'despegue'])).max(dim='time')
-    daResults.loc[dict(n_var="PMin")] = dsBatida["P"].min(
+    )  # trim_analysis_window(dsCinem['P'], daEvents.sel(n_event=['iniMov', 'despegue'])).max(dim='time')
+    daResults.loc[dict(n_result="PMin")] = dsBatida["P"].min(
         dim="time"
-    )  # trim_analysis_window(dsCinem['P'], daEvents.sel(event=['iniMov', 'despegue'])).min(dim='time')
-    daResults.loc[dict(n_var="PMinCaida")] = dsCaida["P"].min(dim="time")
+    )  # trim_analysis_window(dsCinem['P'], daEvents.sel(n_event=['iniMov', 'despegue'])).min(dim='time')
+    daResults.loc[dict(n_result="PMinCaida")] = dsCaida["P"].min(dim="time")
 
     # RFD
-    daResults.loc[dict(n_var="RFDMax")] = dsBatida["RFD"].max(
+    daResults.loc[dict(n_result="RFDMax")] = dsBatida["RFD"].max(
         dim="time"
-    )  # trim_analysis_window(dsCinem['RFD'], daEvents.sel(event=['iniMov', 'despegue'])).max(dim='time')
-    daResults.loc[dict(n_var="RFDMed")] = (
-        daCinet.sel(time=daEvents.sel(event="maxFlex") / dsCinem.freq, method="nearest")
-        - daCinet.sel(time=daEvents.sel(event="minFz") / dsCinem.freq, method="nearest")
-    ) / ((daEvents.sel(event="maxFlex") - daEvents.sel(event="minFz")) / dsCinem.freq)
+    )  # trim_analysis_window(dsCinem['RFD'], daEvents.sel(n_event=['iniMov', 'despegue'])).max(dim='time')
+    daResults.loc[dict(n_result="RFDMed")] = (
+        daCinet.sel(
+            time=daEvents.sel(n_event="maxFlex") / dsCinem.freq, method="nearest"
+        )
+        - daCinet.sel(
+            time=daEvents.sel(n_event="minFz") / dsCinem.freq, method="nearest"
+        )
+    ) / (
+        (daEvents.sel(n_event="maxFlex") - daEvents.sel(n_event="minFz")) / dsCinem.freq
+    )
 
     # ---- Impulsos. Como la fuerza viene en BW, el peso que resta es 1. Con fuerza en newtons restar daWeight.sel(stat='media', drop=True)
     from biomdp.general_processing_functions import integrate_window
 
-    daResults.loc[dict(n_var="impNegDescenso")] = integrate_full(
-        daCinet - 1, daEvents=daEvents.sel(event=["iniMov", "iniImpPos"])
+    daResults.loc[dict(n_result="impNegDescenso")] = integrate_full(
+        daCinet - 1, daEvents=daEvents.sel(n_event=["iniMov", "iniImpPos"])
     )
-    daResults.loc[dict(n_var="ImpPositDescenso")] = integrate_full(
-        daCinet - 1, daEvents=daEvents.sel(event=["iniImpPos", "maxFlex"])
+    daResults.loc[dict(n_result="ImpPositDescenso")] = integrate_full(
+        daCinet - 1, daEvents=daEvents.sel(n_event=["iniImpPos", "maxFlex"])
     )
-    daResults.loc[dict(n_var="ImpPositAscenso")] = integrate_full(
-        daCinet - 1, daEvents=daEvents.sel(event=["maxFlex", "finImpPos"])
+    daResults.loc[dict(n_result="ImpPositAscenso")] = integrate_full(
+        daCinet - 1, daEvents=daEvents.sel(n_event=["maxFlex", "finImpPos"])
     )
-    daResults.loc[dict(n_var="ImpNegAscenso")] = integrate_full(
-        daCinet - 1, daEvents=daEvents.sel(event=["finImpPos", "despegue"])
+    daResults.loc[dict(n_result="ImpNegAscenso")] = integrate_full(
+        daCinet - 1, daEvents=daEvents.sel(n_event=["finImpPos", "despegue"])
     )
 
     # ---- Tiempos de events clave
-    daResults.loc[dict(n_var="tIniMov")] = (
-        dsCinem["events"].sel(event="iniMov").data[0] / dsCinem.freq
+    daResults.loc[dict(n_result="tIniMov")] = (
+        dsCinem["events"].sel(n_event="iniMov").data[0] / dsCinem.freq
     )
-    daResults.loc[dict(n_var="tDespegue")] = (
-        dsCinem["events"].sel(event="despegue").data[0] / dsCinem.freq
+    daResults.loc[dict(n_result="tDespegue")] = (
+        dsCinem["events"].sel(n_event="despegue").data[0] / dsCinem.freq
     )
-    daResults.loc[dict(n_var="tAterrizaje")] = (
-        dsCinem["events"].sel(event="aterrizaje").data[0] / dsCinem.freq
+    daResults.loc[dict(n_result="tAterrizaje")] = (
+        dsCinem["events"].sel(n_event="aterrizaje").data[0] / dsCinem.freq
     )
-    daResults.loc[dict(n_var="tFzMax")] = (
+    daResults.loc[dict(n_result="tFzMax")] = (
         dsBatida["BW"].biomxr.nanargmax_xr(dim="time") / dsCinem.freq
     )
 
-    daResults.loc[dict(n_var="tFzMin")] = (
+    daResults.loc[dict(n_result="tFzMin")] = (
         trim_analysis_window(
             dsCinem["BW"],
-            daEvents.sel(event=["iniMov", "maxFz"]),
+            daEvents.sel(n_event=["iniMov", "maxFz"]),
         ).biomxr.nanargmin_xr(dim="time")
         / dsCinem.freq
     )
 
-    daResults.loc[dict(n_var="tFzMaxCaida")] = (
+    daResults.loc[dict(n_result="tFzMaxCaida")] = (
         dsCaida["BW"].biomxr.nanargmax_xr(dim="time")
-        + daEvents.sel(event="aterrizaje")
-        - daEvents.sel(event="iniMov")
+        + daEvents.sel(n_event="aterrizaje")
+        - daEvents.sel(n_event="iniMov")
     ) / dsCinem.freq
 
-    daResults.loc[dict(n_var="tFzTransicion")] = (
-        daEvents.sel(event="maxFlex") - daEvents.sel(event="iniMov")
+    daResults.loc[dict(n_result="tFzTransicion")] = (
+        daEvents.sel(n_event="maxFlex") - daEvents.sel(n_event="iniMov")
     ) / dsCinem.freq
 
     # from biomdp.general_processing_functions import nanargmax_xr, nanargmin_xr
 
-    daResults.loc[dict(n_var="tVMax")] = (
+    daResults.loc[dict(n_result="tVMax")] = (
         dsBatida["v"].biomxr.nanargmax_xr(dim="time") / dsCinem.freq
     )
-    daResults.loc[dict(n_var="tVMin")] = (
+    daResults.loc[dict(n_result="tVMin")] = (
         dsBatida["v"].biomxr.nanargmin_xr(dim="time") / dsCinem.freq
     )
 
-    daResults.loc[dict(n_var="tSMax")] = (
+    daResults.loc[dict(n_result="tSMax")] = (
         trim_analysis_window(
             dsCinem["s"],
-            daEvents.sel(event=["iniMov", "aterrizaje"]),
+            daEvents.sel(n_event=["iniMov", "aterrizaje"]),
         ).biomxr.nanargmax_xr(dim="time")
         / dsCinem.freq
     )
-    daResults.loc[dict(n_var="tSMin")] = (
+    daResults.loc[dict(n_result="tSMin")] = (
         dsBatida["s"].biomxr.nanargmin_xr(dim="time") / dsCinem.freq
     )
-    daResults.loc[dict(n_var="tSMinCaida")] = (
+    daResults.loc[dict(n_result="tSMinCaida")] = (
         dsCaida["s"].biomxr.nanargmin_xr(dim="time")
-        + daEvents.sel(event="aterrizaje")
-        - daEvents.sel(event="iniMov")
+        + daEvents.sel(n_event="aterrizaje")
+        - daEvents.sel(n_event="iniMov")
     ) / dsCinem.freq
 
-    daResults.loc[dict(n_var="tPMax")] = (
+    daResults.loc[dict(n_result="tPMax")] = (
         dsBatida["P"].biomxr.nanargmax_xr(dim="time") / dsCinem.freq
     )
-    daResults.loc[dict(n_var="tPMin")] = (
+    daResults.loc[dict(n_result="tPMin")] = (
         dsBatida["P"].biomxr.nanargmin_xr(dim="time") / dsCinem.freq
     )
 
-    daResults.loc[dict(n_var="tRFDMax")] = (
+    daResults.loc[dict(n_result="tRFDMax")] = (
         dsBatida["RFD"].biomxr.nanargmax_xr(dim="time") / dsCinem.freq
     )
 
     # ---- Otras
     # TODO: EN POSICIÓN MÁS BAJA CAÍDA, DIVIDIR Fz / DESPL DESDE CONTACTO A MIN S
     # TODO: AÑADIR ALTURA EN ATERRIZAJE AL SMINCAIDA
-    FzSMin = daResults.loc[dict(n_var="FzMin")]
-    tSMin = daResults.loc[dict(n_var="tSMinCaida")]
+    FzSMin = daResults.loc[dict(n_result="FzMin")]
+    tSMin = daResults.loc[dict(n_result="tSMinCaida")]
     # TODO: COMPROBAR QUE COINCIDE EN EL TIEMPO FZMAX CON SMIN
-    daResults.loc[dict(n_var="landingStiffness")] = dsCaida["BW"].max(dim="time") / (
-        abs(daResults.loc[dict(n_var="sMinCaida")])
-        + daResults.loc[dict(n_var="sAterrizaje")]
+    daResults.loc[dict(n_result="landingStiffness")] = dsCaida["BW"].max(dim="time") / (
+        abs(daResults.loc[dict(n_result="sMinCaida")])
+        + daResults.loc[dict(n_result="sAterrizaje")]
     )
 
     # TODO: ALTURA DIVIDIDA ENTRE TIEMPO BATIDA. DIFERENTE EN CMJ Y DJ
-    daResults.loc[dict(n_var="RSI")] = daResults.loc[dict(n_var="hVDespegue")] / (
-        daEvents.sel(event=["iniMov", "despegue"]).diff(dim="event") / dsCinem.freq
-    ).squeeze("event")
+    daResults.loc[dict(n_result="RSI")] = daResults.loc[dict(n_result="hVDespegue")] / (
+        daEvents.sel(n_event=["iniMov", "despegue"]).diff(dim="n_event") / dsCinem.freq
+    ).squeeze("n_event")
 
     return daResults
 
@@ -5940,9 +5977,11 @@ def calculate_results(
 def results_to_table(daResults: xr.DataArray, dsSalto: xr.Dataset) -> pd.DataFrame:
     # TODO: los datos en blanco con nan o '--'?
     dfResultsForces = (
-        daResults.isel(ID=0).to_dataframe()  # .transpose('n_var') #'modalidad', 'repe'
+        daResults.isel(
+            ID=0
+        ).to_dataframe()  # .transpose('n_result') #'modalidad', 'repe'
         # .reset_index()
-        # .set_index(['modalidad', 'n_var', 'ID', 'repe'])
+        # .set_index(['modalidad', 'n_result', 'ID', 'repe'])
     )
 
     tabla_results = pd.DataFrame(
@@ -5965,65 +6004,65 @@ def results_to_table(daResults: xr.DataArray, dsSalto: xr.Dataset) -> pd.DataFra
 
     tabla_results.loc["Inicio Salto", :] = [
         np.nan,  # "--",
-        (daResults.sel(n_var="tIniMov").data[0]),  # .round(3),
+        (daResults.sel(n_result="tIniMov").data[0]),  # .round(3),
     ]
 
     tabla_results.loc["Despegue", :] = [
         np.nan,  # "--",
-        daResults.sel(n_var=["tIniMov", "tDespegue"])
-        .diff("n_var")[0]
+        daResults.sel(n_result=["tIniMov", "tDespegue"])
+        .diff("n_result")[0]
         .data[0],  # .round(3),
     ]
 
     tabla_results.loc["Aterrizaje", :] = [
         np.nan,  # "--",
-        daResults.sel(n_var=["tIniMov", "tAterrizaje"])
-        .diff("n_var")[0]
+        daResults.sel(n_result=["tIniMov", "tAterrizaje"])
+        .diff("n_result")[0]
         .data[0],  # .round(3),
     ]
 
     tabla_results.loc["Máxima fuerza vertical en la batida (BW)", :] = daResults.sel(
-        n_var=["FzMax", "tFzMax"]
+        n_result=["FzMax", "tFzMax"]
     )  # .round(3)
 
     tabla_results.loc["Máxima potencia en la batida (W/BW)", :] = daResults.sel(
-        n_var=["PMax", "tPMax"]
+        n_result=["PMax", "tPMax"]
     )  # .round(3)
 
     tabla_results.loc["Tiempo de vuelo (s)", :] = [
-        daResults.sel(n_var="tVuelo").data[0],  # .round(3),
+        daResults.sel(n_result="tVuelo").data[0],  # .round(3),
         np.nan,  # "--",
     ]
 
     tabla_results.loc["Velocidad despegue (m/s)", :] = [
-        daResults.sel(n_var="vDespegue").data[0],  # .round(3),
-        daResults.sel(n_var=["tIniMov", "tDespegue"]).diff("n_var")[0].data[0],
-        # (dsSalto["events"].sel(event="despegue").data[0] / dsSalto.freq),  # .round(3),
+        daResults.sel(n_result="vDespegue").data[0],  # .round(3),
+        daResults.sel(n_result=["tIniMov", "tDespegue"]).diff("n_result")[0].data[0],
+        # (dsSalto["events"].sel(n_event="despegue").data[0] / dsSalto.freq),  # .round(3),
     ]
 
     tabla_results.loc["Desplazamiento CG despegue (m)", :] = [
-        daResults.sel(n_var="sDespegue").data[0],  # .round(3),
-        daResults.sel(n_var=["tIniMov", "tDespegue"]).diff("n_var")[0].data[0],
-        # (dsSalto["events"].sel(event="despegue").data[0] / dsSalto.freq),  # .round(3),
+        daResults.sel(n_result="sDespegue").data[0],  # .round(3),
+        daResults.sel(n_result=["tIniMov", "tDespegue"]).diff("n_result")[0].data[0],
+        # (dsSalto["events"].sel(n_event="despegue").data[0] / dsSalto.freq),  # .round(3),
     ]
 
     tabla_results.loc["Altura según v despegue (m)", :] = [
-        daResults.sel(n_var="hVDespegue").data[0],  # , "tDespegue"]
+        daResults.sel(n_result="hVDespegue").data[0],  # , "tDespegue"]
         np.nan,
     ]
 
     tabla_results.loc["Altura según desplazamiento CG (m)", :] = [
-        daResults.sel(n_var="hS").data[0],
+        daResults.sel(n_result="hS").data[0],
         np.nan,
     ]  # .round(3)  # "--",
 
     tabla_results.loc["Altura según tiempo de vuelo (m)", :] = [
-        daResults.sel(n_var="hTVuelo").data[0],  # .round(3),
-        np.nan,  # daResults.sel(n_var=["tIniMov", "tSMax"]).diff("n_var")[0].data[0],  # "--",
+        daResults.sel(n_result="hTVuelo").data[0],  # .round(3),
+        np.nan,  # daResults.sel(n_result=["tIniMov", "tSMax"]).diff("n_result")[0].data[0],  # "--",
     ]
 
     tabla_results.loc["Máxima fuerza vertical en la caída (BW)", :] = daResults.sel(
-        n_var=["FzMaxCaida", "tFzMaxCaida"]
+        n_result=["FzMaxCaida", "tFzMaxCaida"]
     )  # .round(3)
 
     # Redondea decimales
@@ -6041,11 +6080,9 @@ def calculate_results_EMG(
         if "axis" in daEvents.coords:
             daEvents = daEvents.drop_vars("axis")
         daResults = (
-            xr.full_like(
-                daEMG.isel(time=0).drop_vars(["time", "axis"]), np.nan
-            ).expand_dims(
+            xr.full_like(daEMG.isel(time=0, drop=True), np.nan).expand_dims(
                 {
-                    "n_var": [
+                    "n_result": [
                         "EMGPreIniMean",
                         "EMGExcMean",
                         "EMGConcMean",
@@ -6065,52 +6102,50 @@ def calculate_results_EMG(
         ).copy()
 
     daResults.name = "results"
-    del daResults.attrs["freq"]
-    del daResults.attrs["freq_ref"]
-    del daResults.attrs["units"]
+    daResults = daResults.drop_attrs()
 
     # Medias
-    daResults.loc[dict(n_var="EMGPreIniMean")] = trim_analysis_window(
-        daData=daEMG, daEvents=daEvents.sel(event=["preactiv", "iniMov"])
+    daResults.loc[dict(n_result="EMGPreIniMean")] = trim_analysis_window(
+        daData=daEMG, daEvents=daEvents.sel(n_event=["preactiv", "iniMov"])
     ).mean("time")
-    daResults.loc[dict(n_var="EMGExcMean")] = trim_analysis_window(
-        daEMG, daEvents.sel(event=["iniMov", "maxFlex"])
+    daResults.loc[dict(n_result="EMGExcMean")] = trim_analysis_window(
+        daEMG, daEvents.sel(n_event=["iniMov", "maxFlex"])
     ).mean("time")
-    daResults.loc[dict(n_var="EMGConcMean")] = trim_analysis_window(
-        daEMG, daEvents.sel(event=["maxFlex", "despegue"])
+    daResults.loc[dict(n_result="EMGConcMean")] = trim_analysis_window(
+        daEMG, daEvents.sel(n_event=["maxFlex", "despegue"])
     ).mean("time")
-    daResults.loc[dict(n_var="EMGVueloMean")] = trim_analysis_window(
-        daEMG, daEvents.sel(event=["despegue", "aterrizaje"])
+    daResults.loc[dict(n_result="EMGVueloMean")] = trim_analysis_window(
+        daEMG, daEvents.sel(n_event=["despegue", "aterrizaje"])
     ).mean("time")
 
     # Integrales
-    daResults.loc[dict(n_var="EMGPreIniInteg")] = integrate_full(
-        daEMG, daEvents=daEvents.sel(event=["preactiv", "iniMov"])
+    daResults.loc[dict(n_result="EMGPreIniInteg")] = integrate_full(
+        daEMG, daEvents=daEvents.sel(n_event=["preactiv", "iniMov"])
     )
-    daResults.loc[dict(n_var="EMGExcInteg")] = integrate_full(
-        daEMG, daEvents=daEvents.sel(event=["iniMov", "maxFlex"])
+    daResults.loc[dict(n_result="EMGExcInteg")] = integrate_full(
+        daEMG, daEvents=daEvents.sel(n_event=["iniMov", "maxFlex"])
     )
-    daResults.loc[dict(n_var="EMGConcInteg")] = integrate_full(
-        daEMG, daEvents=daEvents.sel(event=["maxFlex", "despegue"])
+    daResults.loc[dict(n_result="EMGConcInteg")] = integrate_full(
+        daEMG, daEvents=daEvents.sel(n_event=["maxFlex", "despegue"])
     )
-    daResults.loc[dict(n_var="EMGVueloInteg")] = integrate_full(
-        daEMG, daEvents=daEvents.sel(event=["despegue", "aterrizaje"])
+    daResults.loc[dict(n_result="EMGVueloInteg")] = integrate_full(
+        daEMG, daEvents=daEvents.sel(n_event=["despegue", "aterrizaje"])
     )
 
     # RMS
     from biomdp.general_processing_functions import RMS
 
-    daResults.loc[dict(n_var="EMGPreIniRMS")] = RMS(
-        daData=daEMG, daWindow=daEvents.sel(event=["preactiv", "iniMov"])
+    daResults.loc[dict(n_result="EMGPreIniRMS")] = RMS(
+        daData=daEMG, daWindow=daEvents.sel(n_event=["preactiv", "iniMov"])
     )
-    daResults.loc[dict(n_var="EMGExcRMS")] = RMS(
-        daData=daEMG, daWindow=daEvents.sel(event=["iniMov", "maxFlex"])
+    daResults.loc[dict(n_result="EMGExcRMS")] = RMS(
+        daData=daEMG, daWindow=daEvents.sel(n_event=["iniMov", "maxFlex"])
     )
-    daResults.loc[dict(n_var="EMGConcRMS")] = RMS(
-        daEMG, daWindow=daEvents.sel(event=["maxFlex", "despegue"])
+    daResults.loc[dict(n_result="EMGConcRMS")] = RMS(
+        daEMG, daWindow=daEvents.sel(n_event=["maxFlex", "despegue"])
     )
-    daResults.loc[dict(n_var="EMGVueloRMS")] = RMS(
-        daEMG, daWindow=daEvents.sel(event=["despegue", "aterrizaje"])
+    daResults.loc[dict(n_result="EMGVueloRMS")] = RMS(
+        daEMG, daWindow=daEvents.sel(n_event=["despegue", "aterrizaje"])
     )
 
     return daResults
@@ -6135,7 +6170,7 @@ class jump_forces_utils:
         self.jump_test = jump_test
         self.events = (
             xr.full_like(self.data.isel(time=0, drop=True), np.nan).expand_dims(
-                {"event": BASIC_EVENTS}, axis=-1
+                {"n_event": BASIC_EVENTS}, axis=-1
             )
         ).copy()
         self.weight = None
@@ -6247,16 +6282,16 @@ if __name__ == "__main__":
 
     daEventsForces = (
         xr.full_like(daCMJ.isel(time=0, drop=True), np.nan).expand_dims(
-            {"event": BASIC_EVENTS}, axis=-1
+            {"n_event": BASIC_EVENTS}, axis=-1
         )
     ).copy()
 
     # Estimates the start and end of the analysis adjustment
-    daEventsForces.loc[dict(event=["iniAnalisis", "finAnalisis"])] = (
+    daEventsForces.loc[dict(n_event=["iniAnalisis", "finAnalisis"])] = (
         guess_iniend_analysis(
             daData=daCMJ,
             jump_test="CMJ",
-            daEvents=daEventsForces.sel(event=["iniAnalisis", "finAnalisis"]),
+            daEvents=daEventsForces.sel(n_event=["iniAnalisis", "finAnalisis"]),
             window=[1.5, 1.2],
             threshold=30,
         )
@@ -6264,14 +6299,14 @@ if __name__ == "__main__":
 
     # ----Calculate weight
     # Windows for calculating the weight of each jump
-    daEventsForces.loc[dict(event=["iniPeso", "finPeso"])] = (
+    daEventsForces.loc[dict(n_event=["iniPeso", "finPeso"])] = (
         np.array([0.0, 0.5]) * daCMJ.freq
     )
 
     # First calculate the weight of the average of the selected stable zone
     daWeight_mean = calculate_weight(
         daData=daCMJ,
-        weight_window=daEventsForces.sel(event=["iniPeso", "finPeso"]),
+        weight_window=daEventsForces.sel(n_event=["iniPeso", "finPeso"]),
     )  # , show=True)
 
     # To fine-tune the weight, it first detects tentative events

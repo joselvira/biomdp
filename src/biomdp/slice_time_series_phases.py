@@ -19,14 +19,17 @@ import numpy as np
 import xarray as xr
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "5.1.1"
-__date__ = "21/04/2026"
+__version__ = "5.2.0"
+__date__ = "27/05/2026"
 
 
 """
 TODO: to make the cuts interpolating so that the phases start right at the criterion?
 
 Updates:
+    27/05/2026, v5.2.0
+        - Created 'return_data_at_events' function.
+    
     21/04/2026, v5.1.1
         - Corrected 'n_event' variable in trim_window function.
     
@@ -179,11 +182,12 @@ def detect_onset_offset(
             [],
             [],
         ],
-        output_core_dims=[["num_section", "event"]],
+        output_core_dims=[["num_section", "n_event"]],
         dataset_fill_value=np.nan,
         vectorize=True,
         dask="parallelized",
         # keep_attrs=True,
+        join="outer",
         kwargs=dict(kwargs_func_events),
     ).dropna(dim="num_section", how="all")
     """
@@ -202,8 +206,9 @@ def detect_onset_offset(
     )
     """
     events = events.assign_coords(
-        num_section=np.arange(len(events.num_section)), event=["ini", "end"]
+        num_section=np.arange(len(events.num_section)), n_event=["ini", "end"]
     )
+    events = events.drop_attrs()
 
     return events
 
@@ -570,6 +575,7 @@ def detect_events(
         dask="parallelized",
         # keep_attrs=True,
         kwargs=kwargs_func_events,
+        join="outer",
     )
     da = (
         da.assign_coords(num_event=range(len(da.num_event)))
@@ -983,6 +989,7 @@ def slice_time_series(
         vectorize=True,
         dask="parallelized",
         keep_attrs=True,
+        join="outer",
         # kwargs=args_func_events,
     )
     da = (
@@ -1232,6 +1239,7 @@ def slice_time_series2(
         dask="parallelized",
         keep_attrs=True,
         # kwargs=args_func_events,
+        join="outer",
     )
     da = (
         da.assign_coords(n_event=range(len(da.n_event)))
@@ -1281,6 +1289,18 @@ def trim_window(
 
     # TODO: TRY with da.pad
 
+    if window is not None:
+        if window > 0:
+            daIni = daEvents
+            daEnd = daEvents + window * daData.freq
+        else:
+            daIni = daEvents + window * daData.freq
+            daEnd = daEvents
+
+    else:
+        daIni = daEvents.isel(n_event=0)
+        daEnd = daEvents.isel(n_event=1)
+
     def __trim_window(data, ini, fin):
         d2 = np.full(data.shape, np.nan)
         if np.isnan(data).all() or np.isnan(ini) or np.isnan(fin):
@@ -1299,21 +1319,10 @@ def trim_window(
             pass
         return d2
 
-    if window is not None:
-        if window > 0:
-            daIni = daEvents
-            daFin = daEvents + window * daData.freq
-        else:
-            daIni = daEvents + window * daData.freq
-            daFin = daEvents
-
-    else:
-        daIni = daEvents.isel(n_event=0)
-        daFin = daEvents.isel(n_event=1)
     """
     data = daData[0,0,0,0,0,0,0]
     ini = daIni[0,0,0,0]
-    fin = daFin[0,0,0,0]
+    fin = daEnd[0,0,0,0]
     
     """
     daSliced = (
@@ -1321,12 +1330,13 @@ def trim_window(
             __trim_window,
             daData,
             daIni,
-            daFin,
+            daEnd,
             input_core_dims=[["time"], [], []],
             output_core_dims=[["time"]],
             exclude_dims=set(("time",)),
             dask="parallelized",
             vectorize=True,
+            join="outer",
         )
         .assign_coords({"time": daData.time})
         .dropna(dim="time", how="all")
@@ -1341,6 +1351,83 @@ def trim_window(
             daSliced[var].attrs = daData[var].attrs
 
     return daSliced
+
+
+def trim_window_masks(
+    daData: xr.DataArray,
+    daEvents: xr.DataArray | None = None,
+    window: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """
+    Experimental.
+    Mask with nans the begining and end according to a specified window.
+
+    Parameters
+    ----------
+    daData : xr.DataArray
+        The data to be trimmed.
+    daEvents : xr.DataArray, optional
+        The events that define the beginning of the window. If None, the window
+        is calculated from the first event.
+    window : xr.DataArray, optional
+        The window of time to trim from the beginning of the event.
+        If None, daEvents is expected to have 2 events (ini to end).
+        If not None, only one event should be passed to daEvents (ini to ini+window).
+
+    Returns
+    -------
+    mask : xr.DataArray
+        A mask with 1s in the trimmed values and 0s in the rest.
+    """
+
+    if daEvents.n_event.size > 2:
+        raise ValueError("daEvents must have 1 or 2 events.")
+
+    if window is not None:
+        if window > 0:
+            daIni = daEvents
+            daEnd = daEvents + window * daData.freq
+        else:
+            daIni = daEvents + window * daData.freq
+            daEnd = daEvents
+
+    else:
+        daIni = daEvents.isel(n_event=0)
+        daEnd = daEvents.isel(n_event=1)
+
+    time_indices = xr.DataArray(
+        range(daData.sizes["time"]), dims=["time"], coords={"time": daData.time}
+    )
+
+    mask = (time_indices >= daIni) & (time_indices < daEnd)
+
+    daData_sliced = daData.where(mask)
+    # daData_sliced.plot.line(x="time", col="ID", col_wrap=4, sharey=True)
+
+    # TODO: DELETE NANS AT THE BEGINING AND END
+
+    return daData_sliced
+
+
+def return_data_at_events(
+    daData: xr.DataArray,
+    daEvents: xr.DataArray | None = None,
+) -> xr.DataArray:
+    """
+    Assumes 'time' dimension and that daEvents contains the indices of the events.
+    Returns a DataArray with the values of daData at the event indices, and NaN elsewhere.
+    """
+    # Filter events inside  daDAta indexes
+    valid_events = daEvents.where((daEvents >= 0) & (daEvents < daData.sizes["time"]))
+
+    # Replace NaNs with 0 (safe index for filling) and convert to int
+    events_clean = valid_events.fillna(0).astype(int)
+
+    daData_return = daData.isel(time=events_clean)
+
+    # Return original NaNs
+    daData_return = daData_return.where(~valid_events.isnull())
+    return daData_return
 
 
 """

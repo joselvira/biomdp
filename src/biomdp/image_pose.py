@@ -23,6 +23,24 @@ __version__ = "1.6.4"
 __date__ = "29/04/2026"
 
 
+# import seaborn as sns
+import time
+import warnings
+from pathlib import Path
+from typing import List
+
+import matplotlib.pyplot as plt
+import numpy as np
+import xarray as xr
+
+try:
+    import cv2
+except Exception as e:
+    raise ImportError(
+        f"Could not load the “opencv” library. \nInstall with conda install conda-forge::opencv. {e}"
+    )
+
+
 """
 Updates:
 
@@ -113,23 +131,6 @@ Updates:
         - Perfeccionada función procesar imagen y vídeo.
     
 """
-
-# import seaborn as sns
-import time
-import warnings
-from pathlib import Path
-from typing import List
-
-import matplotlib.pyplot as plt
-import numpy as np
-import xarray as xr
-
-try:
-    import cv2
-except:
-    raise ImportError(
-        "Could not load the “opencv” library. \nInstall with conda install conda-forge::opencv."
-    )
 
 
 # =============================================================================

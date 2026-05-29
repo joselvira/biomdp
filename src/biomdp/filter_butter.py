@@ -13,12 +13,15 @@ Low or high pass function and bandpass function.
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.6.2"
-__date__ = "17/02/2025"
+__version__ = "1.6.3"
+__date__ = "07/05/2026"
 
 
 """
 Updates:
+    07/05/2026, v1.6.3
+        - Plot filtered over original.
+    
     05/03/2025, v1.6.2
         - Adapted to biomdp with translations.
     
@@ -230,8 +233,8 @@ def _plot(
     if isinstance(dat_orig, xr.DataArray):
 
         def _xr_plot(orig, filt):
-            plt.plot(filt, "b-", lw=0.8, label="Filt")
-            plt.plot(orig, "r:", lw=1, label="Original")
+            plt.plot(orig, "r:", lw=1, alpha=0.8, label="Original")
+            plt.plot(filt, "b-", lw=0.8, alpha=0.8, label="Filt")
             plt.legend()
             plt.show()
 

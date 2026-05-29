@@ -2,16 +2,33 @@
 # %% LOAD LIBRARIES
 # =============================================================================
 
+import time
+# from typing import List
+
+import numpy as np
+import scipy.integrate as integrate
+import xarray as xr
+
+
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.7.1"
-__date__ = "27/03/2026"
+__version__ = "0.8.0"
+__date__ = "14/05/2026"
 
 """
 Updates:
 
+    14/05/2026, v.0.8.0
+        - Included "calculate_angle_vectors_xr" function to calculate
+          the angle between two vectors in a xarray.
+
+    13/05/2026, v.0.7.3
+        - Replace "event" with "n_event".
+
+    01/05/2026, v0.7.2
+        - Integrate continuous deals with nans..
+    
     27/03/2026, v0.7.1
         - Corrected to keep the same length in dim and the first value 0.0.
-
 
     25/03/2026, v0.7.0
         - Included a function to calculate the distance across a dimension,
@@ -53,12 +70,6 @@ Updates:
 
 """
 
-import time
-# from typing import List
-
-import numpy as np
-import scipy.integrate as integrate
-import xarray as xr
 
 # =============================================================================
 # %% Functins
@@ -106,10 +117,10 @@ def integrate_window(
     if daWindow is None:
         daWindow = (
             xr.full_like(daData.isel(time=0).drop_vars("time"), np.nan).expand_dims(
-                {"event": ["ini", "fin"]}, axis=-1
+                {"n_event": ["ini", "fin"]}, axis=-1
             )
         ).copy()
-        daWindow.loc[dict(event=["ini", "fin"])] = np.array([0, len(daData.time)])
+        daWindow.loc[dict(n_event=["ini", "fin"])] = np.array([0, len(daData.time)])
 
     if daOffset is None:
         daOffset = (xr.full_like(daData.isel(time=0).drop_vars("time"), 0.0)).copy()
@@ -138,8 +149,8 @@ def integrate_window(
         """
         data = daData[0,0].data
         t = daData.time.data
-        ini = daWindow[0,0].isel(event=0).data
-        fin = daWindow[0,0].isel(event=1).data
+        ini = daWindow[0,0].isel(n_event=0).data
+        fin = daWindow[0,0].isel(n_event=1).data
         offset = daOffset[0,0].data
         """
         daInt = xr.apply_ufunc(
@@ -147,8 +158,8 @@ def integrate_window(
             daData,
             daData.time,
             daOffset,
-            daWindow.isel(event=0),
-            daWindow.isel(event=1),
+            daWindow.isel(n_event=0),
+            daWindow.isel(n_event=1),
             daData.ID,
             input_core_dims=[["time"], ["time"], [], [], [], []],
             # output_core_dims=[['time']],
@@ -159,10 +170,14 @@ def integrate_window(
 
     elif result_return == "continuous":
 
-        def _integrate_continuous(data, time, peso, ini, fin):
-            # if np.count_nonzero(~np.isnan(data))==0:
-            #     return np.nan
+        def _integrate_continuous(data, time, peso, ini, fin, id, rep):
+            # print(id, rep)
             dat = np.full(len(data), np.nan)
+
+            if np.count_nonzero(~np.isnan(data)) == 0 or np.isnan(peso):
+                # print("nan")
+                return dat
+
             try:
                 ini = int(ini)
                 fin = int(fin)
@@ -189,13 +204,15 @@ def integrate_window(
             daData,
             daData.time,
             daOffset,
-            daWindow.isel(event=0),
-            daWindow.isel(event=1),
-            input_core_dims=[["time"], ["time"], [], [], []],
+            daWindow.isel(n_event=0),
+            daWindow.isel(n_event=1),
+            daData.ID,
+            daData.repe,
+            input_core_dims=[["time"], ["time"], [], [], [], [], []],
             output_core_dims=[["time"]],
             # exclude_dims=set(('time',)),
             vectorize=True,
-            join="exact",
+            join="outer",
         )
 
     else:
@@ -239,10 +256,10 @@ def RMS(daData: xr.DataArray, daWindow: xr.DataArray | None = None) -> xr.DataAr
     if daWindow is None:
         daWindow = (
             xr.full_like(daData.isel(time=0).drop_vars("time"), np.nan).expand_dims(
-                {"event": ["ini", "fin"]}, axis=-1
+                {"n_event": ["ini", "fin"]}, axis=-1
             )
         ).copy()
-        daWindow.loc[dict(event=["ini", "fin"])] = np.array([0, len(daData.time)])
+        daWindow.loc[dict(n_event=["ini", "fin"])] = np.array([0, len(daData.time)])
 
     def _rms(data, ini, fin):
         if np.count_nonzero(~np.isnan(data)) == 0:
@@ -253,15 +270,15 @@ def RMS(daData: xr.DataArray, daWindow: xr.DataArray | None = None) -> xr.DataAr
 
     """
     data = daData[0,0,0].data
-    ini = daWindow[0,0,0].sel(event='ini').data
-    fin = daWindow[0,0,0].sel(event='fin').data
+    ini = daWindow[0,0,0].sel(n_event='ini').data
+    fin = daWindow[0,0,0].sel(n_event='fin').data
     """
     # daRecortado = recorta_ventana_analisis(daData, daWindow)
     daRMS = xr.apply_ufunc(
         _rms,
         daData,
-        daWindow.isel(event=0),
-        daWindow.isel(event=1),
+        daWindow.isel(n_event=0),
+        daWindow.isel(n_event=1),
         input_core_dims=[["time"], [], []],
         vectorize=True,
     )
@@ -693,6 +710,88 @@ def calculate_distance_dim(da: xr.DataArray, dim: str = "time") -> xr.DataArray:
     return daResult
 
 
+def _calculate_angle_np(a, b, c, d):
+    """
+    Calcula el ángulo entre vectores (a→b) y (c→d) para arrays numpy.
+
+    Parámetros
+    ----------
+    a, b, c, d : np.ndarray, shape (..., 3)
+        La dimensión final es la de las coordenadas (x, y, z).
+        Las dimensiones anteriores se vectorizan automáticamente.
+
+    Returns
+    -------
+    angle : np.ndarray, shape (...,)
+        Ángulo en grados.
+    """
+    v1 = a - b  # vector 1: de b hacia a
+    v2 = d - c  # vector 2: de c hacia d
+    cross = np.cross(v1, v2)  # shape (..., 3)
+    dot = np.einsum("...i,...i->...", v1, v2)  # shape (...)
+    # norm del producto vectorial (módulo del seno del ángulo * |v1|*|v2|)
+    cross_norm = np.linalg.norm(cross, axis=-1)  # shape (...)
+    radians = np.arctan2(cross_norm, dot)
+    angle = np.abs(np.rad2deg(radians))
+    # Normaliza a [0, 180]
+    angle = np.where(angle > 180.0, 360.0 - angle, angle)
+    return angle
+
+
+def calculate_angle_vectors_xr(daPoints: xr.DataArray) -> xr.DataArray:
+    """
+    Calcula el ángulo entre dos vectores 3D definidos por 3 o 4 marcadores,
+    vectorizado sobre todas las dimensiones excepto 'axis' y 'n_marker'.
+    El DataArray daPoints debe tener al menos las dimensiones:
+      - 'n_marker'  : 3 o 4 puntos
+      - 'axis'      : coordenadas ('x', 'y', 'z')
+
+    Puede tener además cualquier combinación de:
+      - 'time', 'ID', 'repe', etc.
+
+    Returns
+    -------
+    xr.DataArray sin las dimensiones 'n_marker' y 'axis', con el ángulo en grados.
+    """
+    n_markers = len(daPoints.n_marker)
+    # Selecciona los 4 puntos (3 coords cada uno)
+    if n_markers == 3:
+        a = daPoints.isel(n_marker=0)  # primer punto del vector 1
+        b = daPoints.isel(n_marker=1)  # segundo punto del vector 1
+        c = daPoints.isel(n_marker=1)  # primer punto del vector 2 (compartido)
+        d = daPoints.isel(n_marker=2)  # segundo punto del vector 2
+    elif n_markers == 4:
+        a = daPoints.isel(n_marker=0)
+        b = daPoints.isel(n_marker=1)
+        c = daPoints.isel(n_marker=2)
+        d = daPoints.isel(n_marker=3)
+    else:
+        raise ValueError(f"Se esperan 3 o 4 marcadores, recibido: {n_markers}")
+    # apply_ufunc vectoriza sobre todas las dims salvo 'axis' (core dim)
+    # input_core_dims=[['axis'], ...] → cada array de entrada tiene shape (..., 3)
+    # output_core_dims=[[]] → la salida no tiene 'axis', solo las dims vectorizadas
+    da_angle = xr.apply_ufunc(
+        _calculate_angle_np,
+        a,
+        b,
+        c,
+        d,
+        input_core_dims=[["axis"], ["axis"], ["axis"], ["axis"]],
+        output_core_dims=[[]],
+        # vectorize=False porque numpy ya vectoriza internamente sobre (..., 3)
+        vectorize=False,
+        dask="parallelized",  # compatible con dask si se usa
+        output_dtypes=[float],
+    )
+    da_angle.attrs = {
+        "units": "deg",
+        "freq": daPoints.freq,
+        "long_name": "Angle between vectors",
+    }
+    da_angle.name = "angle"
+    return da_angle
+
+
 # =============================================================================
 # %% TESTS
 # =============================================================================
@@ -763,11 +862,11 @@ if __name__ == "__main__":
     # =============================================================================
     daWindow = (
         xr.full_like(var_a.isel(time=0).drop_vars("time"), np.nan).expand_dims(
-            {"event": ["ini", "fin"]}, axis=-1
+            {"n_event": ["ini", "fin"]}, axis=-1
         )
     ).copy()
-    daWindow.loc[dict(event=["ini", "fin"])] = np.array([100, -300])
-    daWindow.loc[dict(event=["ini", "fin"], ID="00")] = np.array([0, len(var_a.time)])
+    daWindow.loc[dict(n_event=["ini", "fin"])] = np.array([100, -300])
+    daWindow.loc[dict(n_event=["ini", "fin"], ID="00")] = np.array([0, len(var_a.time)])
 
     # Discrete
     integrate_window(var_a, result_return="discrete")
@@ -790,11 +889,11 @@ if __name__ == "__main__":
     # =============================================================================
     daWindow = (
         xr.full_like(var_a.isel(time=0).drop_vars("time"), np.nan).expand_dims(
-            {"event": ["ini", "fin"]}, axis=-1
+            {"n_event": ["ini", "fin"]}, axis=-1
         )
     ).copy()
-    daWindow.loc[dict(event=["ini", "fin"])] = np.array([100, 300])
-    daWindow.loc[dict(event=["ini", "fin"], ID="00")] = np.array([0, len(var_a.time)])
+    daWindow.loc[dict(n_event=["ini", "fin"])] = np.array([100, 300])
+    daWindow.loc[dict(n_event=["ini", "fin"], ID="00")] = np.array([0, len(var_a.time)])
 
     RMS(var_a, daWindow)
 

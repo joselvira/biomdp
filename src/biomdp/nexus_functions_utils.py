@@ -1902,7 +1902,7 @@ def split_trajectories_sides(daData) -> xr.DataArray:
                )"""
     daData = xr.concat(
         [L, R],
-        pd.Index(["L", "R"], name="side"),  # compat='no_conflicts'
+        pd.Index(["L", "R"], name="side"), join='outer',  # compat='no_conflicts'
     )  # .transpose('ID', 'n_var', 'side', 'axis', 'time')
     # daData.isel(ID=0, axis=0).sel(n_var='AngBiela').plot.line(x='time')
 

@@ -15,6 +15,7 @@ __author__ = "Jose L. L. Elvira"
 __version__ = "1.1.6"
 __date__ = "10/03/2025"
 
+# TODO: INCLUDE HORIZONTAL HISTOGRAM ON THE RIGHT
 
 """
 Updates:
