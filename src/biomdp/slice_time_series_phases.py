@@ -19,14 +19,17 @@ import numpy as np
 import xarray as xr
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "5.2.0"
-__date__ = "27/05/2026"
+__version__ = "5.2.1"
+__date__ = "23/06/2026"
 
 
 """
 TODO: to make the cuts interpolating so that the phases start right at the criterion?
 
 Updates:
+    23/06/2026, v5.2.1
+        - More control of event errors in 'trim_window' function.
+    
     27/05/2026, v5.2.0
         - Created 'return_data_at_events' function.
     
@@ -1274,7 +1277,7 @@ def trim_window(
         The events that define the beginning of the window. If None, the window
         is calculated from the first event.
     window : xr.DataArray, optional
-        The window of time to trim from the beginning of the event.
+        The window of time in seconds to trim from the beginning of the event.
         If None, daEvents is expected to have 2 events (ini to end).
         If not None, only one event should be passed to daEvents (ini to ini+window).
 
@@ -1290,6 +1293,8 @@ def trim_window(
     # TODO: TRY with da.pad
 
     if window is not None:
+        if len(daEvents.n_event) != 1:
+            raise ValueError("daEvents must contain 1 event if window is not None.")
         if window > 0:
             daIni = daEvents
             daEnd = daEvents + window * daData.freq
@@ -1298,6 +1303,8 @@ def trim_window(
             daEnd = daEvents
 
     else:
+        if len(daEvents.n_event) != 2:
+            raise ValueError("daEvents must contain 2 events if window is None.")
         daIni = daEvents.isel(n_event=0)
         daEnd = daEvents.isel(n_event=1)
 

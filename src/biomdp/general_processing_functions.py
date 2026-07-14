@@ -11,12 +11,14 @@ import xarray as xr
 
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.8.0"
-__date__ = "14/05/2026"
+__version__ = "0.8.1"
+__date__ = "25/06/2026"
 
 """
 Updates:
-
+    25/06/2026, v.0.8.1
+        - Corrected "calculate_angle_vectors_xr" function to work in 2D and 3D.
+        
     14/05/2026, v.0.8.0
         - Included "calculate_angle_vectors_xr" function to calculate
           the angle between two vectors in a xarray.
@@ -710,35 +712,37 @@ def calculate_distance_dim(da: xr.DataArray, dim: str = "time") -> xr.DataArray:
     return daResult
 
 
-def _calculate_angle_np(a, b, c, d):
-    """
-    Calcula el ángulo entre vectores (a→b) y (c→d) para arrays numpy.
-
-    Parámetros
-    ----------
-    a, b, c, d : np.ndarray, shape (..., 3)
-        La dimensión final es la de las coordenadas (x, y, z).
-        Las dimensiones anteriores se vectorizan automáticamente.
-
-    Returns
-    -------
-    angle : np.ndarray, shape (...,)
-        Ángulo en grados.
-    """
+def _calculate_angle_np(a, b, c, d, ang_scale=180):
     v1 = a - b  # vector 1: de b hacia a
     v2 = d - c  # vector 2: de c hacia d
-    cross = np.cross(v1, v2)  # shape (..., 3)
+    # 1. Calcular el producto cruzado respetando el signo en 2D
+    if v1.shape[-1] == 2:
+        # En 2D, el producto cruzado es un escalar con signo (determinante)
+        cross = v1[..., 0] * v2[..., 1] - v1[..., 1] * v2[..., 0]
+    else:
+        # En 3D, al no haber un plano de referencia, usamos la norma (siempre >= 0)
+        cross_vec = np.cross(v1, v2)
+        cross = np.linalg.norm(cross_vec, axis=-1)
     dot = np.einsum("...i,...i->...", v1, v2)  # shape (...)
-    # norm del producto vectorial (módulo del seno del ángulo * |v1|*|v2|)
-    cross_norm = np.linalg.norm(cross, axis=-1)  # shape (...)
-    radians = np.arctan2(cross_norm, dot)
-    angle = np.abs(np.rad2deg(radians))
-    # Normaliza a [0, 180]
-    angle = np.where(angle > 180.0, 360.0 - angle, angle)
+
+    # 2. Calcular el ángulo en grados (con signo si es en 2D)
+    radians = np.arctan2(cross, dot)
+    angle = np.rad2deg(radians)
+    # 3. Normalizar según la escala deseada
+    if ang_scale == 180:
+        # Escala [0, 180] (ángulo absoluto/sin signo)
+        angle = np.abs(angle)
+    elif ang_scale == 360:
+        # Escala [0, 360] (convierte ángulos negativos a su equivalente positivo)
+        angle = np.where(angle < 0, angle + 360.0, angle)
+    elif ang_scale in ["signed", -180]:
+        # Escala [-180, 180] (ya viene dada por np.arctan2)
+        pass
+
     return angle
 
 
-def calculate_angle_vectors_xr(daPoints: xr.DataArray) -> xr.DataArray:
+def calculate_angle_vectors_xr(daPoints: xr.DataArray, ang_scale=180) -> xr.DataArray:
     """
     Calcula el ángulo entre dos vectores 3D definidos por 3 o 4 marcadores,
     vectorizado sobre todas las dimensiones excepto 'axis' y 'n_marker'.
@@ -748,13 +752,19 @@ def calculate_angle_vectors_xr(daPoints: xr.DataArray) -> xr.DataArray:
 
     Puede tener además cualquier combinación de:
       - 'time', 'ID', 'repe', etc.
+    ang_scale:
+      - 180: Escala [0, 180] (ángulo absoluto/sin signo)
+      - 360: Escala [0, 360] (convierte ángulos negativos a su equivalente positivo)
+      - "signed": Escala [-180, 180] (ya viene dada por np.arctan2)
+      - -180: Escala [-180, 180] (ya viene dada por np.arctan2)
+
 
     Returns
     -------
     xr.DataArray sin las dimensiones 'n_marker' y 'axis', con el ángulo en grados.
     """
     n_markers = len(daPoints.n_marker)
-    # Selecciona los 4 puntos (3 coords cada uno)
+    # Selecciona los 4 puntos (2 o 3 coords cada uno)
     if n_markers == 3:
         a = daPoints.isel(n_marker=0)  # primer punto del vector 1
         b = daPoints.isel(n_marker=1)  # segundo punto del vector 1
@@ -778,9 +788,9 @@ def calculate_angle_vectors_xr(daPoints: xr.DataArray) -> xr.DataArray:
         d,
         input_core_dims=[["axis"], ["axis"], ["axis"], ["axis"]],
         output_core_dims=[[]],
-        # vectorize=False porque numpy ya vectoriza internamente sobre (..., 3)
+        kwargs={"ang_scale": ang_scale},  # Pasado como kwargs de manera limpia
         vectorize=False,
-        dask="parallelized",  # compatible con dask si se usa
+        dask="parallelized",
         output_dtypes=[float],
     )
     da_angle.attrs = {

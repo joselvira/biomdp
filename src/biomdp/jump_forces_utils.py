@@ -6083,18 +6083,18 @@ def calculate_results_EMG(
             xr.full_like(daEMG.isel(time=0, drop=True), np.nan).expand_dims(
                 {
                     "n_result": [
-                        "EMGPreIniMean",
-                        "EMGExcMean",
-                        "EMGConcMean",
-                        "EMGVueloMean",
-                        "EMGPreIniInteg",
-                        "EMGExcInteg",
-                        "EMGConcInteg",
-                        "EMGVueloInteg",
-                        "EMGPreIniRMS",
-                        "EMGExcRMS",
-                        "EMGConcRMS",
-                        "EMGVueloRMS",
+                        "EMG_PreIni_Mean",
+                        "EMG_Exc_Mean",
+                        "EMG_Conc_Mean",
+                        "EMG_Vuelo_Mean",
+                        "EMG_PreIni_Integ",
+                        "EMG_Exc_Integ",
+                        "EMG_Conc_Integ",
+                        "EMG_Vuelo_Integ",
+                        "EMG_PreIni_RMS",
+                        "EMG_Exc_RMS",
+                        "EMG_Conc_RMS",
+                        "EMG_Vuelo_RMS",
                     ]
                 },
                 axis=-1,
@@ -6105,46 +6105,46 @@ def calculate_results_EMG(
     daResults = daResults.drop_attrs()
 
     # Medias
-    daResults.loc[dict(n_result="EMGPreIniMean")] = trim_analysis_window(
+    daResults.loc[dict(n_result="EMG_PreIni_Mean")] = trim_analysis_window(
         daData=daEMG, daEvents=daEvents.sel(n_event=["preactiv", "iniMov"])
     ).mean("time")
-    daResults.loc[dict(n_result="EMGExcMean")] = trim_analysis_window(
+    daResults.loc[dict(n_result="EMG_Exc_Mean")] = trim_analysis_window(
         daEMG, daEvents.sel(n_event=["iniMov", "maxFlex"])
     ).mean("time")
-    daResults.loc[dict(n_result="EMGConcMean")] = trim_analysis_window(
+    daResults.loc[dict(n_result="EMG_Conc_Mean")] = trim_analysis_window(
         daEMG, daEvents.sel(n_event=["maxFlex", "despegue"])
     ).mean("time")
-    daResults.loc[dict(n_result="EMGVueloMean")] = trim_analysis_window(
+    daResults.loc[dict(n_result="EMG_Vuelo_Mean")] = trim_analysis_window(
         daEMG, daEvents.sel(n_event=["despegue", "aterrizaje"])
     ).mean("time")
 
     # Integrales
-    daResults.loc[dict(n_result="EMGPreIniInteg")] = integrate_full(
+    daResults.loc[dict(n_result="EMG_PreIni_Integ")] = integrate_full(
         daEMG, daEvents=daEvents.sel(n_event=["preactiv", "iniMov"])
     )
-    daResults.loc[dict(n_result="EMGExcInteg")] = integrate_full(
+    daResults.loc[dict(n_result="EMG_Exc_Integ")] = integrate_full(
         daEMG, daEvents=daEvents.sel(n_event=["iniMov", "maxFlex"])
     )
-    daResults.loc[dict(n_result="EMGConcInteg")] = integrate_full(
+    daResults.loc[dict(n_result="EMG_Conc_Integ")] = integrate_full(
         daEMG, daEvents=daEvents.sel(n_event=["maxFlex", "despegue"])
     )
-    daResults.loc[dict(n_result="EMGVueloInteg")] = integrate_full(
+    daResults.loc[dict(n_result="EMG_Vuelo_Integ")] = integrate_full(
         daEMG, daEvents=daEvents.sel(n_event=["despegue", "aterrizaje"])
     )
 
     # RMS
     from biomdp.general_processing_functions import RMS
 
-    daResults.loc[dict(n_result="EMGPreIniRMS")] = RMS(
+    daResults.loc[dict(n_result="EMG_PreIni_RMS")] = RMS(
         daData=daEMG, daWindow=daEvents.sel(n_event=["preactiv", "iniMov"])
     )
-    daResults.loc[dict(n_result="EMGExcRMS")] = RMS(
+    daResults.loc[dict(n_result="EMG_Exc_RMS")] = RMS(
         daData=daEMG, daWindow=daEvents.sel(n_event=["iniMov", "maxFlex"])
     )
-    daResults.loc[dict(n_result="EMGConcRMS")] = RMS(
+    daResults.loc[dict(n_result="EMG_Conc_RMS")] = RMS(
         daEMG, daWindow=daEvents.sel(n_event=["maxFlex", "despegue"])
     )
-    daResults.loc[dict(n_result="EMGVueloRMS")] = RMS(
+    daResults.loc[dict(n_result="EMG_Vuelo_RMS")] = RMS(
         daEMG, daWindow=daEvents.sel(n_event=["despegue", "aterrizaje"])
     )
 

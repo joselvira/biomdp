@@ -19,8 +19,8 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.6.4"
-__date__ = "29/04/2026"
+__version__ = "1.6.5"
+__date__ = "01/06/2026"
 
 
 # import seaborn as sns
@@ -44,8 +44,11 @@ except Exception as e:
 """
 Updates:
 
+    01/06/2026, v1.6.5
+        - Corrected 'num_frame' parameter in 'process_video' function when there is None in the list.
+    
     29/04/2026, v1.6.4
-        -Implemented 'sort_people_by' 'size' parameter in process_video.
+        - Implemented 'sort_people_by' 'size' parameter in process_video.
     
     20/04/2026, v1.6.3
         - Included parameter 'min_bbox_size' in process_video to filter detections by bounding box size before tracking.
@@ -228,6 +231,24 @@ MODEL_STICK_UNIONS = [
     ("heel_R", "toe_R"),
 ]
 
+MODEL_STICK_UNIONS_SIDE = [
+    (("shoulder", "L"), ("shoulder", "R")),
+    (("shoulder", "L"), ("elbow", "L")),
+    (("elbow", "L"), ("wrist", "L")),
+    (("shoulder", "R"), ("elbow", "R")),
+    (("elbow", "R"), ("wrist", "R")),
+    (("hip", "L"), ("hip", "R")),
+    (("hip", "L"), ("shoulder", "L")),
+    (("hip", "R"), ("shoulder", "R")),
+    (("hip", "L"), ("knee", "L")),
+    (("knee", "L"), ("ankle", "L")),
+    (("heel", "L"), ("toe", "L")),
+    (("hip", "R"), ("knee", "R")),
+    (("knee", "R"), ("ankle", "R")),
+    (("heel", "R"), ("toe", "R")),
+]
+
+
 # from halpe26: https://github.com/open-mmlab/mmpose/blob/dev-1.x/configs/_base_/datasets/halpe26.py
 # https://github.com/Fang-Haoshu/Halpe-FullBody
 N_MARKERS_RTMLIB26 = [
@@ -282,7 +303,7 @@ def draw_model_on_image(
         except:  # in case of nan
             pass
 
-    for marker in _daMarkers.marker:
+    for marker in _daMarkers.n_marker:
         try:
             if marker.str.endswith("_L"):
                 marker_color = (255, 0, 0, 0.5)
@@ -544,7 +565,7 @@ def calculate_angle(points):
     return round(angle)
 
 
-def calculate_angle_np(points):
+def calculate_angle_np(points, ang_scale=180):
     # TODO: INCLUDE IMAGE DIMENSIONS TO SCALE?
     if len(points) == 3:
         a = points[0]  # np.array([points[0].x, points[0].y])
@@ -560,9 +581,18 @@ def calculate_angle_np(points):
     radians = np.arctan2(np.linalg.norm(np.cross(a - b, d - c)), np.dot(a - b, d - c))
     angle = np.abs(np.rad2deg(radians))
 
-    if angle > 180.0:
+    if ang_scale == 180:
+        # Escala [0, 180] (ángulo absoluto/sin signo)
+        angle = np.abs(angle)
+    elif ang_scale == 360:
+        # Escala [0, 360] (convierte ángulos negativos a su equivalente positivo)
+        angle = np.where(angle < 0, angle + 360.0, angle)
+    elif ang_scale in ["signed", -180]:
+        # Escala [-180, 180] (ya viene dada por np.arctan2)
+        pass
+    """if angle > 180.0:
         angle = 360 - angle
-
+    """
     return angle
 
 
@@ -1570,11 +1600,17 @@ def process_video_rtmlib(
     first_frame = 0
     last_frame = num_frames - 1
     if isinstance(num_frame, list):
-        first_frame = max(0, num_frame[0])
-        last_frame = min(num_frame[1], num_frames - 1)
+        if num_frame[0] is not None:
+            first_frame = max(0, num_frame[0])
+        else:
+            first_frame = 0
+        if num_frame[1] is not None:
+            last_frame = min(num_frame[1], num_frames - 1)
+        else:
+            last_frame = num_frames - 1
     if isinstance(num_frame, int):
         first_frame = num_frame
-        last_frame = num_frame
+        last_frame = num_frame + 1
 
     if last_frame > num_frames or first_frame < 0:
         raise ValueError(
@@ -2727,12 +2763,31 @@ def process_image_from_video(
     fv: int = 30,
     n_vars_load: List[str] | None = None,
     num_frame: int | None = None,
+    resize_factor: float = 1.0,
+    rotate: int | None = None,
     save_frame_file: bool | Path | None = None,
     show: bool | str = False,
     # show_every_frames: int = 10,
     radius: int = 2,
     verbose: bool = False,
     engine="rtmlib",  # "mediapipe", "rtmlib",
+    pose_tracker: str | None = None,
+    mode: str = "balanced",
+    pose_model_name: str = "body_with_feet",
+    pose_model=None,
+    det_frequency: int = 10,
+    device: str = "cuda",  # cpu, cuda,
+    backend: str = "onnxruntime",  # opencv, onnxruntime, openvino
+    tracking_mode: str = "sports2d",  # "sports2d", "rtmlib"
+    tracking: bool = False,
+    max_distance: int = 250,  # distance to avoid changes detecting people
+    sort_people_by: str | None = None,  # "size" "highest_likelihood",
+    max_num_people: int | None = None,  # None for no limit
+    min_bbox_size: list[int]
+    | None = None,  # (width, height) in pixels, None for no limit
+    keypoint_likelihood_threshold=0.3,
+    average_likelihood_threshold=0.5,
+    keypoint_number_threshold=0.3,
     **kwargs,
 ) -> xr.DataArray:
     """
@@ -2906,37 +2961,25 @@ def process_image_from_video(
 
     elif engine == "rtmlib":
         try:
+            from anytree import RenderTree
             from Pose2Sim.common import (
+                bbox_xyxy_compute,
                 draw_bounding_box,
                 draw_keypts,
                 draw_skel,
+                sort_people_rtmlib,
                 sort_people_sports2d,
             )
             from Pose2Sim.skeletons import HALPE_26
             from rtmlib import BodyWithFeet, PoseTracker, draw_bbox, draw_skeleton
-            from Sports2D.process import setup_pose_tracker
+            from Sports2D.process import setup_model_class_mode, setup_pose_tracker
+            from rtmlib.tools.object_detection.post_processings import nms
         except ImportError:
             raise ImportError(
                 "rtmlib, Sports2D or Pose2Sim are not installed. Please install it with 'pip install sports2d Pose2Sim'"  # or 'pip install rtmlib -i https://pypi.org/simple'."
             )
 
-        # Precreate Dataarray
-        coords = {
-            "time": np.arange(1),  # / fv,
-            "n_marker": N_MARKERS_RTMLIB26,
-            "axis": ["x", "y", "score"],
-        }
-        daMarkers = (
-            xr.DataArray(
-                data=np.full((1, len(N_MARKERS_RTMLIB26), 3), np.nan),
-                dims=coords.keys(),
-                coords=coords,
-            )
-            .expand_dims({"ID": [file.stem]})
-            # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
-            .copy()
-        )  # .transpose("n_marker", "axis", "time")
-
+        """
         # Default values
         mode = "balanced"
         pose_tracker = None
@@ -2966,6 +3009,7 @@ def process_image_from_video(
         model_name = "HALPE_26"
         pose_model_name = "body_with_feet"
         pose_model = eval(model_name)
+        """
         openpose_skeleton = False  # True for openpose-style, False for mmpose-style
 
         fontSize = 0.4
@@ -3001,15 +3045,34 @@ def process_image_from_video(
         ]
 
         if pose_tracker is None:
-            pose_tracker = PoseTracker(
-                BodyWithFeet,
-                det_frequency=det_frequency,
-                to_openpose=False,  # True for openpose-style, False for mmpose-style
-                mode=mode,  # balanced, performance, lightweight
-                backend="openvino",  # opencv, onnxruntime, openvino
-                device="cpu",
-                tracking=False,
-            )
+            print("pose_tracker updated")
+            pose_model, ModelClass, mode = setup_model_class_mode(pose_model_name, mode)
+            try:
+                pose_tracker = setup_pose_tracker(
+                    ModelClass,
+                    det_frequency=det_frequency,
+                    # to_openpose=False,  # True for openpose-style, False for mmpose-style
+                    mode=mode,  # balanced, performance, lightweight
+                    tracking=tracking,
+                    backend=backend,  # opencv, onnxruntime, openvino
+                    device=device,
+                )
+            except Exception as e:  # for multi-threading
+                try:
+                    time.sleep(3)
+                    pose_tracker = setup_pose_tracker(
+                        ModelClass,
+                        det_frequency=det_frequency,
+                        # to_openpose=False,  # True for openpose-style, False for mmpose-style
+                        mode=mode,  # balanced, performance, lightweight
+                        tracking=tracking,
+                        backend=backend,  # opencv, onnxruntime, openvino
+                        device=device,
+                    )
+                except Exception as e:
+                    raise ValueError(
+                        f"Error: Pose estimation failed. Check that pose_model ({pose_model}) and mode ({mode}) are valid."
+                    )
         # body_feet_tracker = setup_pose_tracker(
         #     BodyWithFeet,
         #     det_frequency=det_frequency,
@@ -3020,16 +3083,75 @@ def process_image_from_video(
         #     tracking=False,
         # )
 
-        h, w = img.shape[:2]
+        # Retrieve keypoint names from model
+        keypoints_ids = [
+            node.id for _, _, node in RenderTree(pose_model) if node.id is not None
+        ]
+        keypoints_names = [
+            node.name for _, _, node in RenderTree(pose_model) if node.id is not None
+        ]
+        kpt_id_max = max(keypoints_ids) + 1
 
-        keypoints, scores = pose_tracker(img)
+        try:
+            detected_people, confirmed_people = 0, 0  # num of people in frame
+            h, w = img.shape[:2]
 
-        # Track poses across frames
-        if "prev_keypoints" not in locals():
-            prev_keypoints = keypoints
-        prev_keypoints, keypoints, scores = sort_people_sports2d(
-            prev_keypoints, keypoints, scores=scores
-        )
+            keypoints, scores = pose_tracker(img)
+
+            frame_shape = img.shape
+            mask_scores = np.mean(scores, axis=1) > 0.1
+
+            likely_keypoints = np.where(
+                mask_scores[:, np.newaxis, np.newaxis], keypoints, np.nan
+            )
+            likely_scores = np.where(mask_scores[:, np.newaxis], scores, np.nan)
+            likely_bboxes = bbox_xyxy_compute(frame_shape, likely_keypoints, padding=0)
+            score_likely_bboxes = np.nanmean(likely_scores, axis=1)
+
+            valid_indices = np.where(~np.isnan(score_likely_bboxes))[0]
+            if len(valid_indices) > 0:
+                valid_bboxes = likely_bboxes[valid_indices]
+                valid_scores = score_likely_bboxes[valid_indices]
+                keep_valid = nms(valid_bboxes, valid_scores, nms_thr=0.45)
+                keep = valid_indices[keep_valid]
+            else:
+                keep = []
+            keypoints, scores = likely_keypoints[keep], likely_scores[keep]
+
+            detected_people = len(keep)
+
+            # Filter by bbox size before tracking
+            if min_bbox_size is not None and len(keep) > 0:
+                bbox_sizes = likely_bboxes[keep, 2:] - likely_bboxes[keep, :2]
+                keep_size = np.where(
+                    (bbox_sizes[:, 0] >= min_bbox_size[0])
+                    & (bbox_sizes[:, 1] >= min_bbox_size[1])
+                )[0]
+                keep = keep[keep_size]
+                keypoints, scores = keypoints[keep_size], scores[keep_size]
+
+            # If all detections were filtered out, fill with NaN
+            if len(keypoints) == 0:
+                keypoints = np.full((1, kpt_id_max, 2), fill_value=np.nan)
+                scores = np.full((1, kpt_id_max), fill_value=np.nan)
+
+            # Track poses across frames (default sports2d)
+            if tracking_mode == "sports2d":
+                if "prev_keypoints" not in locals():
+                    prev_keypoints = keypoints
+                prev_keypoints, keypoints, scores = sort_people_sports2d(
+                    prev_keypoints, keypoints, scores=scores, max_dist=max_distance
+                )
+            elif tracking_mode == "rtmlib":
+                if "prev_keypoints" not in locals():
+                    prev_keypoints = keypoints
+                prev_keypoints, keypoints, scores = sort_people_rtmlib(
+                    pose_tracker, keypoints, scores
+                )
+        except Exception as e:
+            print(f"Error processing frame {num_frame}: {e}")
+            keypoints = np.full((1, kpt_id_max, 2), fill_value=np.nan)
+            scores = np.full((1, kpt_id_max), fill_value=np.nan)
 
         # Process coordinates and compute angles
         valid_X, valid_Y, valid_scores = [], [], []
@@ -3065,15 +3187,48 @@ def process_image_from_video(
                 person_X = np.full_like(person_X, np.nan)
                 person_Y = np.full_like(person_Y, np.nan)
                 person_scores = np.full_like(person_scores, np.nan)
+            else:
+                confirmed_people += 1
 
             # Check whether the person is looking to the left or right
 
             # person_X_flipped = person_X.copy()
-            if not np.isnan(person_scores).all():
-                valid_X.append(person_X)
-                valid_Y.append(person_Y)
-                valid_scores.append(person_scores)
+            # if not np.isnan(person_scores).all():
+            valid_X.append(person_X)
+            valid_Y.append(person_Y)
+            valid_scores.append(person_scores)
 
+        if sort_people_by:
+            if sort_people_by == "size":
+                # order of people by size (larger to smaller)
+                sorted = np.argsort(
+                    np.nanmax(np.nan_to_num(valid_Y), axis=1)
+                    - np.nanmin(np.nan_to_num(valid_Y), axis=1)
+                )[::-1]
+
+                if sorted[0] != 0:
+                    _X = np.take_along_axis(
+                        np.asarray(valid_X), sorted[:, np.newaxis], axis=0
+                    )
+                    _Y = np.take_along_axis(
+                        np.asarray(valid_Y), sorted[:, np.newaxis], axis=0
+                    )
+                    _scores = np.take_along_axis(
+                        np.asarray(valid_scores), sorted[:, np.newaxis], axis=0
+                    )
+
+                    for i in range(len(sorted)):
+                        valid_X[i] = _X[i]
+                        valid_Y[i] = _Y[i]
+                        valid_scores[i] = _scores[i]
+
+        if max_num_people:
+            valid_X = valid_X[:max_num_people]
+            valid_Y = valid_Y[:max_num_people]
+            valid_scores = valid_scores[:max_num_people]
+            confirmed_people = min(max_num_people, confirmed_people)
+
+        """
         if sort_people_by_size:
             # order of persons by size (larger to smaller)
             # prov_Y = np.nan_to_num(valid_Y, nan=np.nanmean(np.array(valid_Y), axis=1))
@@ -3106,7 +3261,16 @@ def process_image_from_video(
                     valid_X[i] = _X[i]
                     valid_Y[i] = _Y[i]
                     valid_scores[i] = _scores[i]
-
+        """
+        cv2.putText(
+            annotated_image,
+            f"Detected: {detected_people}  Confirmed: {confirmed_people}",
+            (30, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 0, 0),
+            2,
+        )
         annotated_image = draw_bounding_box(
             img,
             valid_X,
@@ -3135,6 +3299,23 @@ def process_image_from_video(
             kpt_thr=0.3,
             line_width=2,
         )
+
+        # Precreate Dataarray
+        coords = {
+            "time": np.arange(1),  # / fv,
+            "n_marker": N_MARKERS_RTMLIB26,
+            "axis": ["x", "y", "score"],
+        }
+        daMarkers = (
+            xr.DataArray(
+                data=np.full((1, len(N_MARKERS_RTMLIB26), 3), np.nan),
+                dims=coords.keys(),
+                coords=coords,
+            )
+            .expand_dims({"ID": [file.stem]})
+            # .assign_coords(visibiility=("time", np.full(num_frames, np.nan)))
+            .copy()
+        )  # .transpose("n_marker", "axis", "time")
 
         # Conver to dataarray
         valid_Y[0] = h - valid_Y[0]  # Invert Y coordinates
