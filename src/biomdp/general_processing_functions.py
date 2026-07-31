@@ -11,11 +11,18 @@ import xarray as xr
 
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.8.1"
-__date__ = "25/06/2026"
+__version__ = "0.10.0"
+__date__ = "30/07/2026"
 
 """
 Updates:
+    30/07/2026, v.0.10.0
+        - Deleted "cross_correlation" and "auto_correlation" functions, traslated
+          to cross_correlation.py file.
+    
+    21/07/2026, v.0.9.0
+        - Experimental version of autocorrelation function.
+    
     25/06/2026, v.0.8.1
         - Corrected "calculate_angle_vectors_xr" function to work in 2D and 3D.
         
@@ -74,7 +81,7 @@ Updates:
 
 
 # =============================================================================
-# %% Functins
+# %% Functions
 # =============================================================================
 
 
@@ -546,40 +553,17 @@ def _cross_correl_noisy_aux(datos1, datos2, ID=None):
 def cross_correl_xr(
     da1: xr.DataArray, da2: xr.DataArray, func=_cross_correl_simple_aux
 ) -> xr.DataArray:
-    """
-    Apply the specified cross-correlation function to dataarrays
-    """
-    if "ID" in da1.coords:
-        id = da1.ID
-    else:
-        id = None
 
-    daCrosscorr = xr.apply_ufunc(
-        func,
-        da2,
-        da1,
-        id,
-        input_core_dims=[
-            ["time"],
-            ["time"],
-            [],
-            # [],
-            # [],
-        ],
-        output_core_dims=[["lag"]],  # datos que devuelve
-        exclude_dims=set(
-            (
-                "lag",
-                "time",
-            )
-        ),
-        vectorize=True,
-        dask="parallelized",
-        keep_attrs=False,
-        # kwargs=args_func_cortes,
-    ).dropna(dim="lag", how="all")
-    daCrosscorr = daCrosscorr.assign_coords(lag=range(len(daCrosscorr.lag)))
-    return daCrosscorr
+    raise NotImplementedError("Deprecation warning: use biomdp.cross_correl_xr instead")
+
+
+def auto_correl(
+    daData: xr.DataArray,
+    method: str = "fft",
+    max_lag: int | None = None,
+) -> xr.DataArray:
+
+    raise NotImplementedError("Deprecation warning: use biomdp.auto_correl instead")
 
 
 def _nanargmax(data: np.ndarray, ID) -> float:
@@ -906,71 +890,6 @@ if __name__ == "__main__":
     daWindow.loc[dict(n_event=["ini", "fin"], ID="00")] = np.array([0, len(var_a.time)])
 
     RMS(var_a, daWindow)
-
-    # =============================================================================
-    # %% TEST CROSSCORREL
-    # =============================================================================
-    daInstrument1 = var_a.sel(n_var="a", moment="pre").drop_vars("moment")
-    daInstrument2 = daInstrument1.isel(
-        time=slice(int(4 * var_a.freq), int(8 * var_a.freq))
-    )
-
-    daCrosscorr = xr.apply_ufunc(
-        _cross_correl_simple_aux,
-        daInstrument1,
-        daInstrument2,  # .sel(partID=da1['partID'], tiempo='pre'),
-        # daInstrument1.time.size - daInstrument2.time.size,
-        # daInstrument1['partID'],
-        # daInstrument1['tiempo'],
-        input_core_dims=[
-            ["time"],
-            ["time"],
-            # [],
-            # [],
-            # [],
-        ],
-        output_core_dims=[["lag"]],
-        exclude_dims=set(
-            (
-                "lag",
-                "time",
-            )
-        ),
-        # dataset_fill_value=np.nan,
-        vectorize=True,
-        dask="parallelized",
-        keep_attrs=False,
-        # kwargs=args_func_cortes,
-    ).dropna(dim="lag", how="all")
-    daCrosscorr = daCrosscorr.assign_coords(lag=range(len(daCrosscorr.lag)))
-    daCrosscorr.plot.line(x="lag")
-    nanargmax_xr(daCrosscorr, dim="lag")
-
-    daCrosscorr_rap = xr.apply_ufunc(
-        _cross_correl_noisy_aux,
-        daInstrument1,
-        daInstrument2,  # .sel(partID=da1['partID'], tiempo='pre'),
-        input_core_dims=[
-            ["time"],
-            ["time"],
-            # [],
-        ],
-        output_core_dims=[["lag"]],
-        exclude_dims=set(
-            (
-                "lag",
-                "time",
-            )
-        ),
-        # dataset_fill_value=np.nan,
-        vectorize=True,
-        dask="parallelized",
-        keep_attrs=False,
-        # kwargs=args_func_cortes,
-    ).dropna(dim="lag", how="all")
-    daCrosscorr_rap = daCrosscorr_rap.assign_coords(lag=range(len(daCrosscorr_rap.lag)))
-    daCrosscorr_rap.plot.line(x="lag")
-    nanargmax_xr(daCrosscorr_rap, dim="lag")
 
     # =============================================================================
     # %% TEST CALCULATE DISTANCE
