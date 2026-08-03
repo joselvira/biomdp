@@ -554,7 +554,9 @@ def cross_correl_xr(
     da1: xr.DataArray, da2: xr.DataArray, func=_cross_correl_simple_aux
 ) -> xr.DataArray:
 
-    raise NotImplementedError("Deprecation warning: use biomdp.cross_correl_xr instead")
+    raise NotImplementedError(
+        "Deprecation warning: use biomdp.cross_correl cross_correl_xr instead"
+    )
 
 
 def auto_correl(
@@ -563,7 +565,9 @@ def auto_correl(
     max_lag: int | None = None,
 ) -> xr.DataArray:
 
-    raise NotImplementedError("Deprecation warning: use biomdp.auto_correl instead")
+    raise NotImplementedError(
+        "Deprecation warning: use biomdp.cross_correl auto_correl instead"
+    )
 
 
 def _nanargmax(data: np.ndarray, ID) -> float:

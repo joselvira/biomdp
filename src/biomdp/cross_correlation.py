@@ -15,6 +15,9 @@ __date__ = "26/07/2026"
 
 """
 Updates:
+    31/07/2026, v.0.1.1
+            - Included the option to normalize ftt in "auto_correlation" function.
+
     26/07/2026, v.0.1.0
         - Extracted from general_processing_functions module.
 """
@@ -170,7 +173,7 @@ def cross_correl_xr(
     return daCrosscorr
 
 
-def _autocorrel(dat, ID=None):
+def _autocorrel(dat, norm, ID=None):
     """
     Autocorrelation using Polars Pearson correlation at each lag. O(N²).
 
@@ -204,7 +207,7 @@ def _autocorrel(dat, ID=None):
     return autocorr
 
 
-def _autocorrel_fft(dat, ID=None):
+def _autocorrel_fft(dat, norm, ID=None):
     """
     Autocorrelation using FFT with unbiased normalization. O(N log N).
 
@@ -243,15 +246,19 @@ def _autocorrel_fft(dat, ID=None):
     # Unbiased normalization: divide by (N - k) * var at each lag k
     # → comparable to Pearson, oscillates between -1 and 1
     lags = np.arange(n)
-    acf_norm = acf_raw / (var * (n - lags))
+    acf = acf_raw
 
-    autocorr[:n] = acf_norm
+    if norm:
+        acf = acf_raw / (var * (n - lags))
+
+    autocorr[:n] = acf
     return autocorr
 
 
 def auto_correl(
     daData: xr.DataArray,
     method: str = "fft",
+    norm_ftt: bool = True,
     max_lag: int | None = None,
 ) -> xr.DataArray:
     """
@@ -270,6 +277,9 @@ def auto_correl(
         - ``'polars'`` : Pearson correlation at each lag via Polars. O(N²).
                          Slower but exact Pearson. Kept for reference.
         Default is ``'fft'``.
+    norm_ftt : bool, optional
+        Whether to normalize the autocorrelation values by the variance of the
+        signal. Default is True.
     max_lag : int, optional
         Maximum lag to keep in the output. If None, all lags (up to N) are
         returned. For the ``'fft'`` method it is recommended to set
@@ -306,9 +316,11 @@ def auto_correl(
     daAutocorr = xr.apply_ufunc(
         _func,
         daData,
+        norm_ftt,
         id,
         input_core_dims=[
             ["time"],
+            [],
             [],
         ],
         output_core_dims=[["lag"]],
@@ -467,9 +479,9 @@ if __name__ == "__main__":
     var_d = (var_c * np.random.rand(*var_c.shape)).assign_coords(n_var=["d"])
     dataAutocorr = xr.concat([var_a, var_b, var_c, var_d], dim="n_var", join="outer")
 
-    ac = auto_correl(daData=dataAutocorr, method="fft")
+    ac = auto_correl(daData=dataAutocorr, method="fft", norm_ftt=True)
     ac.plot.line(x="lag", row="ID", col="n_var", sharey=False)
 
-    ac2 = auto_correl(dataAutocorr, method="polars", max_lag=50)
+    ac2 = auto_correl(dataAutocorr, method="polars")  # , max_lag=50)
     ac2.plot.line(x="lag", row="ID", col="n_var", sharey=False)
     (ac - ac2).plot.line(x="lag", row="ID", col="n_var", sharey=False)

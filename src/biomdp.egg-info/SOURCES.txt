@@ -7,6 +7,7 @@ src/biomdp/bikefitting_functions_utils.py
 src/biomdp/biomec_xarray_accessor.py
 src/biomdp/bland_altman_plot.py
 src/biomdp/create_time_series.py
+src/biomdp/cross_correlation.py
 src/biomdp/filter_butter.py
 src/biomdp/fotogrammetry.py
 src/biomdp/general_processing_functions.py
