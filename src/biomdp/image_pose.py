@@ -19,11 +19,12 @@ https://github.com/google-ai-edge/mediapipe/blob/master/docs/solutions/pose.md
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.6.5"
-__date__ = "01/06/2026"
+__version__ = "1.7.0"
+__date__ = "04/08/2026"
 
 
 # import seaborn as sns
+import sys
 import time
 import warnings
 from pathlib import Path
@@ -44,6 +45,10 @@ except Exception as e:
 """
 Updates:
 
+    09/08/2026, v1.7.0
+            - Included 'detect_pose_ini_end' function to detect the frames with people and skip initial
+              and end frames.
+    
     01/06/2026, v1.6.5
         - Corrected 'num_frame' parameter in 'process_video' function when there is None in the list.
     
@@ -142,7 +147,8 @@ Updates:
 # Nombres marcadores originales
 # n_markers = [marker.name for marker in mp.solutions.pose.PoseLandmark]
 
-# Nombres marcadores adaptados
+
+# Nombres marcadores adaptados MEDIAPIPE
 N_MARKERS = [
     "nose",
     "eye_inner_L",
@@ -251,33 +257,19 @@ MODEL_STICK_UNIONS_SIDE = [
 
 # from halpe26: https://github.com/open-mmlab/mmpose/blob/dev-1.x/configs/_base_/datasets/halpe26.py
 # https://github.com/Fang-Haoshu/Halpe-FullBody
+from rtmlib.visualization.skeleton.halpe26 import halpe26
+
+N_MARKERS_HALPE26 = [n[1].get("name") for n in halpe26["keypoint_info"].items()]
+
+import re
+
 N_MARKERS_RTMLIB26 = [
-    "nose",
-    "eye_L",
-    "eye_R",
-    "ear_L",
-    "ear_R",
-    "shoulder_L",
-    "shoulder_R",
-    "elbow_L",
-    "elbow_R",
-    "wrist_L",
-    "wrist_R",
-    "hip_L",
-    "hip_R",
-    "knee_L",
-    "knee_R",
-    "ankle_L",
-    "ankle_R",
-    "head",
-    "neck",
-    "hip",
-    "toe_L",
-    "toe_R",
-    "small_toe_L",
-    "small_toe_R",
-    "heel_L",
-    "heel_R",
+    re.sub(
+        r"^right_(.*)",
+        r"\1_R",
+        re.sub(r"^left_(.*)", r"\1_L", re.sub(r"big_toe", "toe", kp)),
+    )
+    for kp in N_MARKERS_HALPE26
 ]
 
 
@@ -448,6 +440,120 @@ def draw_landmarks_on_image(rgb_image, detection_result, radius=2):
             # solutions.drawing_styles.get_default_pose_landmarks_style(),
         )
     return annotated_image
+
+
+def load_local_model_pose_tracker(
+    path: Path | str,
+    mode: str = "balanced",
+    det_frequency: int = 10,
+    device: str = "cpu",
+    backend: str = "onnxruntime",
+    tracking: bool = False,
+):
+    from functools import partial
+    from rtmlib import Custom, PoseTracker
+
+    if isinstance(path, str):
+        path = Path(path)
+
+    # path = Path("C:\\Users\\josel\\.cache\\rtmlib\\hub\\checkpoints")
+    source = (
+        path
+        if path.exists() and path.is_dir()
+        else "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/"
+    )
+    ext = ".onnx" if source.is_dir() else ".zip"
+
+    DET_POSE = {
+        "performance": {
+            "det": "yolox_x_8xb8-300e_humanart-a39d44ed" + ext,
+            "pose": "rtmpose-x_simcc-body7_pt-body7-halpe26_700e-384x288-7fb6e239_20230606"
+            + ext,
+        },
+        "balanced": {
+            "det": "yolox_m_8xb8-300e_humanart-c2c7a14a" + ext,
+            "pose": "rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605"
+            + ext,
+        },
+        "lightweight": {
+            "det": "yolox_s_8xb8-300e_humanart-3ef259a7" + ext,
+            "pose": "rtmpose-s_simcc-body7_pt-body7-halpe26_700e-256x192-7f134165_20230605"
+            + ext,
+        },
+        "tiny": {
+            "det": "yolox_tiny_8xb8-300e_humanart-6f3252f9" + ext,
+            "pose": "rtmpose-t_simcc-body7_pt-body7-halpe26_700e-256x192-6020f8a6_20230605"
+            + ext,
+        },
+    }
+    MODE = {
+        "performance": {
+            "det": source / ("yolox_x_8xb8-300e_humanart-a39d44ed" + ext),
+            "pose": source
+            / (
+                "rtmpose-x_simcc-body7_pt-body7-halpe26_700e-384x288-7fb6e239_20230606"
+                + ext
+            ),
+            "det_input_size": (640, 640),
+            "pose_input_size": (288, 384),
+        },
+        "balanced": {
+            "det": source / ("yolox_m_8xb8-300e_humanart-c2c7a14a" + ext),
+            "pose": source
+            / (
+                "rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605"
+                + ext
+            ),
+            "det_input_size": (640, 640),
+            "pose_input_size": (192, 256),
+        },
+        "lightweight": {
+            "det": source / ("yolox_s_8xb8-300e_humanart-3ef259a7" + ext),
+            "pose": source
+            / (
+                "rtmpose-s_simcc-body7_pt-body7-halpe26_700e-256x192-7f134165_20230605"
+                + ext
+            ),
+            "det_input_size": (640, 640),
+            "pose_input_size": (192, 256),
+        },
+        "tiny": {
+            "det": source / ("yolox_tiny_8xb8-300e_humanart-6f3252f9" + ext),
+            "pose": source
+            / (
+                "rtmpose-t_simcc-body7_pt-body7-halpe26_700e-256x192-6020f8a6_20230605"
+                + ext
+            ),
+            "det_input_size": (416, 416),
+            "pose_input_size": (192, 256),
+        },
+    }
+
+    to_openpose = False
+
+    custom = partial(
+        Custom,
+        to_openpose=to_openpose,
+        det_class="YOLOX",
+        det=str(MODE[mode]["det"]),
+        det_input_size=MODE[mode]["det_input_size"],  # (640, 640),
+        pose_class="RTMPose",
+        pose=str(MODE[mode]["pose"]),
+        pose_input_size=MODE[mode]["pose_input_size"],  # (192, 256),
+        backend=backend,
+        device=device,
+    )
+    pose_tracker = PoseTracker(
+        custom,
+        det_frequency=20,  # detect every 10 frames
+        to_openpose=to_openpose,
+        backend=backend,
+        device=device,
+        # tracking_thr=0.7,
+        tracking=False,
+    )
+
+    return pose_tracker
 
 
 def extract_markers(data_mark, coords):
@@ -642,6 +748,22 @@ def process_video_old(file, side, fv=30, show=False):
 def process_video_deprecated(
     file, side: str, fv: int = 30, show: bool = False
 ) -> xr.DataArray:
+    try:
+        import mediapipe as mp
+
+        """from mediapipe import solutions
+        from mediapipe.framework.formats import landmark_pb2
+        from mediapipe.python.solutions.drawing_utils import DrawingSpec
+
+        # from mediapipe.tasks import python
+        # from mediapipe.tasks.python import vision
+        from mediapipe.python.solutions.pose import PoseLandmark
+        """
+
+    except:
+        raise ImportError(
+            "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."
+        )
     mp_pose = mp.solutions.pose
     mp_drawing = mp.solutions.drawing_utils
     mp_drawing_styles = mp.solutions.drawing_styles
@@ -971,58 +1093,6 @@ def process_video_deprecated(
     return da_ang_result
 
 
-def process_image_old(file=None, image=None, model_path=None, show=False):
-    """
-    show = False, 'markers' o 'mask'
-    """
-    # STEP 2: Create a PoseLandmarker object.
-    base_options = python.BaseOptions(
-        model_asset_path=Path(r"pose_landmarker_heavy.task")
-    )
-    options = vision.PoseLandmarkerOptions(
-        base_options=base_options,
-        min_pose_detection_confidence=0.9,
-        min_pose_presence_confidence=0.9,
-        min_tracking_confidence=0.9,
-        output_segmentation_masks=True,
-    )
-    detector = vision.PoseLandmarker.create_from_options(options)
-
-    # STEP 3: Load the input image.
-    if image is None:
-        image = mp.Image.create_from_file((file).as_posix())
-    else:
-        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
-    # STEP 4: Detect pose landmarks from the input image.
-    detection_result = detector.detect(image)
-
-    # STEP 5: Process the detection result. In this case, visualize it.
-    annotated_image = draw_landmarks_on_image(image.numpy_view(), detection_result)
-
-    if show:
-        if show == "markers":
-            cv2.imshow("window_name", cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
-            # waits for user to press any key
-            # (this is necessary to avoid Python kernel form crashing)
-            cv2.waitKey(0)
-
-            # closing all open windows
-            cv2.destroyAllWindows()
-
-        elif show == "mask":
-            # Ejemplo de máscara
-            segmentation_mask = detection_result.segmentation_masks[0].numpy_view()
-            visualized_mask = (
-                np.repeat(segmentation_mask[:, :, np.newaxis], 3, axis=2) * 255
-            )
-
-            cv2.imshow("window_name", visualized_mask)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-
-    return detection_result
-
-
 def process_image_modern(
     file=None,
     image=None,
@@ -1311,8 +1381,8 @@ def _sort_people_sports2d(keyptpre, keypt, scores=None, max_dist=None):
 def process_video(
     file: str | Path,
     fv: int = 30,
-    n_vars_load: List[str] | None = None,
-    num_frame: int | None = None,
+    n_vars_load: list[str] | None = None,
+    num_frame: int | list[int] | None = None,
     resize_factor: float = 1.0,
     rotate: int | None = None,
     save_frame_file: bool | Path | None = None,
@@ -1360,7 +1430,7 @@ def process_video(
 def process_video_rtmlib(
     file: str | Path,
     fv: int = 30,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     num_frame: int | list[int] | None = None,
     resize_factor: float = 1.0,
     rotate: int | None = None,
@@ -1379,6 +1449,7 @@ def process_video_rtmlib(
     backend: str = "onnxruntime",  # opencv, onnxruntime, openvino
     tracking_mode: str = "sports2d",  # "sports2d", "rtmlib"
     tracking: bool = False,
+    step_pose: int = 1,  # frame step to compute pose
     max_distance: int = 250,  # distance to avoid changes detecting people
     sort_people_by: str | None = None,  # "size" "highest_likelihood",
     max_num_people: int | None = None,  # None for no limit
@@ -1946,6 +2017,10 @@ def process_video_rtmlib(
 
         pTime = cTime
         frame_idx += 1
+        if step_pose > 1 and frame_idx + step_pose < last_frame:
+            for _ in range(step_pose - 1):
+                cap.read()
+                frame_idx += 1
 
     cap.release()
     cv2.destroyAllWindows()
@@ -3401,6 +3476,17 @@ def process_image_from_video(
 
 
 def process_video_mixed(file, fv=30, show=False):
+    try:
+        import mediapipe as mp
+
+        # from mediapipe import solutions
+        # from mediapipe.framework.formats import landmark_pb2
+        # from mediapipe.tasks import python
+        # from mediapipe.tasks.python import vision
+    except:
+        raise ImportError(
+            "Could not load the “mediapipe” library.\nInstall it with 'pip install mediapipe'."
+        )
     t_ini = time.perf_counter()
     print(f"Processing vídeo{file.name}...")
 
@@ -3516,6 +3602,233 @@ def process_video_mixed(file, fv=30, show=False):
     )  # .transpose("marcador", "eje", "time")
 
     return da
+
+
+def detect_pose_ini_end(
+    file: str | Path,
+    detector=None,
+    model_path: str | Path | None = None,
+    model_name="yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
+    frames_range: list[int] | None = None,
+    step_pose: int = 10,
+    min_bbox_size: int | None = None,
+    device="cpu",
+    backend="onnxruntime",
+    show: bool | str = True,
+):
+
+    from rtmlib import YOLOX, draw_bbox
+
+    if model_path is None:
+        if sys.platform == "win32":
+            model_path = Path(r"%USERPROFILE%\.cache\rtmlib\hub\checkpoints")
+        elif sys.platform == "linux":
+            model_path = Path(r"$HOME/.cache/rtmlib/hub/checkpoints")
+
+    """
+    file = Path(
+        r"F:/Investigacion/Proyectos/Tesis/TesisAaron/Registros/EsprintIsquios/Registros/DataCollection/CamD/S01_camD_01.mp4"
+    )
+    file = Path(
+        "/run/media/joselvira/WD_BLK_JLLE/Investigacion/Proyectos/Tesis/TesisAaron/Registros/EsprintIsquios/Registros/DataCollection/CamD/S01_camD_01.mp4"
+    )
+    """
+    if detector is None:
+        detector = YOLOX(
+            onnx_model=(model_path / model_name).as_posix(),
+            backend=backend,
+            device=device,
+            model_input_size=(416, 416),  # (640, 640), #
+        )
+
+    cap = cv2.VideoCapture(file)
+    num_frames_video = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    # frames_range=[800, 1000]
+    first_frame = 0
+    last_frame = num_frames_video - 1
+    if isinstance(frames_range, list):
+        if frames_range[0] is not None:
+            first_frame = max(0, frames_range[0])
+        else:
+            first_frame = 0
+        if frames_range[1] is not None:
+            last_frame = min(frames_range[1], num_frames_video - 1)
+        else:
+            last_frame = num_frames_video - 1
+
+    pTime = 0
+    frame_idx = 0
+    frames_with_detected = []
+
+    while cap.isOpened() and frame_idx < last_frame:
+        # Skip to the starting frame
+        if frame_idx < first_frame:
+            cap.read()
+            frame_idx += 1
+            continue
+
+        success, frame = cap.read()
+
+        if not success:
+            break
+
+        detected_people, confirmed_people = 0, 0  # num of people in frame
+
+        bboxes = detector(frame)
+
+        detected_people = len(bboxes)
+
+        # Filter by bbox size before tracking
+        if min_bbox_size is not None and len(bboxes) > 0:
+            bbox_sizes = bboxes[:, 2:] - bboxes[:, :2]
+            keep_size = np.where(
+                (bbox_sizes[:, 0] >= min_bbox_size[0])
+                & (bbox_sizes[:, 1] >= min_bbox_size[1])
+            )[0]
+            bboxes = bboxes[keep_size]
+
+        confirmed_people = len(bboxes)
+        if confirmed_people > 0:
+            frames_with_detected.append(frame_idx)
+
+        # Calculate fps
+        cTime = time.time()
+        fps = 1 / (cTime - pTime) if cTime != pTime else 0
+
+        if show:
+            annotated_image = frame.copy()
+
+            cv2.putText(
+                annotated_image,
+                "q or Esc to exit",
+                (30, 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+            cv2.putText(
+                annotated_image,
+                f"Frame {frame_idx}/{last_frame} fps: {fps:.2f}",
+                (30, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+            cv2.putText(
+                annotated_image,
+                f"Detected: {detected_people}  Confirmed: {confirmed_people}",
+                (30, 50),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 0, 0),
+                2,
+            )
+
+            annotated_image = draw_bbox(annotated_image, bboxes, color=(255, 0, 0))
+
+            cv2.imshow("img", annotated_image)
+        # Waits for user to press any key
+        if cv2.waitKey(1) in [ord("q"), 27]:
+            break
+
+        pTime = cTime
+        frame_idx += 1
+        if step_pose > 1 and frame_idx + step_pose < last_frame:
+            for _ in range(step_pose - 1):
+                cap.read()
+                frame_idx += 1
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+    if len(frames_with_detected) > 0:
+        ini = frames_with_detected[0]
+        end = frames_with_detected[-1]
+
+        if ini > step_pose:
+            ini -= step_pose * 2
+        if end < num_frames_video - step_pose:
+            end += step_pose
+    else:
+        ini = 0
+        end = num_frames_video
+
+    return [ini, end]
+
+
+def detect_pose_ini_end_test(
+    file: str | Path,
+    # num_frame: int | list[int] | None = None,
+    # min_bbox_size: list[int]
+    # | None = None,  # (width, height) in pixels, None for no limit
+    # resize_factor: float = 1.0,
+    # rotate: int | None = None,
+    # save_frame_file: bool | Path | None = None,
+    # show: bool | str = False,
+    # step_frames: int = 10,
+    # verbose: bool = False,
+    # pose_tracker: str | None = None,
+    # mode: str = "balanced",
+    # pose_model_name: str = "body_with_feet",
+    # pose_model=None,
+    **kwargs,
+):
+    cap = cv2.VideoCapture(file.as_posix())
+    if not cap.isOpened():
+        raise NameError(f"{file} is not a valid video.")
+
+    num_frames_video = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+
+    if "step_pose" in kwargs:
+        step_pose = kwargs["step_pose"]
+    if "fv" in kwargs:
+        freq = kwargs["fv"]
+
+    if "num_frame" in kwargs:
+        num_frame = kwargs["num_frame"]
+        if isinstance(num_frame, list):
+            offset_ini = num_frame[0]
+        else:
+            offset_ini = num_frame
+    else:
+        offset_ini = 0
+
+    daMarkers = process_video(
+        file,
+        # engine="rtmlib",
+        # show=True,
+        # fv=300,
+        # mode="balanced",
+        # det_frequency=10,
+        # num_frame=[650, None],
+        # min_bbox_size=(50, 50),
+        # step_pose=10,
+        # # keypoint_likelihood_threshold=0.5,
+        # keypoint_number_threshold=0.5,
+        # average_likelihood_threshold=0.5,
+        **kwargs,
+    )
+    # kwargs={'show':True, 'fv':200, 'mode':'lightweight', 'min_bbox_size':(50,50), 'step_pose':10, 'det_frequency':1}
+    # daMarkers.isel(ID=0, axis=1).plot.line(x='time')
+
+    times = daMarkers.dropna("time").time
+    if len(times) > 0:
+        ini = int(times[0] * (freq)) * step_pose + offset_ini
+        end = int(times[-1] * (freq)) * step_pose + offset_ini
+
+        if ini > step_pose:
+            ini -= step_pose * 2
+        if end < num_frames_video - step_pose:
+            end += step_pose
+    else:
+        ini = 0
+        end = num_frames_video
+
+    return [ini, end]
 
 
 def plot_pose_2D(
@@ -4018,44 +4331,65 @@ if __name__ == "__main__":
 
     work_path = Path(
         r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\Videos\Cortados"
+        # "/run/media/joselvira/WD_BLK_JLLE/Investigacion/Proyectos/Tesis/TesisAaron/Registros/CambioDireccion/Videos/Cortados/"
     )
-    # Download model if not already downloaded
+
+    """# MEDIAPIPE: Download model if not already downloaded
     import urllib.request
 
     urllib.request.urlretrieve(
         "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
         work_path / "pose_landmarker_heavy.task",
     )
-
+    """
     file = work_path / "COD_S01_G1_A_90_I_1_FRONT.mov"
+
+    from Sports2D.process import setup_model_class_mode
+
+    pose_model, ModelClass, mode = setup_model_class_mode("body_with_feet", "balanced")
+    from rtmlib import BodyWithFeet, PoseTracker
+
+    pose_tracker = PoseTracker(
+        BodyWithFeet,
+        det_frequency=10,
+        to_openpose=False,  # True for openpose-style, False for mmpose-style
+        mode="balanced",  # balanced, performance, lightweight
+        backend="onnxruntime",  # opencv, onnxruntime, openvino
+        device="cuda",  #'auto', 'cpu', 'cuda'
+        tracking=False,
+    )
 
     # Process the complete video
     daMarkers = process_video(
         file,
         fv=240,
-        mpdc=0.9,
-        mppc=0.95,
-        mtc=0.95,
+        det_frequency=10,
+        backend="onnxruntime",  # opencv, onnxruntime, openvino
+        device="cuda",
+        tracking=False,
+        mode="balanced",
+        num_frame=[50, 250],
+        min_bbox_size=(50, 50),
+        step_pose=1,
         show=True,
         # show_every_frames=20,
-        model_path=work_path / "pose_landmarker_heavy.task",
     )
     daMarkers = split_dim_side(daMarkers)
-    daMarkers.isel(ID=0).sel(
+    daMarkers.isel(ID=1).sel(
         axis="x", n_marker=["hip", "knee", "ankle", "heel", "toe"]
     ).plot.line(x="time", col="side")
-    plot_pose_2D(daMarkers, frames=[100, None])
+    plot_pose_2D(daMarkers, frames=[10, None])
 
     # Process and saves one single frame
-    daMarkers_frame = process_video(
+    daMarkers_frame = process_image_from_video(
         file,
-        fv=240,
-        mpdc=0.9,
-        mppc=0.95,
-        mtc=0.95,
-        num_frame=178,
-        show=False,
-        model_path=work_path / "pose_landmarker_heavy.task",
+        num_frame=150,
+        mode="balanced",
+        min_bbox_size=(50, 50),
+        show=True,
+        # model_path=config.EXTERNAL_DATA_DIR / "pose_landmarker_heavy.task",
+        # sort_persons_by_size=False,
+        # radius=1,
     )
     daMarkers_frame = split_dim_side(daMarkers_frame)
     plot_pose_2D(daMarkers_frame)
@@ -4079,6 +4413,61 @@ if __name__ == "__main__":
     )
     plot_pose_2D(daMarkers10)
 
+    # Running
+    file = (
+        ruta_archivo
+        / "/run/media/joselvira/WD_BLK_JLLE/Investigacion/Proyectos/Tesis/TesisAaron/Registros/EsprintIsquios/Registros/DataCollection/CamD/S01_camD_01.mp4"
+    )
+    daMarkers = process_video(
+        file,
+        engine="rtmlib",
+        show=True,
+        fv=300,
+        mode="balanced",
+        # det_frequency=10,
+        # num_frame=[650, None],
+        min_bbox_size=(50, 50),
+        step_pose=10,
+        # keypoint_likelihood_threshold=0.5,
+        # keypoint_number_threshold=0.5,
+        # average_likelihood_threshold=0.5,
+    )
+    plot_pose_2D(daMarkers)
+
+    # %% find range pose in video
+    file = Path(
+        r"F:\Investigacion/Proyectos/Tesis/TesisAaron/Registros/EsprintIsquios/Registros/DataCollection/CamD/S01_camD_01.mp4"
+    )
+    file = Path(
+        "/run/media/joselvira/WD_BLK_JLLE/Investigacion/Proyectos/Tesis/TesisAaron/Registros/EsprintIsquios/Registros/DataCollection/CamD/S01_camD_01.mp4"
+    )
+    range_video = detect_pose_ini_end(
+        file,
+        show=True,
+        # num_frame=[650, None],
+        min_bbox_size=(50, 50),
+        step_pose=30,
+        # keypoint_likelihood_threshold=0.5,
+        # keypoint_number_threshold=0.5,
+        # average_likelihood_threshold=0.5,
+    )
+    daMarkers = process_video(
+        file,
+        fv=200,
+        det_frequency=10,
+        backend="onnxruntime",  # opencv, onnxruntime, openvino
+        device="cpu",
+        tracking=False,
+        mode="balanced",
+        num_frame=range_video,
+        min_bbox_size=(50, 50),
+        # step_pose=1,
+        show=True,
+        # show_every_frames=20,
+    )
+    plot_pose_2D(daMarkers)
+    plt.plot()
+
     # %%
     ruta_archivo = Path("")
     file = (
@@ -4089,11 +4478,15 @@ if __name__ == "__main__":
         ruta_archivo
         / r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\Videos\Cortados\COD_S01_G1_A_90_I_1_FRONT.mov"
     )
+    file = (
+        ruta_archivo
+        / "/run/media/joselvira/WD_BLK_JLLE/Investigacion/Proyectos/Tesis/TesisAaron/Registros/EsprintIsquios/Registros/DataCollection/CamD/S01_camD_01.mp4"
+    )
     daMarkers10 = mask_face_video(
         file,
         engine="rtmlib",
         show=True,
-        fv=300,
+        fv=200,
         mode="balanced",
         det_frequency=10,
         # keypoint_likelihood_threshold=0.5,
@@ -4101,7 +4494,9 @@ if __name__ == "__main__":
         # average_likelihood_threshold=0.5,
     )
     plot_pose_2D(daMarkers10)
-    import onnxruntime as ort
-    import torch
 
-    print(torch.cuda.is_available(), ort.get_available_providers())
+    # %%
+    # import onnxruntime as ort
+    # import torch
+
+    # print(torch.cuda.is_available(), ort.get_available_providers())
