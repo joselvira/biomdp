@@ -24,3 +24,10 @@ Issues = "https://github.com/joselvira/biomdp/issues"
 
 [tool.setuptools.dynamic]
 version = {attr = "biomdp._version.__version__"}
+
+[tool.setuptools.package-data]
+biomdp = [
+  "tests/datasets/*.csv",
+  "tests/datasets/*.txt",
+  "tests/datasets/*.c3d",  
+]

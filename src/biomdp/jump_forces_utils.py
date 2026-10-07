@@ -573,7 +573,9 @@ def split_dim_repe_logsheet(
     df.duplicated().sum()
     df[df.duplicated(keep=False)]
 
-    daData = xr.concat([rep0, rep1, rep2], dim="repe").assign_coords(repe=[0, 1, 2])
+    daData = xr.concat([rep0, rep1, rep2], dim="repe", join="outer").assign_coords(
+        repe=[0, 1, 2]
+    )
 
     try:
         if (
@@ -665,7 +667,7 @@ def split_dim_axis(da) -> xr.DataArray:
         # .assign_coords(n_var="plat1")
         # .assign_coords(axis=["x", "y", "z"])
         .expand_dims({"n_var": 1})
-    )
+    ).assign_coords(axis=["x", "y", "z"])
 
     return da
 
@@ -929,7 +931,7 @@ def load_merge_vicon_csv_logsheet(
                     try:
                         file = [x for x in file_list if file_name in x.stem][0]
                     except IndexError:
-                        print(f"File {file_name} not found")
+                        print(f"File {file} not found")
                         continue
                     print(f"Loading section {section}, file: {file.name}")
                     # print(f'{S}_{t}_{r}', f'{S}_{t}_{r}' in [x.stem for x in file_list])
@@ -6252,18 +6254,60 @@ if __name__ == "__main__":
     import xarray as xr
 
     from biomdp.filter_butter import filter_butter
-    from biomdp.io import read_kistler_txt
+    from biomdp.io.read_kistler_txt import read_kistler_txt
+    from biomdp.io.read_kistler_dat import read_kistler_dat
+    from biomdp.io.read_kistler_c3d import read_kistler_c3d
 
-    work_path = Path(r"src\datasets")
-    file = work_path / "kistler_CMJ_1plate.txt"
+    DATASETS_DIR = Path(__file__).resolve().parents[0] / "tests" / "datasets"
+    # DATASETS_DIR = Path(r"F:/Programacion/Python/Mios/biomdp/src/biomdp/tests/datasets")
 
-    daCMJ = read_kistler_txt(file)
+    file = DATASETS_DIR / "kistler_DJ_2plates.txt"
+    # -------------------------------
+    import timeit
+
+    def test_performance():
+        result = read_kistler_txt(file, engine="arrow")
+        return result
+
+    print(
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
+    )
+
+    def test_performance():
+        result = read_kistler_txt(file, engine="polars")
+        return result
+
+    print(
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
+    )
+
+    def test_performance():
+        result = read_kistler_dat(file.with_suffix(".dat"))
+        return result
+
+    print(
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
+    )
+
+    def test_performance():
+        result = read_kistler_c3d(file.with_suffix(".c3d"))
+        return result
+
+    print(
+        f"{timeit.timeit('test_performance()', setup='from __main__ import test_performance', number=50):.4f} s"
+    )
+
+    # -------------------------------
+
+    daCMJ = read_kistler_txt(file.with_suffix(".txt"))
     daCMJ.plot.line(x="time", col="plate")
 
+    # EXAMPLE
+    daCMJ = read_kistler_dat(file.with_suffix(".dat"))
+    daCMJ = split_dim_axis(daCMJ.sel(n_var=["Fz", "Fy", "Fx"]))
     daCMJ = daCMJ.expand_dims("ID").assign_coords(ID=["S01_CMJ_1"])
-
     daCMJ = daCMJ.sel(axis="z")
-    # Filtra
+    # Filter
     daCMJ = filter_butter(dat_orig=daCMJ, fr=daCMJ.freq, fc=400)
 
     # Offsets flight adjustment, even before weight---------------------------
@@ -6275,7 +6319,7 @@ if __name__ == "__main__":
         pct_window=5,
     )  # , show=True)
 
-    # Replacewith zero the flight  window-------------
+    # Replace with zero the flight  window-------------
     daCMJ = reset_Fz_flight(
         daData=daCMJ, jump_test="CMJ", threshold=30, pct_window=5
     )  # , show=True)
@@ -6328,7 +6372,7 @@ if __name__ == "__main__":
     # TEST AS CLASS
     # =============================================================================
 
-    r"""work_path = Path(r"src\datasets")
+    r"""work_path = Path(r"src/datasets")
     file = work_path / "kistler_CMJ_1plate.txt"
     daCMJ = (
         read_kistler_txt(file)

@@ -555,7 +555,7 @@ def cross_correl_xr(
 ) -> xr.DataArray:
 
     raise NotImplementedError(
-        "Deprecation warning: use biomdp.cross_correl cross_correl_xr instead"
+        "Deprecation warning: use biomdp.cross_correlation cross_correl_xr instead"
     )
 
 
@@ -566,7 +566,7 @@ def auto_correl(
 ) -> xr.DataArray:
 
     raise NotImplementedError(
-        "Deprecation warning: use biomdp.cross_correl auto_correl instead"
+        "Deprecation warning: use biomdp.cross_correlation auto_correl instead"
     )
 
 

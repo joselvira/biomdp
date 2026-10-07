@@ -1445,7 +1445,7 @@ def process_video_rtmlib(
     pose_model_name: str = "body_with_feet",
     pose_model=None,
     det_frequency: int = 10,
-    device: str = "cuda",  # cpu, cuda,
+    device: str = "cpu",  # cpu, cuda,
     backend: str = "onnxruntime",  # opencv, onnxruntime, openvino
     tracking_mode: str = "sports2d",  # "sports2d", "rtmlib"
     tracking: bool = False,
@@ -1622,9 +1622,12 @@ def process_video_rtmlib(
 
     # pose_model = pose_model_name
 
+    if pose_model is None:
+        pose_model, ModelClass, mode = setup_model_class_mode(pose_model_name, mode)
+
     if pose_tracker is None:
         print("pose_tracker updated")
-        pose_model, ModelClass, mode = setup_model_class_mode(pose_model_name, mode)
+
         try:
             pose_tracker = setup_pose_tracker(
                 ModelClass,
@@ -1652,7 +1655,7 @@ def process_video_rtmlib(
                     f"Error: Pose estimation failed. Check that pose_model ({pose_model}) and mode ({mode}) are valid."
                 )
 
-    # Retrieve keypoint names from model
+    """# Retrieve keypoint names from model
     keypoints_ids = [
         node.id for _, _, node in RenderTree(pose_model) if node.id is not None
     ]
@@ -1660,7 +1663,7 @@ def process_video_rtmlib(
         node.name for _, _, node in RenderTree(pose_model) if node.id is not None
     ]
     kpt_id_max = max(keypoints_ids) + 1
-
+    """
     cap = cv2.VideoCapture(file.as_posix())
     if not cap.isOpened():
         raise NameError(f"{file} is not a valid video.")
@@ -1784,8 +1787,8 @@ def process_video_rtmlib(
 
             # If all detections were filtered out, fill with NaN
             if len(keypoints) == 0:
-                keypoints = np.full((1, kpt_id_max, 2), fill_value=np.nan)
-                scores = np.full((1, kpt_id_max), fill_value=np.nan)
+                keypoints = np.full((1, len(N_MARKERS_RTMLIB26), 2), fill_value=np.nan)
+                scores = np.full((1, len(N_MARKERS_RTMLIB26)), fill_value=np.nan)
 
             # Track poses across frames (default sports2d)
             if tracking_mode == "sports2d":
@@ -1802,8 +1805,8 @@ def process_video_rtmlib(
                 )
 
         except Exception as e:
-            keypoints = np.full((1, kpt_id_max, 2), fill_value=np.nan)
-            scores = np.full((1, kpt_id_max), fill_value=np.nan)
+            keypoints = np.full((1, len(N_MARKERS_RTMLIB26), 2), fill_value=np.nan)
+            scores = np.full((1, len(N_MARKERS_RTMLIB26)), fill_value=np.nan)
 
         # Process coordinates
         valid_X, valid_Y, valid_scores = [], [], []
@@ -4355,7 +4358,7 @@ if __name__ == "__main__":
         to_openpose=False,  # True for openpose-style, False for mmpose-style
         mode="balanced",  # balanced, performance, lightweight
         backend="onnxruntime",  # opencv, onnxruntime, openvino
-        device="cuda",  #'auto', 'cpu', 'cuda'
+        device="cpu",  #'auto', 'cpu', 'cuda'
         tracking=False,
     )
 
@@ -4396,9 +4399,9 @@ if __name__ == "__main__":
 
     # %%
     ruta_archivo = Path("")
-    file = (
-        ruta_archivo
-        / r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\template-ccds-pose-cbio-direccion\data\raw\S_S04_G2_COD_P_ 90_1_1_Front.avi"
+    file = Path(
+        r"F:\Investigacion\Proyectos\Tesis\TesisAaron\Registros\CambioDireccion\COD_S05_G1_A_90_I_1_FRONT.mov"
+        # "/run/media/joselvira/WD_BLK_JLLE/Investigacion/Proyectos/Tesis/TesisAaron/Registros/CambioDireccion/Videos/Cortados/COD_S05_G1_A_90_I_1_FRONT.mov"
     )
     daMarkers10 = process_video(
         file,

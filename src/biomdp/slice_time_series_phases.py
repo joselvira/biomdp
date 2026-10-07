@@ -151,7 +151,7 @@ def show_events(data, events, threshold=None):
 
 
 def detect_onset_offset(
-    data: xr.DataArray = xr.DataArray(),
+    data: xr.DataArray | None = None,
     n_dim_time: str = "time",
     max_phases=100,
     **kwargs_func_events: Optional[dict],
@@ -162,6 +162,9 @@ def detect_onset_offset(
         raise ImportError(
             "This function needs Detecta to be installed (https://pypi.org/project/detecta/)"
         )
+
+    if data is None:
+        data = xr.DataArray()
 
     def _det_on(dat, id, max_phases=100, **kwargs_func_events):
         events = np.full([max_phases, 2], np.nan)
@@ -177,6 +180,7 @@ def detect_onset_offset(
 
     """
     dat=data[0]
+    kwargs_func_events=dict(threshold=10, n_above=5, show=False)
     """
     events = xr.apply_ufunc(
         _det_on,

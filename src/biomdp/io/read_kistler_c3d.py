@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Created on Mon Oct 02 16:36:37 2023
 
@@ -40,9 +39,7 @@ Updates:
             
 """
 
-import time
 from pathlib import Path
-from typing import List
 
 import numpy as np
 
@@ -56,10 +53,10 @@ import xarray as xr
 
 def read_kistler_c3d(
     file: str | Path,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     # coincidence: str = "similar",
-    engine: str = "ezc3d",
-    raw: bool = False,
+    engine: str = "c3d",
+    raw=False,
 ) -> xr.DataArray:
     if not file.exists():
         raise FileNotFoundError(f"File {file} not found")
@@ -304,13 +301,13 @@ def compute_moments_axes(da: xr.DataArray) -> xr.DataArray:
 if __name__ == "__main__":
     # from biomdp.io.read_kistler_c3d import read_kistler_c3d_xr
 
-    work_path = Path(r"src\datasets")
+    DATASETS_DIR = Path(__file__).resolve().parents[0] / "tests" / "datasets"
 
-    file = work_path / "kistler_CMJ_1plate.c3d"
+    file = DATASETS_DIR / "kistler_CMJ_1plate.c3d"
     daForce = read_kistler_c3d(file, engine="c3d")
     daForce.isel(plate=0).plot.line(x="time")  # , col="plate")
 
-    file = work_path / "kistler_DJ_2plates.c3d"
+    file = DATASETS_DIR / "kistler_DJ_2plates.c3d"
     daForce = read_kistler_c3d(file, engine="c3d")
     daForce.plot.line(x="time", col="plate")
 
@@ -325,7 +322,7 @@ if __name__ == "__main__":
     daForce2.plot.line(x="time")
 
     # Compare with c3d and ezc3d
-    file = work_path / "kistler_DJ_2plates.c3d"
+    file = DATASETS_DIR / "kistler_DJ_2plates.c3d"
     daForce = read_kistler_c3d(file, engine="c3d")
     daForce.plot.line(x="time", col="plate")
 

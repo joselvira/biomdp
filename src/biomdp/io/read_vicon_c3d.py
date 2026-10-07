@@ -10,11 +10,14 @@ Created on Fry Sep 15 16:36:37 2023
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.3.2"
-__date__ = "30/03/2026"
+__version__ = "0.3.3"
+__date__ = "05/10/2026"
 
 """
 Updates:
+    05/10/2026, v0.3.3
+        - Read analog labels without spaces at the end.
+        
     30/03/2026, v0.3.2
         - Refined variable selection in Forces section with engine='c3d'.
     
@@ -49,7 +52,7 @@ Updates:
 import time
 import warnings
 from pathlib import Path
-from typing import List
+# from typing import List
 
 import numpy as np
 import pandas as pd
@@ -62,7 +65,7 @@ import xarray as xr
 def read_vicon_c3d(
     file: str | Path,
     section: str | None = None,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     coincidence: str = "similar",
     engine: str = "c3d",
 ) -> xr.DataArray:
@@ -94,7 +97,7 @@ def read_vicon_c3d(
 def read_vicon_c3d_c3d_pose2sim(
     file: str | Path,
     section: str | None = None,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
     """tests with c3d read from pose2sim"""
@@ -175,7 +178,7 @@ def read_vicon_c3d_c3d_pose2sim(
 def read_vicon_c3d_c3d(
     file: str | Path,
     section: str | None = None,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
     """
@@ -262,7 +265,7 @@ def read_vicon_c3d_c3d(
 
         # Analogs
         elif section in ["Forces", "EMG"]:
-            labels_analog = reader.analog_labels
+            labels_analog = [s.replace(" ", "") for s in reader.analog_labels]
             # labels_analog = [
             #     s.split(".")[0].replace(" ", "") for s in reader.analog_labels
             # ]
@@ -366,7 +369,7 @@ def read_vicon_c3d_c3d(
 def read_vicon_ezc3d(
     file: str | Path,
     section: str | None = None,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
     try:
@@ -541,7 +544,7 @@ def read_vicon_ezc3d(
 def read_vicon_mbbtk(
     file: str | Path,
     section: str | None = None,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
     """
@@ -784,7 +787,7 @@ def read_vicon_mbbtk(
 def read_vicon_c3d_xr_global(
     file: str | Path,
     section: str | None = None,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     coincidence: str = "similar",
 ) -> xr.DataArray:
     # if section not in ['Trajectories', 'Model Outputs', 'Forces', 'EMG']:
@@ -951,7 +954,7 @@ def read_vicon_c3d_xr_global(
 def read_vicon_c3d_xr_global_ds(
     file: str | Path,
     section: str | None = None,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     coincidence: str = "similar",
 ):
     try:

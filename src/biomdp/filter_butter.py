@@ -13,12 +13,15 @@ Low or high pass function and bandpass function.
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.6.3"
-__date__ = "07/05/2026"
+__version__ = "1.7.0"
+__date__ = "30/09/2026"
 
 
 """
 Updates:
+    30/09/2026, v1.7.0
+        - Include filter characteristics as attributes in dataarray.
+
     07/05/2026, v1.6.3
         - Plot filtered over original.
     
@@ -188,8 +191,11 @@ def filter_butter(
         )  # pad with nan the interpolated data
         # Retrieves the original data number by filling in with nan the endings as the original one
         dat_filt = dat_filt.where(xr.where(np.isnan(dat_orig), False, True), np.nan)
-        dat_filt.attrs = dat_orig.attrs
         dat_filt = dat_filt.astype(dat_orig.dtype)
+        dat_filt.attrs = dat_orig.attrs
+        dat_filt.attrs["data_processing"] = (
+            f"Lowpass filter, Butterworth order {order}, fc={fc} Hz"
+        )
 
         if returnRMS or show == True:
             RMS = pd.DataFrame()
