@@ -11,11 +11,14 @@ import xarray as xr
 
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "0.10.0"
-__date__ = "30/07/2026"
+__version__ = "0.10.1"
+__date__ = "27/10/2026"
 
 """
 Updates:
+    27/10/2026, v.0.10.1
+        - process_emg returns data_processing attributes.
+        
     30/07/2026, v.0.10.0
         - Deleted "cross_correlation" and "auto_correlation" functions, traslated
           to cross_correlation.py file.
@@ -345,44 +348,50 @@ def tkeo(x: np.ndarray) -> np.ndarray:
     return y
 
 
-def process_EMG(
-    daEMG: xr.DataArray,
+def process_emg(
+    daData: xr.DataArray,
     fr: float | None = None,
-    fc_band: list[float] = [10, 400],
+    fc_band: list[float] | None = None,
     fclow: float = 8,
     btkeo: bool = False,
 ) -> xr.DataArray:
     from biomdp.filter_butter import filter_butter, filter_butter_bandpass
 
+    if fc_band is None:
+        fc_band = [10, 400]
     if fr is None:
-        fr = daEMG.freq
+        fr = daData.freq
     # Filtro band-pass
-    daEMG_proces = filter_butter_bandpass(
-        daEMG, fr=fr, fclow=fc_band[0], fchigh=fc_band[1]
+    daReturn = filter_butter_bandpass(
+        daData, fr=fr, fclow=fc_band[0], fchigh=fc_band[1]
     )
     # Centers signal, necessary?
-    daEMG_proces = daEMG_proces - daEMG_proces.mean(dim="time")
+    daReturn = daReturn - daReturn.mean(dim="time")
 
     if btkeo:
-        daEMG_proces = xr.apply_ufunc(
+        daReturn = xr.apply_ufunc(
             tkeo,
-            daEMG_proces,
+            daReturn,
             input_core_dims=[["time"]],
             output_core_dims=[["time"]],
             vectorize=True,
         )
-    # Rectifica
-    daEMG_proces = abs(daEMG_proces)
-    # filtro low-pass
-    daEMG_proces = filter_butter(daEMG_proces, fr=fr, fc=fclow, kind="low")
+    # Rectify
+    daReturn = abs(daReturn)
+    # low pass filter
+    daReturn = filter_butter(daReturn, fr=fr, fc=fclow, kind="low")
 
-    # daEMG_proces.attrs['freq'] = daEMG.attrs['freq']
-    # daEMG_proces.attrs['units'] = daEMG.attrs['units']
-    # daEMG_proces.time.attrs['units'] = daEMG.time.attrs['units']
-    daEMG_proces.attrs = daEMG.attrs
-    daEMG_proces.name = "EMG"
+    # daReturn.attrs['freq'] = daData.attrs['freq']
+    # daReturn.attrs['units'] = daData.attrs['units']
+    # daReturn.time.attrs['units'] = daData.time.attrs['units']
+    daReturn.attrs = daData.attrs
+    daReturn.name = "EMG"
 
-    return daEMG_proces
+    daReturn.attrs["data_processing"] = (
+        f"- Centered\n- Rectified\n- Band-pass {fc_band[0]}-{fc_band[1]} Hz\n- Low-pass {fclow} Hz\n- tkeo={btkeo}"
+    )
+
+    return daReturn
 
 
 # TODO: GENERALIZE THE NORMALIZING FUNCTION

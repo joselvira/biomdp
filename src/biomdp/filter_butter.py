@@ -194,7 +194,7 @@ def filter_butter(
         dat_filt = dat_filt.astype(dat_orig.dtype)
         dat_filt.attrs = dat_orig.attrs
         dat_filt.attrs["data_processing"] = (
-            f"Lowpass filter, Butterworth order {order}, fc={fc} Hz"
+            f"- Lowpass filter, Butterworth order {order}, fc={fc} Hz"
         )
 
         if returnRMS or show == True:

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Created on Tue Aug  2 20:33:55 2022
 
@@ -9,13 +8,21 @@ Created on Tue Aug  2 20:33:55 2022
 # =============================================================================
 
 __author__ = "Jose L. L. Elvira"
-__version__ = "1.8.0"
-__date__ = "27/05/2026"
+__version__ = "1.9.0"
+__date__ = "26/10/2026"
 
 
 # TODO: try detecting thresholds with scipy.stats.threshold
 """
 Updates:
+    18/10/2026, v.1.8.1
+        - Function detect_ini_mov was adjusted for "SJPreac",
+          looking for first time v=0.
+    
+    18/10/2026, v.1.8.1
+        - Fixed detect_minFz with SJ.
+        - included "offset_ini" in BASIC_EVENTS
+
     27/05/2026, v.1.8.0
         - Replaced "n_var" with "n_result" in calculate_results
           and calculate_results_EMG functions.
@@ -211,18 +218,17 @@ Updates:
 # import sys
 import time
 from pathlib import Path
-from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
-import scipy.integrate as integrate
+from scipy import integrate
 import xarray as xr
 from detecta import detect_onset
 from matplotlib.backends.backend_pdf import PdfPages  # to save graphs in pdf
 
-import biomdp.biomec_xarray_accessor  # accessor biomxr
+# import biomdp.biomec_xarray_accessor  # accessor biomxr
 
 # =============================================================================
 # ---- VARIABLES
@@ -230,6 +236,7 @@ import biomdp.biomec_xarray_accessor  # accessor biomxr
 g = 9.81  # m/s2
 
 BASIC_EVENTS = [
+    "offset_ini",
     "iniAnalisis",
     "preactiv",
     "iniPeso",
@@ -254,12 +261,21 @@ BASIC_EVENTS = [
 
 
 def create_standard_jump_events(daData: xr.DataArray) -> xr.DataArray:
-    return (
+    """
+    offset_ini: stores the offset of the original iniAnalisis event.
+    Useful when data is trimmed.
+    """
+
+    daReturn = (
         xr.full_like(daData.isel(time=0, drop=True), np.nan).expand_dims(
             {"n_event": BASIC_EVENTS},
             axis=-1,
         )
     ).copy()
+
+    daReturn.loc[{"n_event": "offset_ini"}] = 0.0
+
+    return daReturn
 
 
 def assign_subcategories_xr(
@@ -276,6 +292,7 @@ def assign_subcategories_xr(
                 n_project
             ),  # "ID", da.ID.to_series().str.split("_").str[0].to_list()),
             particip=("ID", da.ID.to_series().str.split("_").str[1].to_list()),
+            n_file=("ID", da.ID.data),
             tipo=("ID", da.ID.to_series().str.split("_").str[2].to_list()),
             subtipo=("ID", da.ID.to_series().str.split("_").str[3].to_list()),
             repe=("ID", da.ID.to_series().str.split("_").str[4].to_list()),
@@ -287,6 +304,7 @@ def assign_subcategories_xr(
         da = da.assign_coords(
             estudio=("ID", [n_project] * len(da.ID)),
             particip=("ID", da.ID.to_series().str.split("_").str[0].to_list()),
+            n_file=("ID", da.ID.data),
             tipo=("ID", da.ID.to_series().str.split("_").str[1].to_list()),
             subtipo=("ID", da.ID.to_series().str.split("_").str[2].to_list()),
             repe=("ID", da.ID.to_series().str.split("_").str[3].to_list()),
@@ -532,7 +550,7 @@ def split_dim_repe_logsheet(
                     reID = "_".join(
                         da.ID.data[0].split("_")[0:-1]
                     )  # ['_'.join(n.split('_')[0:-1]) for n in list(da.ID.data)]
-                    print(r, reID)
+                    # print(r, reID)
                     if reps.iloc[0] is not None and da.ID.str.endswith(
                         reps.iloc[0]
                     ):  # len(da.ID) >0:
@@ -694,7 +712,7 @@ def load_weight_bioware_csv(file: str | Path) -> float:
 def load_bioware_pl(
     file: str | Path,
     lin_header: int = 17,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     to_dataarray: bool = False,
 ):  # -> pl.DataFrame | xr.DataArray:
     print("Deprecated. Redirecting to biomdp.io.read_kistler_txt function")
@@ -753,7 +771,7 @@ def load_bioware_pl(
 
 # Carga un archivo Bioware C3D a xarray
 def read_kistler_c3d(
-    file: str | Path, n_vars_load: List[str] | None = None, engine: str = "ezc3d"
+    file: str | Path, n_vars_load: list[str] | None = None, engine: str = "ezc3d"
 ) -> xr.DataArray:
     print("Deprecated. Redirecting to biomdp.io.read_kistler_c3d function")
     from biomdp.io.read_kistler_c3d import read_kistler_c3d
@@ -767,8 +785,8 @@ def read_kistler_c3d(
 
 def from_vicon_csv_to_parquet(
     path: str | Path,
-    sections: List[str] | None = None,
-    n_vars_load: List[str] | None = None,
+    sections: list[str] | None = None,
+    n_vars_load: list[str] | None = None,
 ) -> None:
     from biomdp.io.read_vicon_csv import read_vicon_csv
 
@@ -821,7 +839,7 @@ def from_vicon_csv_to_parquet(
 def load_merge_vicon_csv(
     path: str | Path,
     section: str = "Model Outputs",
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     n_project: str | None = None,
     data_type: str | None = None,
     assign_subcat: bool = True,
@@ -1084,7 +1102,7 @@ def load_merge_vicon_c3d_logsheet(
 
 def load_merge_bioware_pl(
     path: Path | str,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     n_project: str | None = None,
     discardables: list[str] | None = None,
     data_type: str | None = None,
@@ -1549,7 +1567,7 @@ def load_merge_bioware_pd(
 
 def load_merge_bioware_c3d(
     path: str | Path,
-    n_vars_load: List[str] | None = None,
+    n_vars_load: list[str] | None = None,
     n_project: str | None = None,
     discardables: list[str] | None = None,
     data_type: str | None = None,
@@ -2013,7 +2031,7 @@ def check_flat_window(
 def guess_iniend_analysis(
     daData: xr.DataArray,
     daEvents: xr.DataArray,
-    window: List[float] | float = [1.5, 1.5],
+    window: list[float] | float = [1.5, 1.5],
     jump_test: str = "CMJ",
     threshold: float = 20.0,
     show: bool = False,
@@ -3165,9 +3183,11 @@ def detect_ini_mov(
             # output_core_dims=[['weight']],
             # exclude_dims=set(('time',)),
             vectorize=True,
-            kwargs=dict(
-                threshold=-threshold, n_above=int(0.2 * daData.freq), show=show
-            ),
+            kwargs={
+                "threshold": -threshold,
+                "n_above": int(0.2 * daData.freq),
+                "show": show,
+            },
         )
         # daData.sel(axis='z').isel(time=daCorte-1)
 
@@ -3265,8 +3285,27 @@ def detect_ini_mov(
         )
 
     elif jump_test == "SJPreac":
+        """
         # Como no se observa un patrón estable, coge un tiempo prefijado antes del despegue, basado en la media de fase concéntrica en SJ (#((daEventosForces.sel(n_event='finImpPos') - daEventosForces.sel(n_event='iniImpPos'))/daSJ.freq).mean())
         daCorte = daEvents.sel(n_event="despegue") - 0.25 * daData.freq
+        """
+        # Detecta cuando v=0 invirtiendo tiempo
+        daData_rev = daData.isel(time=slice(None, None, -1)).assign_coords(
+            time=daData.time
+        )
+        daEvents_rev = len(daData.time) - daEvents
+        daV_rev = daData_rev.biomxr.integrate_window(
+            daEvents_rev.sel(n_event=["finAnalisis", "iniAnalisis"]),
+            daOffset=daWeight.sel(stat="media"),
+            result_return="continuous",
+        ) / (daWeight.sel(stat="media", drop=True) / g)  # .drop_vars("stat")
+        # daV_rev.isel(ID=np.random.choice(len(daV_rev.ID), size=10, replace=False)).plot.line(x='time', col='ID', col_wrap=4)
+
+        daV = daV_rev.isel(time=slice(None, None, -1)).assign_coords(time=daData.time)
+        # daV.isel(ID=np.random.choice(len(daV.ID), size=10, replace=False)).plot.line(x='time', col='ID', col_wrap=4)
+
+        # Índice numérico del primer True
+        daCorte = (daV < 0).argmax(dim="time").where((daV < 0).any(dim="time"))
 
         """
         from detecta import detect_cusum        
@@ -3456,8 +3495,8 @@ def detect_end_mov(
 
         return float(fin)
 
-    def _detect_onset_fuerza(data, threshold, sd, iaterrizaje, finAn, ID):
-        # print(ID)
+    def _detect_onset_fuerza(data, threshold, sd, iaterrizaje, finAn, id):
+        # print(id)
         if np.count_nonzero(~np.isnan(data)) == 0:
             return np.nan
 
@@ -3468,13 +3507,16 @@ def detect_end_mov(
                 n_above=int(0.1 * daData.freq),
                 show=show,
             )
-            fin = (
-                finAn - fin[-1, 0] + 1
-            )  # +1 para coger el que ya ha superado el umbral
-            # fin[0,0] o fin[1,1] ?????
+            if len(fin > 0):
+                fin = (
+                    finAn - fin[-1, 0] + 1
+                )  # +1 para coger el que ya ha superado el umbral
+                # fin[0,0] o fin[1,1] ?????
+            else:
+                fin = finAn
         except Exception as e:
-            print(e)
             fin = finAn  # len(data[~np.isnan(data)]) #por si no encuentra el criterio
+            print(id, finAn, e)
         return float(fin)
 
     if kind == "velocity":
@@ -3493,6 +3535,12 @@ def detect_end_mov(
     # datos.plot.line(x='time', col='ID', col_wrap=3)
 
     """
+    data=daData.sel(ID='2025-S15_SJ_0L', repe=1).data
+    iaterrizaje = daEvents.sel(ID='2025-S15_SJ_0L', repe=1).sel(n_event='aterrizaje').data
+    finAn = daEvents.sel(ID='2025-S15_SJ_0L', repe=1).sel(n_event='finAnalisis').data
+    threshold = daWeight.sel(ID='2025-S15_SJ_0L', repe=1).sel(stat='media').data
+    sd=daWeight.sel(ID='2025-S15_SJ_0L', repe=1).sel(stat='sd').data
+
     #data = daData[0,0].data
     data = datos[0,0].data
     iaterrizaje = daEvents.sel(n_event='aterrizaje')[0,0].data
@@ -3693,10 +3741,11 @@ def detect_minFz(
             try:
                 ini = int(ini)
                 fin = int(fin)
+
                 if ini >= fin:  # puede pasar en SJ bien hechos
                     ind = ini
                 else:
-                    ind = np.argmin(data[ini:fin]) + ini
+                    ind = float(np.argmin(data[ini:fin]) + ini)
                     # plt.plot(data[ini:fin])
                     # plt.plot(int(ind-ini), data[int(ind)] ,'o')
                     # plt.show()
@@ -3705,7 +3754,7 @@ def detect_minFz(
             except:
                 ind = np.nan  # por si no encuentra el criterio
                 # return np.nan
-            return np.array([ind]).astype("float")
+            return np.array(ind)
 
         """       
         data = daData[0,0].data
@@ -5008,8 +5057,11 @@ def trim_analysis_window(
     If a value is passed to window, only one n_event should be passed.
     Add the window (in seconds) to the initial n_event.
     """
-    # TODO: TRY WITH DA.PAD
+    from biomdp.slice_time_series_phases import trim_window
 
+    return trim_window(daData, daEvents, window)
+
+    '''
     def _trim_window(datos, ini, fin):
         # print(datos.shape, ini,fin)
         d2 = np.full(
@@ -5018,10 +5070,8 @@ def trim_analysis_window(
         try:
             ini = int(ini)
             fin = int(fin)
-            if ini < 0:
-                ini = 0
-            if fin > len(datos):
-                fin = len(datos)
+            ini = max(ini, 0)
+            fin = min(fin, len(datos))
             d2[: fin - ini] = datos[ini:fin]
         except:
             pass
@@ -5038,7 +5088,11 @@ def trim_analysis_window(
     else:
         daIni = daEvents.isel(n_event=0)
         daFin = daEvents.isel(n_event=1)
-
+    """
+    datos=daData['BW'][0,0]
+    ini=daIni[0,0]
+    fin=daFin[0,0]
+    """
     daCortado = (
         xr.apply_ufunc(
             _trim_window,
@@ -5065,6 +5119,7 @@ def trim_analysis_window(
 
     # daCortado.plot.line(x='time', row='ID', col='axis')
     return daCortado
+    '''
 
 
 def adjust_offsetFz_flight_min(
@@ -5598,7 +5653,7 @@ def calculate_variables(
 
     daBW = daData / daWeight.sel(stat="media", drop=True)
 
-    def _integrate(data, time, weight, ini, fin):
+    """def _integrate(data, time, weight, ini, fin):
         # if np.count_nonzero(~np.isnan(data))==0:
         #     return np.nan
         dat = np.full(len(data), np.nan)
@@ -5614,7 +5669,7 @@ def calculate_variables(
             print(f"Error calculando la integral. {e}")
             pass  # dat = np.full(len(data), np.nan)
         return dat
-
+    """
     """
     data = daData[2,0].data #.sel(axis='z').data
     time = daData.time.data
@@ -5645,7 +5700,7 @@ def calculate_variables(
     daV = daData.biomxr.integrate_window(
         daEvents, daOffset=daWeight.sel(stat="media"), result_return="continuous"
     ) / (daWeight.sel(stat="media", drop=True) / g)  # .drop_vars("stat")
-    # daV.isel(ID=slice(None, 8)).plot.line(x='time', col='ID', col_wrap=4)
+    # daBW.isel(ID=np.random.choice(len(daV.ID), size=10, replace=False)).plot.line(x='time', col='ID', col_wrap=4)
 
     daS = daV.biomxr.integrate_window(daEvents, result_return="continuous")
     """daS = xr.apply_ufunc(
