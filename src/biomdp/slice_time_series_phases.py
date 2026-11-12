@@ -35,7 +35,7 @@ Updates:
     31/10/2026, v5.3.0
         - Added 'detect_onset_xr': threshold-crossing detector for multidimensional
           DataArrays using scipy.ndimage.uniform_filter1d. No dependency on detecta.
-          Supports threshold, n_above, threshold2, n_above2, xSD, event_ini.
+          Supports threshold, num_above, threshold2, num_above2, xSD, event_ini.
         - Added 'show_events_xarray': facet visualization of detected events.
 
     17/07/2026, v5.2.2
@@ -166,10 +166,10 @@ def show_events_xarray(
     events: xr.DataArray,
     threshold: float | None = None,
     n_dim_time: str = "time",
-    col_dim: str = "ID",
-    row_dim: str | None = "side",
+    col_dim: str = "n_var",
+    row_dim: str | None = "ID",
     sel_dims: dict | None = None,
-    figsize: tuple = (16, 6),
+    figsize: tuple = (16, 20),
 ):
     """
     Plot detected events as a facet grid using xarray-style layout.
@@ -247,14 +247,88 @@ def show_events_xarray(
     plt.show()
 
 
+def _show_events_block_plots(
+    da, daevts, hl_values, n_dim_time, show_row_dim, show_col_dim, show_sel_dims, opts
+):
+    """
+    Plots ``da`` with its events ``daevts`` (dim ``num_event``) using
+    ``block_plots_fast``. Shared by the ``detect_events_*`` functions.
+
+    hl_values : {label: float | array with shape (..., 1)} horizontal lines. Scalars
+        are common to all panels; arrays hold one value per series (``da`` dims
+        without time).
+    opts : extra options for ``block_plots_fast`` (they override the defaults).
+    """
+    from biomdp.plotting.plotting_functions import block_plots_fast
+
+    da_show, ev_show = da, daevts.rename({"num_event": "n_event"})
+
+    # Horizontal lines: one Dataset if all are common, else per-series DataArray
+    hl = None
+    if hl_values:
+        if all(np.ndim(v) == 0 for v in hl_values.values()):
+            hl = xr.Dataset({k: float(v) for k, v in hl_values.items()})
+        else:
+            dims_s = da.dims[:-1]
+            coords_s = {d: da.coords[d] for d in dims_s if d in da.coords}
+            arrs = []
+            for v in hl_values.values():
+                v = np.asarray(v, dtype=float)
+                v = (
+                    v[..., 0]
+                    if v.ndim > 0
+                    else np.full([da.sizes[d] for d in dims_s], v)
+                )
+                arrs.append(xr.DataArray(v, dims=dims_s, coords=coords_s))
+            hl = (
+                arrs[0]
+                if len(arrs) == 1
+                else xr.concat(
+                    arrs, dim=xr.DataArray(list(hl_values), dims="hline_name")
+                )
+            )
+
+    if show_sel_dims:
+        da_show = da_show.sel(show_sel_dims)
+        ev_show = ev_show.sel(
+            {k: v for k, v in show_sel_dims.items() if k in ev_show.dims}
+        )
+        if hl is not None and not hasattr(hl, "data_vars"):
+            hl = hl.sel({k: v for k, v in show_sel_dims.items() if k in hl.dims})
+
+    # Facet dimensions: those requested, or a valid fallback
+    non_time = [d for d in da_show.dims if d != n_dim_time]
+    n_rows = show_row_dim if show_row_dim in non_time else None
+    n_cols = show_col_dim if show_col_dim in non_time else None
+    if n_rows is None:
+        rest = [d for d in non_time if d != n_cols]
+        if rest:
+            n_rows = rest[0]
+        else:  # nothing to put in rows: add a dummy one
+            n_rows = "ID"
+            da_show = da_show.expand_dims({n_rows: [0]})
+            if hl is not None and not hasattr(hl, "data_vars"):
+                hl = hl.expand_dims({n_rows: [0]})
+            ev_show = ev_show.expand_dims({n_rows: [0]})
+
+    kws = {
+        "n_rows": n_rows,
+        "n_cols": n_cols,
+        "daHlines": hl,
+        "show_in_console": True,
+    }
+    kws.update(opts)
+    block_plots_fast(da_show, ev_show, **kws)
+
+
 def detect_events_onset(
-    data: xr.DataArray = xr.DataArray(),
+    data: xr.DataArray,
     n_dim_time: str = "time",
     reference_var: str | dict | None = None,
     threshold: float = 0.0,
-    n_above: int = 1,
+    num_above: int = 1,
     threshold2: float | None = None,
-    n_above2: int = 1,
+    num_above2: int = 1,
     xSD: float | None = None,
     event_ini: int = 0,
     discard_first: bool = True,
@@ -263,9 +337,13 @@ def detect_events_onset(
     discard_phases_end: int = 0,
     max_phases: int = 100,
     show: bool = False,
-    show_col_dim: str = "n_var",
-    show_row_dim: str | None = "ID",
+    show_col_dim: str | None = None,
+    show_row_dim: str | None = None,
     show_sel_dims: dict | None = None,
+    show_threshold: bool = True,
+    show_n_above: bool = True,
+    show_kwargs: dict | None = None,
+    **kwargs,
 ) -> xr.DataArray:
     """
     TODO: Add threshold2 in plots.
@@ -295,16 +373,16 @@ def detect_events_onset(
         refer to the original *data* time axis.
     threshold : float, optional
         Primary threshold.  Events are detected where
-        ``data >= threshold`` for at least *n_above* consecutive samples.
+        ``data >= threshold`` for at least *num_above* consecutive samples.
         Default ``0.0``.
-    n_above : int, optional
+    num_above : int, optional
         Minimum number of consecutive samples >= *threshold* required to
         confirm an event.  Default ``1``.
     threshold2 : float or None, optional
-        Secondary (safety) threshold.  Within the *n_above*-sample window
-        starting at each candidate onset, at least *n_above2* samples must
+        Secondary (safety) threshold.  Within the *num_above*-sample window
+        starting at each candidate onset, at least *num_above2* samples must
         also satisfy ``data >= threshold2``.  Default ``None`` (disabled).
-    n_above2 : int, optional
+    num_above2 : int, optional
         Minimum samples >= *threshold2* inside the confirmation window.
         Default ``1``.
     xSD : float or None, optional
@@ -338,6 +416,25 @@ def detect_events_onset(
     show_sel_dims : dict or None, optional
         Additional selectors applied before plotting, e.g.
         ``{'n_var': 'v0'}``.  Default ``None``.
+    show_threshold : bool, optional
+        Draw *threshold* (and *threshold2* if given) as horizontal lines (one
+        per series if *xSD* is used).  Default ``True``.
+    show_n_above : bool, optional
+        Shade the *num_above*-sample confirmation window that starts at each
+        detected onset (only if ``num_above > 1`` and ``event_ini == 0``).
+        Default ``True``.
+    show_kwargs : dict or None, optional
+        Extra options passed to
+        ``biomdp.plotting.plotting_functions.block_plots_fast``; they override
+        the defaults built from *show_row_dim* / *show_col_dim*. E.g.
+        ``{'num_per_block': 3, 'sharex': True, 'fit_start_end': False,
+        'save_file': 'events.pdf', 'show_in_console': False,
+        'hlines_colors': ['k'], 'max_points': 2000}``.  Default ``None``.
+    **kwargs :
+        Any other keyword argument is forwarded to ``block_plots_fast`` (e.g.
+        ``num_per_block=3``, ``save_file="events.pdf"``, ``sharex=True``), same
+        as *show_kwargs* (which takes precedence if both give the same key).
+        Only used if ``show=True``.
 
     Returns
     -------
@@ -351,7 +448,7 @@ def detect_events_onset(
     Internally the function:
 
     1. Builds a boolean mask ``data >= threshold`` (NumPy, vectorised).
-    2. Applies ``scipy.ndimage.uniform_filter1d`` to confirm *n_above*
+    2. Applies ``scipy.ndimage.uniform_filter1d`` to confirm *num_above*
        consecutive True values — ~10x faster than ``xarray.rolling``.
     3. Computes ``np.diff`` along the time axis to locate ascending flanks.
     4. Uses ``xr.apply_ufunc`` only for the unavoidably ragged step of
@@ -363,7 +460,7 @@ def detect_events_onset(
     ...     data,
     ...     reference_var=dict(n_var='force'),
     ...     threshold=20.0,
-    ...     n_above=10,
+    ...     num_above=10,
     ...     discard_phases_ini=1,
     ...     show=True,
     ...     show_sel_dims={'n_var': 'force'},
@@ -375,30 +472,44 @@ def detect_events_onset(
         raise ImportError(
             "detect_events_onset requires scipy. Install it with: pip install scipy"
         )
+    data_type = data.dtype
 
-    ref = data.sel(reference_var) if reference_var is not None else data
-    arr = ref.values.astype(np.float32)
+    if data.dims[-1] != n_dim_time:
+        data = data.transpose(..., n_dim_time)
+
+    threshold = (
+        np.float32(threshold) if data_type == np.float32 else np.float64(threshold)
+    )
+    if threshold2 is not None:
+        threshold2 = (
+            np.float32(threshold2)
+            if data_type == np.float32
+            else np.float64(threshold2)
+        )
+
+    da = data.sel(reference_var) if reference_var is not None else data
+    arr = da.values.astype(data_type)  # np.float32)
 
     # ── 1. Adaptive threshold (xSD) ──────────────────────────────────────────
     if xSD is not None:
         mean = np.nanmean(arr, axis=-1, keepdims=True)
         std = np.nanstd(arr, axis=-1, keepdims=True)
-        thr_arr = (mean + xSD * std).astype(np.float32)
+        thr_arr = (mean + xSD * std).astype(data_type)  # .astype(np.float32)
     else:
-        thr_arr = np.float32(threshold)
+        thr_arr = threshold
 
     # ── 2. Boolean mask (vectorised NumPy) ───────────────────────────────────
     above = arr >= thr_arr
 
-    # ── 3. Confirm n_above consecutive samples (scipy, vectorised on axis=-1) ─
-    # uniform_filter1d with origin=-(n_above-1)//2 looks *forward*:
-    # position i is True only if samples [i .. i+n_above-1] are all True.
-    if n_above > 1:
+    # ── 3. Confirm num_above consecutive samples (scipy, vectorised on axis=-1) ─
+    # uniform_filter1d with origin=-(num_above-1)//2 looks *forward*:
+    # position i is True only if samples [i .. i+num_above-1] are all True.
+    if num_above > 1:
         consec = uniform_filter1d(
-            above.astype(np.float32),
-            size=n_above,
+            above.astype(data_type),
+            size=num_above,
             axis=-1,
-            origin=-((n_above - 1) // 2),
+            origin=-((num_above - 1) // 2),
         ) >= (1.0 - 1e-6)
     else:
         consec = above
@@ -411,12 +522,12 @@ def detect_events_onset(
         onset_signal = diff == -1  # descending crossing
 
     # ── 5. Secondary threshold mask (vectorised NumPy) ───────────────────────
-    mask2 = (arr >= np.float32(threshold2)) if threshold2 is not None else None
+    mask2 = (arr >= threshold2) if threshold2 is not None else None
 
     # ── 6. Wrap processed arrays as DataArrays for apply_ufunc ──────────────
-    ons_da = xr.DataArray(onset_signal, dims=ref.dims, coords=ref.coords)
+    ons_da = xr.DataArray(onset_signal, dims=da.dims, coords=da.coords)
     m2_da = (
-        xr.DataArray(mask2, dims=ref.dims, coords=ref.coords)
+        xr.DataArray(mask2, dims=da.dims, coords=da.coords)
         if mask2 is not None
         else xr.zeros_like(ons_da)
     )
@@ -427,7 +538,7 @@ def detect_events_onset(
         idxs = np.where(ons_1d)[0]
 
         if threshold2 is not None and len(idxs) > 0:
-            win = max(n_above, n_above2)
+            win = max(num_above, num_above2)
             keep = [np.any(m2_1d[i : i + win]) for i in idxs]
             idxs = idxs[np.array(keep, dtype=bool)]
 
@@ -445,7 +556,7 @@ def detect_events_onset(
         out[: len(evts)] = evts
         return out
 
-    da = xr.apply_ufunc(
+    daevts = xr.apply_ufunc(
         _extract,
         ons_da,
         m2_da,
@@ -468,27 +579,36 @@ def detect_events_onset(
         dask="parallelized",
         join="outer",
     )
-    da = da.assign_coords(num_event=range(len(da.num_event))).dropna(
+    daevts = daevts.assign_coords(num_event=range(len(daevts.num_event))).dropna(
         dim="num_event", how="all"
     )
-    da.name = "Events"
+    daevts.name = "Events"
 
     if show:
-        show_events_xarray(
-            data=ref,
-            events=da,
-            threshold=threshold if xSD is None else None,
-            n_dim_time=n_dim_time,
-            col_dim=show_col_dim,
-            row_dim=show_row_dim,
-            sel_dims=show_sel_dims,
+        hl_values = {}
+        if show_threshold:
+            hl_values["threshold"] = thr_arr if xSD is not None else float(threshold)
+            if threshold2 is not None:
+                hl_values["threshold2"] = float(threshold2)
+        extra = {}
+        if show_n_above and num_above > 1 and event_ini == 0:
+            extra["events_shade"] = num_above  # confirmation window of each onset
+        _show_events_block_plots(
+            da,
+            daevts,
+            hl_values,
+            n_dim_time,
+            show_row_dim,
+            show_col_dim,
+            show_sel_dims,
+            {**extra, **kwargs, **(show_kwargs or {})},
         )
 
-    return da
+    return daevts
 
 
 def detect_events_peaks(
-    data: xr.DataArray = xr.DataArray(),
+    data: xr.DataArray,
     n_dim_time: str = "time",
     reference_var: str | dict | None = None,
     height: float | tuple[float | None, float | None] | None = None,
@@ -500,9 +620,12 @@ def detect_events_peaks(
     discard_phases_end: int = 0,
     max_phases: int = 100,
     show: bool = False,
-    show_col_dim: str = "n_var",
-    show_row_dim: str | None = "ID",
+    show_col_dim: str | None = None,
+    show_row_dim: str | None = None,
     show_sel_dims: dict | None = None,
+    show_threshold: bool = True,
+    show_kwargs: dict | None = None,
+    **kwargs,
 ) -> xr.DataArray:
     """
     Detect local maxima (peaks) in a multidimensional DataArray.
@@ -545,8 +668,12 @@ def detect_events_peaks(
         Peaks to discard from the end (ignored if *num_phases* is given).
     max_phases : int, optional
         Size of the NaN-padded output along ``'num_event'``. Default 100.
-    show, show_col_dim, show_row_dim, show_sel_dims
-        Same as in ``detect_events_onset``.
+    show, show_col_dim, show_row_dim, show_sel_dims, show_kwargs, **kwargs
+        Same as in ``detect_events_onset`` (plot with ``block_plots_fast``;
+        extra keyword arguments are forwarded to it).
+    show_threshold : bool, optional
+        Draw the height limits (*height* / *xSD*) as horizontal lines (one per
+        series if *xSD* is used).  Default ``True``.
 
     Returns
     -------
@@ -657,14 +784,21 @@ def detect_events_peaks(
     da.name = "Events"
 
     if show:
-        show_events_xarray(
-            data=ref,
-            events=da,
-            threshold=hmin if (xSD is None and np.ndim(hmin) == 0) else None,
-            n_dim_time=n_dim_time,
-            col_dim=show_col_dim,
-            row_dim=show_row_dim,
-            sel_dims=show_sel_dims,
+        hl_values = {}
+        if show_threshold:
+            if hmin is not None:
+                hl_values["height_min" if hmax is not None else "height"] = hmin
+            if hmax is not None:
+                hl_values["height_max"] = hmax
+        _show_events_block_plots(
+            ref.transpose(..., n_dim_time),
+            da,
+            hl_values,
+            n_dim_time,
+            show_row_dim,
+            show_col_dim,
+            show_sel_dims,
+            {**kwargs, **(show_kwargs or {})},
         )
 
     return da
@@ -700,7 +834,7 @@ def detect_onset_offset(
 
     """
     dat=data[0]
-    kwargs_func_events=dict(threshold=10, n_above=5, show=False)
+    kwargs_func_events=dict(threshold=10, num_above=5, show=False)
     """
     events = xr.apply_ufunc(
         _det_on,
@@ -2381,10 +2515,105 @@ if __name__ == "__main__":
 
     # Plot
     daTotal.plot.line(x="time", col="moment", hue="ID", row="n_var")
+    plt.show()
+
+    noisy_1 = (
+        create_time_series_xr(
+            rnd_seed=rnd_seed,
+            num_subj=10,
+            fs=freq,
+            IDini=0,
+            range_offset=[32, 36],
+            range_amp=[5, 40],
+            range_freq=[1.0, 3.0],
+            range_af=[0, 30],
+            amplific_noise=[1.4, 1.7],
+            fc_noise=[1.0, 1.5],
+            range_duration=[5, 5],
+        )
+        # .expand_dims({"n_var": ["b"], "moment": ["post"]})
+        # .transpose("ID", "moment", "n_var", "time")
+    )
+    noisy_2 = (
+        create_time_series_xr(
+            rnd_seed=rnd_seed,
+            num_subj=10,
+            fs=freq,
+            IDini=0,
+            range_offset=[32, 36],
+            range_amp=[10, 20],
+            range_freq=[1.48, 1.52],
+            range_af=[0, 30],
+            amplific_noise=[0.4, 0.7],
+            fc_noise=[3.0, 3.5],
+            range_duration=[5, 5],
+        )
+        # .expand_dims({"n_var": ["b"]})
+        # .transpose("ID", "moment", "n_var", "time")
+    )
+    noisy_3 = (
+        create_time_series_xr(
+            rnd_seed=rnd_seed,
+            num_subj=10,
+            fs=freq,
+            IDini=0,
+            range_offset=[32, 36],
+            range_amp=[5, 10],
+            range_freq=[0.5, 2.0],
+            range_af=[0, 30],
+            amplific_noise=[1, 3],
+            fc_noise=[3.0, 3.5],
+            range_duration=[5, 5],
+        )
+        # .expand_dims({"n_var": ["b"], "moment": ["post"]})
+        # .transpose("ID", "moment", "n_var", "time")
+    )
+    daNoisy = xr.concat(
+        [
+            (noisy_1 + noisy_2).expand_dims({"n_var": ["a"]}),
+            (noisy_1 + noisy_3).expand_dims({"n_var": ["b"]}),
+        ],
+        dim="n_var",
+        join="outer",
+    ).transpose("ID", "n_var", "time")  # noisy_1 + noisy_2
+    daNoisy.name = "Arbitrary"
+    daNoisy.attrs["freq"] = 1 / (
+        daNoisy.time[1].values - daNoisy.time[0].values
+    )  # incluimos la frequencia como atributo
+    daNoisy.attrs["units"] = "arbitrary"
+    daNoisy.time.attrs["units"] = "s"
+
+    # Plot
+    daNoisy.plot.line(x="time", row="ID")
+    plt.show()
 
     # =============================================================================
     # %% Test the functions
     # =============================================================================
+
+    daEvents = detect_events_onset(
+        daNoisy,
+        threshold=90,
+        num_above=10,
+        threshold2=95,
+        num_above2=10,
+        show=True,
+        show_row_dim="ID",
+        show_col_dim="n_var",
+        num_per_block=3,
+    )
+
+    daEvents = detect_events_peaks(
+        daNoisy,
+        height=(100, 120),
+        distance=100,
+        show=True,
+        show_row_dim="ID",
+        show_col_dim="n_var",
+        num_per_block=3,
+    )
+
+    # ----------------------------------------------------------------------------
 
     r"""
     #Example importing
@@ -2544,6 +2773,7 @@ if __name__ == "__main__":
         data=daTotal,
         reference_var={"moment": "pre", "n_var": "b"},
         threshold=60,
+        show=True,
     )
     daSliced = slice_time_series(daTotal, daEvents)
     daSliced.stack(m_var=["moment", "n_var"]).plot.line(x="time", row="ID", col="m_var")

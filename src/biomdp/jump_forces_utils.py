@@ -2996,6 +2996,14 @@ def detect_takeoff_landing(
                 threshold=-threshold, n_above=int(0.2 * daData.freq), show=show
             ),
         ).assign_coords(n_event=["despegue", "aterrizaje"])
+    """
+    TODO: CONTINUE HERE
+    from biomdp.slice_time_series_phases import detect_events_onset, detect_onset_offset
+    from biomdp.plotting import plotting_functions as pf
+    aterrizaje =detect_events_onset(daData, threshold=threshold, threshold2=threshold*2) #, show=True, show_col_dim='repe')
+    detect_onset_offset(-daData.isel(ID=slice(None, None)), threshold=-threshold, n_above=50)
+    pf.block_plots_fast(daGraph=daData, daEvents=aterrizaje.rename({'num_event':'n_event'}), n_rows='repe', save_file=config.REPORTS_DIR / "interim" / f"{config.PROJ_NAME}_CMJ_Fz_OffsetFlight")
+    """
     # Comprobaciones
     # daData.sel(axis='z').isel(time=daCorte.sel(n_event='despegue')-1) #despegue cuando ya ha pasado por debajo del umbral
     # daData.sel(axis='z').isel(time=daCorte.sel(n_event='aterrizaje')-1) #aterrizaje cuando ya ha pasado por debajo del umbral
@@ -5059,7 +5067,7 @@ def trim_analysis_window(
     """
     from biomdp.slice_time_series_phases import trim_window
 
-    return trim_window(daData, daEvents, window)
+    return trim_window(daData, daEvents.rename({"n_event": "num_event"}), window)
 
     '''
     def _trim_window(datos, ini, fin):
